@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Python Virtual Environments
+venv/
+**/venv/
+.venv/
+env/
+**/env/
+
+# Python Cache & Compiled Files
+__pycache__/
+/**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Database & Storage
+*.sqlite3
+db.sqlite3
+media/
+**/media/
+sent_emails/
+**/sent_emails/
+
+# Build & Output
+build/
+dist/
+**/dist/
+**/build/
+coverage/
+
+# Environment & Credentials
+.env
+.env.*
+!.env.example
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+*.log
