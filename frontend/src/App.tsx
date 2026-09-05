@@ -10,6 +10,7 @@ import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
+import { getStoredSession } from './services/api';
 
 // Role Dashboards
 import { AdminDashboard } from './components/dashboards/AdminDashboard';
@@ -96,6 +97,32 @@ const DashboardLayout: React.FC = () => {
 
 
 const AppRoutes: React.FC = () => {
+  const location = useLocation();
+  const { isAuthenticated, logoutUser } = useApp();
+  const searchParams = new URLSearchParams(location.search);
+  const viewParam = searchParams.get('view');
+
+  // When navigating back or visiting the public landing page, cleanly terminate any active dashboard session
+  useEffect(() => {
+    if (location.pathname === '/' && (isAuthenticated || getStoredSession())) {
+      logoutUser(true);
+    }
+  }, [location.pathname, isAuthenticated, logoutUser]);
+
+  // Handle query parameter based routing (e.g. ?view=reset-password&token=...)
+  if (viewParam === 'reset-password') {
+    return <ResetPasswordPage />;
+  }
+  if (viewParam === 'login') {
+    return <LoginPage />;
+  }
+  if (viewParam === 'register') {
+    return <RegisterPage />;
+  }
+  if (viewParam === 'forgot-password') {
+    return <ForgotPasswordPage />;
+  }
+
   return (
     <Routes>
       {/* Public Routes */}

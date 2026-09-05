@@ -58,8 +58,8 @@ interface AppContextType {
   // Centralized Session State & Methods
   isAuthenticated: boolean;
   isAuthLoading: boolean;
-  loginUser: (emailInput: string, passwordInput: string) => Promise<{ success: boolean; message?: string }>;
-  logoutUser: () => Promise<void>;
+  loginUser: (emailInput: string, passwordInput: string) => Promise<{ success: boolean; message?: string; role?: string }>;
+  logoutUser: (silent?: boolean) => Promise<void>;
   checkAuthSession: () => Promise<void>;
 
   // Actions
@@ -183,7 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     checkAuthSession();
   }, []);
 
-  const loginUser = async (emailInput: string, passwordInput: string): Promise<{ success: boolean; message?: string }> => {
+  const loginUser = async (emailInput: string, passwordInput: string): Promise<{ success: boolean; message?: string; role?: string }> => {
     try {
       const response = await apiFetch('/api/auth/login/', {
         method: 'POST',
@@ -193,18 +193,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (response.ok && result.status === 'success') {
         const authData = result.data;
+        const userRole = authData.role as UserRole;
         const portUser: PortUser = {
           id: String(authData.login_id),
           name: authData.full_name,
           email: authData.email,
-          role: authData.role as UserRole,
+          role: userRole,
           organisation: authData.company_name || 'PORTIDE Port Authority',
           phone: '+1-555-0100',
           status: 'active',
           createdAt: new Date().toISOString().substring(0, 10)
         };
         setCurrentUser(portUser);
-        setActiveRole(authData.role as UserRole);
+        setActiveRole(userRole);
         setIsAuthenticated(true);
         setStoredSession({
           id: portUser.id,
@@ -215,7 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: portUser.status
         });
         addToast('success', 'Login Successful', `Welcome back, ${authData.full_name}`);
-        return { success: true };
+        return { success: true, role: userRole };
       } else {
         return { success: false, message: result.message || 'Invalid email or password.' };
       }
@@ -224,17 +225,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const logoutUser = async () => {
+  const logoutUser = async (silent: boolean = false) => {
+    // Clear session state synchronously first to prevent any race condition
+    clearStoredSession();
+    setIsAuthenticated(false);
+    setCurrentUser({
+      id: '',
+      name: '',
+      email: '',
+      role: 'port_administrator',
+      organisation: '',
+      status: 'pending',
+      createdAt: ''
+    });
+
+    if (!silent) {
+      addToast('info', 'Logged Out', 'Signed out from Portide Enterprise.');
+    }
+
     try {
       await apiFetch('/api/auth/logout/', {
         method: 'POST'
       });
     } catch {
       // Ignore network failures on logout
-    } finally {
-      clearStoredSession();
-      setIsAuthenticated(false);
-      addToast('info', 'Logged Out', 'Signed out from Portide Enterprise.');
     }
   };
 
