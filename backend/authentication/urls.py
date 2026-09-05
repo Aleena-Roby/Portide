@@ -21,11 +21,12 @@ from authentication.views import (
     ArrivalRequestRejectAPIView,
     BerthListCreateAPIView,
     BerthMaintenanceStatusAPIView,
-    BerthUtilisationAPIView,
     AdminBerthListCreateAPIView,
     AdminBerthDetailAPIView,
     VesselScheduleListCreateAPIView,
-    VesselScheduleUpdateStatusAPIView
+    VesselScheduleUpdateStatusAPIView,
+    PortSettingsAPIView,
+    AuditLogListAPIView
 )
 
 urlpatterns = [
@@ -55,8 +56,6 @@ urlpatterns = [
     # Berth & Scheduling Endpoints
     path('berths/', BerthListCreateAPIView.as_view(), name='berth_list_create'),
     path('berths', BerthListCreateAPIView.as_view(), name='berth_list_create_noslash'),
-    path('berths/utilisation/', BerthUtilisationAPIView.as_view(), name='berth_utilisation'),
-    path('berths/utilisation', BerthUtilisationAPIView.as_view(), name='berth_utilisation_noslash'),
     path('berths/<int:pk>/status/', BerthMaintenanceStatusAPIView.as_view(), name='berth_maintenance_status'),
     path('berths/<int:pk>/status', BerthMaintenanceStatusAPIView.as_view(), name='berth_maintenance_status_noslash'),
     path('schedules/', VesselScheduleListCreateAPIView.as_view(), name='schedule_list_create'),
@@ -93,6 +92,16 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordAPIView.as_view(), name='forgot_password_slash'),
     path('reset-password', ResetPasswordAPIView.as_view(), name='reset_password'),
     path('reset-password/', ResetPasswordAPIView.as_view(), name='reset_password_slash'),
+
+    # Port Configuration & System Settings
+    path('settings/port-config/', PortSettingsAPIView.as_view(), name='port_settings_config'),
+    path('settings/port-config', PortSettingsAPIView.as_view(), name='port_settings_config_noslash'),
+
+    # Security & Audit Logs Endpoints
+    path('audit-logs/', AuditLogListAPIView.as_view(), name='audit_logs_list'),
+    path('audit-logs', AuditLogListAPIView.as_view(), name='audit_logs_list_noslash'),
+    path('admin/audit-logs/', AuditLogListAPIView.as_view(), name='admin_audit_logs_list'),
+    path('admin/audit-logs', AuditLogListAPIView.as_view(), name='admin_audit_logs_list_noslash'),
 ]
 
 

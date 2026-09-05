@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.db import connection
 from django.http import JsonResponse
 
 def api_root(request):
@@ -28,13 +29,29 @@ def api_root(request):
         "admin_url": "http://localhost:8000/admin/",
         "endpoints": {
             "auth": "http://localhost:8000/api/auth/",
-            "api": "http://localhost:8000/api/"
+            "api": "http://localhost:8000/api/",
+            "health": "http://localhost:8000/api/health/"
         }
+    })
+
+def health_check(request):
+    db_status = "connected"
+    try:
+        connection.ensure_connection()
+    except Exception:
+        db_status = "unavailable"
+    
+    return JsonResponse({
+        "status": "ok",
+        "database": db_status
     })
 
 
 urlpatterns = [
     path('', api_root, name='api_root'),
+    path('health/', health_check, name='health_root'),
+    path('api/health/', health_check, name='health_check'),
+    path('api/health', health_check, name='health_check_noslash'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('authentication.urls')),
     path('api/', include('authentication.urls')),
