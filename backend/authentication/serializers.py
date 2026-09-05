@@ -1,9 +1,29 @@
+import re
+import datetime
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.utils import timezone
-from authentication.models import Login, User, ShippingCompany, RegistrationRequest, Vessel, VesselArrivalRequest, Department, Role, Berth, VesselSchedule
-from authentication.validators import validate_strong_password, validate_international_phone_number
+from authentication.models import (
+    Login, 
+    User, 
+    ShippingCompany, 
+    RegistrationRequest, 
+    Vessel, 
+    VesselArrivalRequest, 
+    Department, 
+    Role, 
+    Berth, 
+    VesselSchedule,
+    SystemSetting,
+    AuditLog,
+    get_min_arrival_advance_days
+)
+from authentication.validators import (
+    validate_strong_password, 
+    validate_international_phone_number,
+    resolve_country_iso
+)
 
 
 class LoginSerializer(serializers.Serializer):
@@ -31,7 +51,7 @@ class ShippingCompanySerializer(serializers.ModelSerializer):
 
 
 class RegistrationRequestSerializer(serializers.Serializer):
-    request_company_name = serializers.CharField(required=True, max_length=200)
+    request_company_name = serializers.CharField(required=True, max_length=150)
     request_registration_no = serializers.CharField(required=True, max_length=100)
     request_entity_type = serializers.CharField(required=False, default='Shipping Company / Shipping Agent')
     request_applicant_name = serializers.CharField(required=True, max_length=150)
@@ -45,8 +65,14 @@ class RegistrationRequestSerializer(serializers.Serializer):
     request_id_file = serializers.FileField(required=False, allow_null=True)
     request_terms_accepted = serializers.BooleanField(required=False, default=True)
 
+    def validate_request_jurisdiction(self, value):
+        resolved = resolve_country_iso(value)
+        if not resolved:
+            raise serializers.ValidationError("Jurisdiction must be one of the 12 supported countries.")
+        return value
+
     def validate_request_phone(self, value):
-        jurisdiction = self.initial_data.get('request_jurisdiction') or 'IN'
+        jurisdiction = self.initial_data.get('request_jurisdiction') or 'SG'
         return validate_international_phone_number(value, default_region=jurisdiction, required=True)
 
     def validate(self, attrs):
@@ -448,24 +474,136 @@ class VesselCreateSerializer(serializers.ModelSerializer):
         cleaned_imo = str(value).strip()
         if not cleaned_imo.isdigit() or len(cleaned_imo) != 7:
             raise serializers.ValidationError("IMO Number must be exactly 7 numeric digits (e.g. 9876543).")
-        if Vessel.objects.filter(vessel_imo_number__iexact=cleaned_imo).exists():
+        qs = Vessel.objects.filter(vessel_imo_number__iexact=cleaned_imo)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
             raise serializers.ValidationError("A vessel with this IMO number already exists.")
         return cleaned_imo
 
+    def validate_vessel_name(self, value):
+        cleaned = str(value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError("Vessel Name is required and cannot be empty.")
+        return cleaned
+
+    def validate_vessel_call_sign(self, value):
+        if not value:
+            return ""
+        cleaned = str(value).strip().upper()
+        if cleaned and not re.match(r'^[A-Za-z0-9\- ]+$', cleaned):
+            raise serializers.ValidationError("Call Sign must contain only alphanumeric characters, spaces, or hyphens.")
+        return cleaned
+
     def validate_vessel_length(self, value):
-        if value <= 0:
+        if value is None or float(value) <= 0:
             raise serializers.ValidationError("Vessel length must be greater than 0.")
         return value
 
     def validate_vessel_draft(self, value):
-        if value <= 0:
+        if value is None or float(value) <= 0:
             raise serializers.ValidationError("Vessel draft must be greater than 0.")
         return value
 
     def validate_vessel_capacity(self, value):
-        if value <= 0:
+        if value is None or int(value) <= 0:
             raise serializers.ValidationError("Vessel capacity must be greater than 0.")
         return value
+
+
+class VesselUpdateSerializer(serializers.ModelSerializer):
+    vessel_name = serializers.CharField(required=True, max_length=200)
+    vessel_type = serializers.CharField(required=True, max_length=50)
+    vessel_flag = serializers.CharField(required=True, max_length=100)
+    vessel_call_sign = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50, default='')
+    vessel_length = serializers.DecimalField(required=True, max_digits=8, decimal_places=2)
+    vessel_draft = serializers.DecimalField(required=True, max_digits=6, decimal_places=2)
+    vessel_capacity = serializers.IntegerField(required=True)
+
+    PROTECTED_FIELDS = [
+        'vessel_imo_number', 'imo_number', 'imo',
+        'vessel_id', 'id',
+        'vessel_shipping_company_id', 'shipping_company_id', 'shipping_company',
+        'vessel_status', 'status',
+        'vessel_created_at', 'created_at'
+    ]
+
+    class Meta:
+        model = Vessel
+        fields = [
+            'vessel_name',
+            'vessel_type',
+            'vessel_flag',
+            'vessel_call_sign',
+            'vessel_length',
+            'vessel_draft',
+            'vessel_capacity'
+        ]
+
+    def validate_vessel_name(self, value):
+        cleaned = str(value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError("Vessel Name is required and cannot be empty.")
+        return cleaned
+
+    def validate_vessel_type(self, value):
+        cleaned = str(value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError("Vessel Type is required.")
+        return cleaned
+
+    def validate_vessel_flag(self, value):
+        cleaned = str(value or '').strip()
+        if not cleaned:
+            raise serializers.ValidationError("Flag State is required.")
+        return cleaned
+
+    def validate_vessel_call_sign(self, value):
+        if not value:
+            return ""
+        cleaned = str(value).strip().upper()
+        if cleaned and not re.match(r'^[A-Za-z0-9\- ]+$', cleaned):
+            raise serializers.ValidationError("Call Sign must contain only alphanumeric characters, spaces, or hyphens.")
+        return cleaned
+
+    def validate_vessel_length(self, value):
+        try:
+            val = float(value)
+            if val <= 0:
+                raise serializers.ValidationError("Length Overall must be greater than 0.")
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Length Overall must be a valid number.")
+        return value
+
+    def validate_vessel_draft(self, value):
+        try:
+            val = float(value)
+            if val <= 0:
+                raise serializers.ValidationError("Maximum Draft must be greater than 0.")
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Maximum Draft must be a valid number.")
+        return value
+
+    def validate_vessel_capacity(self, value):
+        try:
+            val = int(value)
+            if val <= 0:
+                raise serializers.ValidationError("Capacity (TEU) must be greater than 0.")
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Capacity (TEU) must be a valid integer.")
+        return value
+
+    def validate(self, attrs):
+        initial_data = getattr(self, 'initial_data', {})
+        for field in self.PROTECTED_FIELDS:
+            if field in initial_data and self.instance:
+                curr_val = getattr(self.instance, field, None)
+                val = initial_data[field]
+                if curr_val is not None and str(val).strip() != str(curr_val).strip():
+                    raise serializers.ValidationError({
+                        field: f"Modification of {field} is not permitted. This field is read-only."
+                    })
+        return attrs
 
 
 class BerthSerializer(serializers.ModelSerializer):
@@ -689,11 +827,34 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
         if not vessel_obj:
             raise serializers.ValidationError({"vessel_arrival_request_vessel_id": "Please select a vessel."})
 
-        if arrival and arrival < timezone.now():
-            raise serializers.ValidationError({"vessel_arrival_request_requested_arrival_at": "Requested arrival time cannot be in the past."})
+        # Prevent past arrival dates
+        now = timezone.now()
+        if arrival and arrival < now - datetime.timedelta(minutes=5):
+            raise serializers.ValidationError({
+                "vessel_arrival_request_requested_arrival_at": "Requested arrival time cannot be in the past."
+            })
+
+        # Configurable advance booking rule (applied if administrator configured advance days > 0)
+        min_advance_days = get_min_arrival_advance_days()
+        if min_advance_days > 0 and arrival:
+            now_local = timezone.localtime(now)
+            today_date = now_local.date()
+            min_allowed_date = today_date + datetime.timedelta(days=min_advance_days)
+            arrival_local = timezone.localtime(arrival)
+            if arrival_local.date() < min_allowed_date:
+                advance_msg = (
+                    f"Arrival requests must be submitted at least {min_advance_days} days in advance."
+                    if min_advance_days != 1
+                    else "Arrival requests must be submitted at least 1 day in advance."
+                )
+                raise serializers.ValidationError({
+                    "vessel_arrival_request_requested_arrival_at": advance_msg
+                })
 
         if arrival and departure and departure <= arrival:
-            raise serializers.ValidationError({"vessel_arrival_request_requested_departure_at": "Requested departure time must be later than requested arrival time."})
+            raise serializers.ValidationError({
+                "vessel_arrival_request_requested_departure_at": "Requested departure time must be later than requested arrival time."
+            })
 
         if quantity is not None and quantity <= 0:
             raise serializers.ValidationError({"vessel_arrival_request_cargo_quantity": "Cargo quantity must be greater than zero."})
@@ -711,6 +872,83 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"vessel_arrival_request_vessel_id": "This vessel already has an active arrival request during the selected period."})
 
         return attrs
+
+
+class SystemSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemSetting
+        fields = [
+            'system_setting_id',
+            'system_setting_key',
+            'system_setting_value',
+            'system_setting_description',
+            'system_setting_updated_at'
+        ]
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor = serializers.SerializerMethodField()
+    role = serializers.CharField(source='audit_log_role')
+    action = serializers.CharField(source='audit_log_action')
+    category = serializers.CharField(source='audit_log_category')
+    target_type = serializers.CharField(source='audit_log_target_type')
+    target_id = serializers.CharField(source='audit_log_target_id', allow_null=True)
+    target_resource = serializers.SerializerMethodField()
+    description = serializers.CharField(source='audit_log_description')
+    status = serializers.CharField(source='audit_log_status')
+    timestamp = serializers.SerializerMethodField()
+    iso_timestamp = serializers.SerializerMethodField()
+    ip_address = serializers.CharField(source='audit_log_ip_address', allow_null=True)
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'audit_log_id',
+            'timestamp',
+            'iso_timestamp',
+            'actor',
+            'role',
+            'action',
+            'category',
+            'target_type',
+            'target_id',
+            'target_resource',
+            'description',
+            'status',
+            'ip_address',
+        ]
+
+    def get_actor(self, obj):
+        if obj.audit_log_actor_name:
+            return obj.audit_log_actor_name
+        if obj.audit_log_user_id:
+            return obj.audit_log_user_id.user_full_name or (obj.audit_log_user_id.login_id.login_email if obj.audit_log_user_id.login_id else "System")
+        return "System"
+
+    def get_target_resource(self, obj):
+        if obj.audit_log_target_type and obj.audit_log_target_id:
+            # Human readable target formatting
+            type_label = obj.audit_log_target_type
+            if type_label == 'ArrivalRequest' or type_label == 'VesselArrivalRequest':
+                type_label = 'Arrival Request'
+            elif type_label == 'ShippingCompany':
+                type_label = 'Shipping Company'
+            elif type_label == 'VesselSchedule':
+                type_label = 'Vessel Schedule'
+            return f"{type_label} #{obj.audit_log_target_id}"
+        return obj.audit_log_target_type or "System"
+
+    def get_timestamp(self, obj):
+        if obj.audit_log_timestamp:
+            return obj.audit_log_timestamp.strftime('%d-%m-%Y %H:%M')
+        return ""
+
+    def get_iso_timestamp(self, obj):
+        if obj.audit_log_timestamp:
+            return obj.audit_log_timestamp.isoformat()
+        return None
+
+
 
 
 
