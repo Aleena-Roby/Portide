@@ -3,7 +3,6 @@ import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { BackendVessel, BackendVesselArrivalRequest, BackendBerth, BackendVesselSchedule } from '../../types';
 import { BerthAvailabilityView } from './BerthAvailabilityView';
-import { BerthUtilisationDashboard } from './BerthUtilisationDashboard';
 import { 
   Anchor, 
   Ship, 
@@ -513,10 +512,6 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
           loading={loading}
           onRefresh={fetchOperationsData}
         />
-      )}
-
-      {activeTab === 'berth-utilisation' && (
-        <BerthUtilisationDashboard />
       )}
 
       {/* ========================================================================= */}
@@ -1973,6 +1968,161 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                 className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
               />
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* VIEW VESSEL DETAILS MODAL (VESSEL DIRECTORY) */}
+      <Modal
+        isOpen={!!selectedVesselDetail}
+        onClose={() => setSelectedVesselDetail(null)}
+        title="Vessel Specifications & Identity"
+        subtitle={selectedVesselDetail ? `${selectedVesselDetail.vessel_name} • IMO: ${selectedVesselDetail.vessel_imo_number}` : ''}
+        icon={<Ship className="w-4 h-4 text-[#D49A24]" />}
+        maxWidth="2xl"
+        footer={
+          <div className="flex items-center justify-end w-full">
+            <button
+              onClick={() => setSelectedVesselDetail(null)}
+              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        {selectedVesselDetail && (
+          <div className="space-y-4">
+            {/* Header info */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Vessel Name & Identity</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="font-bold text-slate-900 dark:text-white text-base">{selectedVesselDetail.vessel_name}</span>
+                  <span className="font-mono font-bold text-[#D49A24] text-xs">IMO: {selectedVesselDetail.vessel_imo_number}</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Operational Status</div>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 mt-0.5">
+                  {selectedVesselDetail.vessel_status || 'ACTIVE'}
+                </span>
+              </div>
+            </div>
+
+            {/* Technical Specifications */}
+            <div className="space-y-2">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#D49A24] border-b border-slate-200 dark:border-slate-800 pb-1">
+                1. Technical Specifications
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Vessel Type:</div>
+                  <div className="font-semibold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_type}
+                  </div>
+                </div>
+
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Flag State:</div>
+                  <div className="font-semibold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_flag}
+                  </div>
+                </div>
+
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Overall Length:</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_length} m
+                  </div>
+                </div>
+
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Max Draft:</div>
+                  <div className="font-mono font-bold text-emerald-600 text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_draft} m
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Cargo Capacity:</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_capacity} TEU
+                  </div>
+                </div>
+
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Call Sign / Reg ID:</div>
+                  <div className="font-mono font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.vessel_call_sign || `VES-${selectedVesselDetail.vessel_id}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipping Company / Operator */}
+            <div className="space-y-2">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 border-b border-slate-200 dark:border-slate-800 pb-1">
+                2. Shipping Company / Operator
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Company Name:</div>
+                  <div className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedVesselDetail.company_name || 'N/A'}
+                  </div>
+                </div>
+
+                <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Contact Email:</div>
+                  <div className="font-medium text-slate-900 dark:text-white text-xs mt-0.5 truncate">
+                    {selectedVesselDetail.company_email || 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Associated Arrival Requests */}
+            {(() => {
+              const vesselRequests = arrivalRequests.filter(
+                r => r.vessel_id === selectedVesselDetail.vessel_id || 
+                     r.vessel?.vessel_imo_number === selectedVesselDetail.vessel_imo_number ||
+                     r.vessel?.vessel_name === selectedVesselDetail.vessel_name
+              );
+              return (
+                <div className="space-y-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-1">
+                    3. Port Activity & Arrival History ({vesselRequests.length} Requests)
+                  </h3>
+                  {vesselRequests.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                      No arrival requests filed for this vessel yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {vesselRequests.map(r => (
+                        <div key={r.vessel_arrival_request_id} className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-mono font-bold text-sky-600">AR-00{r.vessel_arrival_request_id}</span>
+                            <span className="text-slate-400 mx-2">•</span>
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">ETA: {formatDate(r.vessel_arrival_request_requested_arrival_at)}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            r.vessel_arrival_request_status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-600' :
+                            r.vessel_arrival_request_status === 'REJECTED' ? 'bg-rose-500/10 text-rose-600' :
+                            'bg-amber-500/10 text-amber-600'
+                          }`}>
+                            {r.vessel_arrival_request_status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </Modal>
