@@ -1,8 +1,14 @@
+import datetime
 from django.test import TestCase
 from django.utils import timezone
+from django.contrib.auth.hashers import make_password
 from rest_framework.test import APIClient
 from rest_framework import status
-from authentication.models import Login, User, ShippingCompany, Vessel, VesselArrivalRequest
+from authentication.models import (
+    Login, User, ShippingCompany, Vessel, VesselArrivalRequest,
+    Berth, VesselSchedule, AuditLog
+)
+from authentication.audit_service import create_audit_log
 
 class DeleteFunctionalityTests(TestCase):
     def setUp(self):
@@ -378,36 +384,75 @@ class EditStaffUserTests(TestCase):
             HTTP_X_USER_ID=str(self.admin_user.user_id)
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Port Administrator profile edits must be performed via Profile Settings.", response.json()["message"])
+        self.assertIn("Administrator accounts cannot be modified", response.json()["message"])
 
 
 class InternationalPhoneValidationTests(TestCase):
-    def test_validate_and_normalize_india_phone(self):
+    def test_all_twelve_supported_countries_validation(self):
         from authentication.validators import validate_international_phone_number
-        result = validate_international_phone_number("+91 98765 43210", default_region="IN")
-        self.assertEqual(result, "+919876543210")
+        test_cases = [
+            ("Singapore", "+65 8123 4567", "SG", "+6581234567"),
+            ("India", "+91 98765 43210", "IN", "+919876543210"),
+            ("UAE", "+971 50 123 4567", "AE", "+971501234567"),
+            ("UK", "+44 7912 345678", "GB", "+447912345678"),
+            ("Germany", "+49 1512 3456789", "DE", "+4915123456789"),
+            ("Japan", "+81 90 1234 5678", "JP", "+819012345678"),
+            ("US", "+1 202 555 0123", "US", "+12025550123"),
+            ("Netherlands", "+31 6 12345678", "NL", "+31612345678"),
+            ("Greece", "+30 691 234 5678", "GR", "+306912345678"),
+            ("China", "+86 138 0013 8000", "CN", "+8613800138000"),
+            ("Panama", "+507 6123 4567", "PA", "+50761234567"),
+            ("Marshall Islands", "+692 235 1234", "MH", "+6922351234"),
+        ]
 
-    def test_validate_and_normalize_uk_phone(self):
-        from authentication.validators import validate_international_phone_number
-        result = validate_international_phone_number("+44 7911 123456", default_region="GB")
-        self.assertEqual(result, "+447911123456")
+        for country_name, phone_input, region, expected in test_cases:
+            with self.subTest(country=country_name):
+                result = validate_international_phone_number(phone_input, default_region=region)
+                self.assertEqual(result, expected)
 
-    def test_validate_and_normalize_uae_phone(self):
+    def test_national_number_with_default_region_resolution(self):
         from authentication.validators import validate_international_phone_number
-        result = validate_international_phone_number("+971 50 123 4567", default_region="AE")
-        self.assertEqual(result, "+971501234567")
+        # Using country name as default region
+        result = validate_international_phone_number("8123 4567", default_region="Singapore")
+        self.assertEqual(result, "+6581234567")
 
-    def test_validate_and_normalize_us_phone(self):
+        result2 = validate_international_phone_number("235 1234", default_region="Marshall Islands")
+        self.assertEqual(result2, "+6922351234")
+
+    def test_rejection_of_unsupported_countries(self):
         from authentication.validators import validate_international_phone_number
-        result = validate_international_phone_number("+1 202 555 0123", default_region="US")
-        self.assertEqual(result, "+12025550123")
+        from rest_framework.exceptions import ValidationError
+
+        unsupported_phones = [
+            "+33 6 12 34 56 78",    # France
+            "+61 412 345 678",      # Australia
+            "+55 11 91234-5678",    # Brazil
+            "+7 912 345-67-89",     # Russia
+            "+39 312 3456789",      # Italy
+        ]
+
+        for phone in unsupported_phones:
+            with self.subTest(phone=phone):
+                with self.assertRaises(ValidationError) as ctx:
+                    validate_international_phone_number(phone, required=True)
+                self.assertIn("Please enter a valid phone number for the selected country.", str(ctx.exception))
 
     def test_invalid_phone_number_raises_validation_error(self):
         from authentication.validators import validate_international_phone_number
         from rest_framework.exceptions import ValidationError
-        with self.assertRaises(ValidationError) as ctx:
-            validate_international_phone_number("12345", default_region="IN", required=True)
-        self.assertIn("Please enter a valid phone number for the selected country.", str(ctx.exception))
+        
+        invalid_inputs = [
+            "12345",
+            "+999 12345678",
+            "+65 INVALID",
+            "abc",
+            "+1 123",
+        ]
+        for invalid in invalid_inputs:
+            with self.subTest(input=invalid):
+                with self.assertRaises(ValidationError) as ctx:
+                    validate_international_phone_number(invalid, default_region="SG", required=True)
+                self.assertIn("Please enter a valid phone number for the selected country.", str(ctx.exception))
 
 
 class BerthAndSchedulingTests(TestCase):
@@ -594,6 +639,793 @@ class BerthAndSchedulingTests(TestCase):
         res3 = self.client.patch(f'/api/schedules/{schedule.vessel_schedule_id}/status/', {'status': 'DEPARTED'}, format='json', **headers)
         self.assertEqual(res3.status_code, status.HTTP_200_OK)
         self.assertEqual(res3.json()['data']['vessel_schedule_status'], 'DEPARTED')
+
+
+class VesselEditFeatureTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from authentication.models import Login, User, ShippingCompany, Vessel
+
+        self.client = APIClient()
+
+        # Company A (Owner)
+        self.company_a = ShippingCompany.objects.create(
+            shipping_company_name="Pacific Freight Carriers Ltd.",
+            shipping_company_license_number="LIC-PAC-001",
+            shipping_company_email="ops@pacific.com",
+            shipping_company_phone="+6581234567",
+            shipping_company_address="12 Marina Bay",
+            shipping_company_jurisdiction="Singapore",
+            shipping_company_status="ACTIVE"
+        )
+        self.login_a = Login.objects.create(
+            login_email="ops@pacific.com",
+            login_password="hash",
+            login_role="shipping_company",
+            login_status="ACTIVE"
+        )
+        self.user_a = User.objects.create(
+            login_id=self.login_a,
+            shipping_company_id=self.company_a,
+            user_full_name="Capt. Arthur Pendelton",
+            user_status="ACTIVE"
+        )
+
+        # Company B (Other company)
+        self.company_b = ShippingCompany.objects.create(
+            shipping_company_name="Atlantic Cargo Inc.",
+            shipping_company_license_number="LIC-ATL-002",
+            shipping_company_email="ops@atlantic.com",
+            shipping_company_phone="+12025550123",
+            shipping_company_address="45 Ocean Ave",
+            shipping_company_jurisdiction="United States",
+            shipping_company_status="ACTIVE"
+        )
+        self.login_b = Login.objects.create(
+            login_email="ops@atlantic.com",
+            login_password="hash",
+            login_role="shipping_company",
+            login_status="ACTIVE"
+        )
+
+        # Vessel owned by Company A
+        self.vessel = Vessel.objects.create(
+            vessel_shipping_company_id=self.company_a,
+            vessel_name="MV Pacific Pioneer",
+            vessel_imo_number="9876543",
+            vessel_type="CONTAINER_SHIP",
+            vessel_flag="Panama",
+            vessel_call_sign="3E245",
+            vessel_length=210.0,
+            vessel_draft=8.5,
+            vessel_capacity=2500,
+            vessel_status="ACTIVE"
+        )
+
+    def test_edit_vessel_success(self):
+        from rest_framework import status
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login_a.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login_a.login_id)
+        }
+        payload = {
+            'vessel_name': 'MV Pacific Pioneer II',
+            'vessel_type': 'BULK_CARRIER',
+            'vessel_flag': 'Singapore',
+            'vessel_call_sign': '9V123',
+            'vessel_length': 225.5,
+            'vessel_draft': 9.2,
+            'vessel_capacity': 3200
+        }
+
+        response = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()['status'], 'success')
+        self.assertEqual(response.json()['message'], 'Vessel details updated successfully.')
+
+        self.vessel.refresh_from_db()
+        self.assertEqual(self.vessel.vessel_name, 'MV Pacific Pioneer II')
+        self.assertEqual(self.vessel.vessel_type, 'BULK_CARRIER')
+        self.assertEqual(self.vessel.vessel_flag, 'Singapore')
+        self.assertEqual(self.vessel.vessel_call_sign, '9V123')
+        self.assertEqual(float(self.vessel.vessel_length), 225.5)
+        self.assertEqual(float(self.vessel.vessel_draft), 9.2)
+        self.assertEqual(self.vessel.vessel_capacity, 3200)
+        # IMO, ownership, and status remain unchanged
+        self.assertEqual(self.vessel.vessel_imo_number, '9876543')
+        self.assertEqual(self.vessel.vessel_shipping_company_id, self.company_a)
+        self.assertEqual(self.vessel.vessel_status, 'ACTIVE')
+
+    def test_edit_vessel_optional_call_sign(self):
+        from rest_framework import status
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login_a.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login_a.login_id)
+        }
+        payload = {
+            'vessel_name': 'MV Pacific Pioneer',
+            'vessel_type': 'CONTAINER_SHIP',
+            'vessel_flag': 'Panama',
+            'vessel_call_sign': '',
+            'vessel_length': 210.0,
+            'vessel_draft': 8.5,
+            'vessel_capacity': 2500
+        }
+
+        response = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.vessel.refresh_from_db()
+        self.assertEqual(self.vessel.vessel_call_sign, '')
+
+    def test_cannot_edit_another_companys_vessel(self):
+        from rest_framework import status
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login_b.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login_b.login_id)
+        }
+        payload = {
+            'vessel_name': 'Hacked Vessel Name',
+            'vessel_type': 'CONTAINER_SHIP',
+            'vessel_flag': 'Panama',
+            'vessel_length': 210.0,
+            'vessel_draft': 8.5,
+            'vessel_capacity': 2500
+        }
+
+        response = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn("You are not authorized to edit another shipping company's vessel.", response.json()['message'])
+
+    def test_edit_vessel_validation_failures(self):
+        from rest_framework import status
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login_a.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login_a.login_id)
+        }
+
+        # 1. Blank vessel name
+        res1 = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', {'vessel_name': '   '}, format='json', **headers)
+        self.assertEqual(res1.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. Negative length
+        res2 = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', {'vessel_length': -50}, format='json', **headers)
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3. Attempting to modify protected IMO number to something else
+        res3 = self.client.patch(f'/api/vessels/{self.vessel.vessel_id}/', {'vessel_imo_number': '1111111'}, format='json', **headers)
+        self.assertEqual(res3.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Modification of vessel_imo_number is not permitted", str(res3.json()))
+
+
+class ArrivalRequestAdvanceValidationTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from authentication.models import Login, User, ShippingCompany, Vessel, SystemSetting
+        from django.utils import timezone
+
+        self.client = APIClient()
+
+        self.company = ShippingCompany.objects.create(
+            shipping_company_name="Pacific Lines",
+            shipping_company_license_number="LIC-PL-009",
+            shipping_company_email="admin@pacificlines.com",
+            shipping_company_phone="+6581234567",
+            shipping_company_address="Port Zone 1",
+            shipping_company_jurisdiction="Singapore",
+            shipping_company_status="ACTIVE"
+        )
+        self.login = Login.objects.create(
+            login_email="admin@pacificlines.com",
+            login_password="hash",
+            login_role="shipping_company",
+            login_status="ACTIVE"
+        )
+        self.user = User.objects.create(
+            login_id=self.login,
+            shipping_company_id=self.company,
+            user_full_name="Fleet Officer",
+            user_status="ACTIVE"
+        )
+        self.vessel = Vessel.objects.create(
+            vessel_shipping_company_id=self.company,
+            vessel_name="MV Pacific Horizon",
+            vessel_imo_number="9123456",
+            vessel_type="CONTAINER_SHIP",
+            vessel_flag="Singapore",
+            vessel_length=250.0,
+            vessel_draft=11.5,
+            vessel_capacity=4500,
+            vessel_status="ACTIVE"
+        )
+
+        self.admin_login = Login.objects.create(
+            login_email="portadmin@portide.com",
+            login_password="hash",
+            login_role="port_administrator",
+            login_status="ACTIVE"
+        )
+
+        # Clear any system settings so default 2 days applies
+        SystemSetting.objects.filter(system_setting_key='MIN_ARRIVAL_ADVANCE_DAYS').delete()
+
+    def test_past_date_rejected(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.now()
+        past_arrival = now - datetime.timedelta(days=2)
+        past_departure = past_arrival + datetime.timedelta(days=1)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': past_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': past_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Requested arrival time cannot be in the past.", str(response.json()))
+
+    def test_today_arrival_accepted(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.now()
+        today_arrival = now + datetime.timedelta(hours=2)
+        today_departure = today_arrival + datetime.timedelta(days=1)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': today_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': today_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['status'], 'success')
+
+    def test_tomorrow_arrival_accepted(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.now()
+        tomorrow_arrival = now + datetime.timedelta(days=1)
+        tomorrow_departure = tomorrow_arrival + datetime.timedelta(days=1)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': tomorrow_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': tomorrow_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['status'], 'success')
+
+    def test_future_arrival_accepted(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.now()
+        future_arrival = now + datetime.timedelta(days=7)
+        future_departure = future_arrival + datetime.timedelta(days=2)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': future_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': future_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['status'], 'success')
+
+    def test_departure_validation(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.now()
+        valid_arrival = now + datetime.timedelta(days=4)
+        
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        # 1. Departure before arrival
+        res1 = self.client.post('/api/arrival-requests/', {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': valid_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': (valid_arrival - datetime.timedelta(hours=2)).isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }, format='json', **headers)
+        self.assertEqual(res1.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Requested departure time must be later than requested arrival time.", str(res1.json()))
+
+        # 2. Departure equal to arrival
+        res2 = self.client.post('/api/arrival-requests/', {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': valid_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': valid_arrival.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }, format='json', **headers)
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Requested departure time must be later than requested arrival time.", str(res2.json()))
+
+    def test_dynamic_configurable_advance_days(self):
+        from rest_framework import status
+        from authentication.models import SystemSetting
+        from django.utils import timezone
+        import datetime
+
+        # Port Admin explicitly configures MIN_ARRIVAL_ADVANCE_DAYS to 3
+        SystemSetting.objects.update_or_create(
+            system_setting_key='MIN_ARRIVAL_ADVANCE_DAYS',
+            defaults={'system_setting_value': '3'}
+        )
+
+        now = timezone.localtime(timezone.now())
+        two_days_arrival = (now + datetime.timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
+        three_days_arrival = (now + datetime.timedelta(days=3)).replace(hour=10, minute=0, second=0, microsecond=0)
+
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        # 2 days in advance is REJECTED when 3 days configured
+        res_two = self.client.post('/api/arrival-requests/', {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': two_days_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': (two_days_arrival + datetime.timedelta(days=1)).isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }, format='json', **headers)
+        self.assertEqual(res_two.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("at least 3 days in advance", str(res_two.json()))
+
+        # 3 days in advance is ACCEPTED
+        res_three = self.client.post('/api/arrival-requests/', {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': three_days_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': (three_days_arrival + datetime.timedelta(days=1)).isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }, format='json', **headers)
+        self.assertEqual(res_three.status_code, status.HTTP_201_CREATED)
+
+    def test_port_settings_api(self):
+        from rest_framework import status
+
+        # 1. Public GET
+        get_res = self.client.get('/api/settings/port-config/')
+        self.assertEqual(get_res.status_code, status.HTTP_200_OK)
+        self.assertIn('min_arrival_advance_days', get_res.json()['data'])
+
+        # 2. Non-admin PATCH -> 403
+        non_admin_headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+        patch_res1 = self.client.patch('/api/settings/port-config/', {'min_arrival_advance_days': 4}, format='json', **non_admin_headers)
+        self.assertEqual(patch_res1.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Admin PATCH -> 200
+        admin_headers = {
+            'HTTP_X_USER_EMAIL': self.admin_login.login_email,
+            'HTTP_X_USER_ROLE': 'port_administrator',
+            'HTTP_X_USER_ID': str(self.admin_login.login_id)
+        }
+        patch_res2 = self.client.patch('/api/settings/port-config/', {'min_arrival_advance_days': 4}, format='json', **admin_headers)
+        self.assertEqual(patch_res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res2.json()['data']['min_arrival_advance_days'], 4)
+
+
+class SecurityAuditLogModuleTests(TestCase):
+    """
+    Comprehensive Test Suite for Central Security & Audit Log Module.
+    Validates:
+    - Real event logging across Authentication, User Management, Vessels, Arrivals, Berths, Schedules
+    - Proper IP address capture & actor resolution
+    - Port Administrator RBAC protection (403 for non-admins)
+    - Filtering by category, search by actor/action/target, and pagination
+    - Future module readiness (Customs, Gate & Truck Operations)
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+
+        # 1. Port Administrator
+        self.admin_login = Login.objects.create(
+            login_email="admin@portide.gov",
+            login_password=make_password("AdminPass123!"),
+            login_role="port_administrator",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        self.admin_user = User.objects.create(
+            login_id=self.admin_login,
+            user_full_name="Port Administrator",
+            user_employee_id="ADM-001",
+            user_status="ACTIVE"
+        )
+        self.admin_headers = {
+            'HTTP_X_USER_EMAIL': self.admin_login.login_email,
+            'HTTP_X_USER_ROLE': 'port_administrator',
+            'HTTP_X_USER_ID': str(self.admin_login.login_id)
+        }
+
+        # 2. Port Operations Officer
+        self.ops_login = Login.objects.create(
+            login_email="ops@portide.gov",
+            login_password=make_password("OpsPass123!"),
+            login_role="port_operations_officer",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        self.ops_user = User.objects.create(
+            login_id=self.ops_login,
+            user_full_name="Operations Officer John",
+            user_employee_id="POO-001",
+            user_status="ACTIVE"
+        )
+        self.ops_headers = {
+            'HTTP_X_USER_EMAIL': self.ops_login.login_email,
+            'HTTP_X_USER_ROLE': 'port_operations_officer',
+            'HTTP_X_USER_ID': str(self.ops_login.login_id)
+        }
+
+        # 3. Active Shipping Company
+        self.company = ShippingCompany.objects.create(
+            shipping_company_name="Oceanic Logistics Corp",
+            shipping_company_license_number="LIC-OCN-999",
+            shipping_company_email="agent@oceanic.com",
+            shipping_company_phone="+1-555-0999",
+            shipping_company_address="Harbor Dock 5",
+            shipping_company_jurisdiction="Panama",
+            shipping_company_status="ACTIVE"
+        )
+        self.company_login = Login.objects.create(
+            login_email="agent@oceanic.com",
+            login_password=make_password("OceanicPass123!"),
+            login_role="shipping_company",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        self.company_user = User.objects.create(
+            login_id=self.company_login,
+            shipping_company_id=self.company,
+            user_full_name="Capt. Thomas Hardy",
+            user_status="ACTIVE"
+        )
+        self.company_headers = {
+            'HTTP_X_USER_EMAIL': self.company_login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.company_login.login_id)
+        }
+
+        # Clear any setup audit logs
+        AuditLog.objects.all().delete()
+
+    def test_login_success_and_failure_audit_logging(self):
+        # Successful login
+        res1 = self.client.post('/api/auth/login/', {
+            'email': 'agent@oceanic.com',
+            'password': 'OceanicPass123!'
+        }, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+
+        log1 = AuditLog.objects.filter(audit_log_action='LOGIN').first()
+        self.assertIsNotNone(log1)
+        self.assertEqual(log1.audit_log_status, 'SUCCESS')
+        self.assertEqual(log1.audit_log_category, 'AUTHENTICATION')
+        self.assertEqual(log1.audit_log_actor_name, 'Capt. Thomas Hardy')
+
+        # Failed login: incorrect password
+        res2 = self.client.post('/api/auth/login/', {
+            'email': 'agent@oceanic.com',
+            'password': 'WrongPassword999!'
+        }, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        log2 = AuditLog.objects.filter(audit_log_action='LOGIN_FAILED', audit_log_status='FAILED').first()
+        self.assertIsNotNone(log2)
+        self.assertIn('Incorrect password', log2.audit_log_description)
+
+        # Logout audit log
+        res3 = self.client.post('/api/auth/logout/', {}, format='json', **self.company_headers)
+        self.assertEqual(res3.status_code, status.HTTP_200_OK)
+        log3 = AuditLog.objects.filter(audit_log_action='LOGOUT').first()
+        self.assertIsNotNone(log3)
+        self.assertEqual(log3.audit_log_status, 'SUCCESS')
+
+    def test_shipping_company_registration_lifecycle_audit_logging(self):
+        # 1. Registration
+        reg_payload = {
+            'request_company_name': 'Nordic Seaways',
+            'request_registration_no': 'LIC-NOR-777',
+            'request_applicant_name': 'Lars Svensson',
+            'request_email': 'contact@nordic.com',
+            'request_phone': '+65 6123 4567',
+            'request_address': 'Oslo Port Quay 3',
+            'request_jurisdiction': 'SG',
+            'password': 'SecureNordicPass123!',
+            'confirm_password': 'SecureNordicPass123!'
+        }
+        res_reg = self.client.post('/api/auth/registration/', reg_payload, format='json')
+        self.assertEqual(res_reg.status_code, status.HTTP_201_CREATED)
+
+        reg_log = AuditLog.objects.filter(audit_log_action='CREATE', audit_log_category='SHIPPING_COMPANY').first()
+        self.assertIsNotNone(reg_log)
+        self.assertIn('Nordic Seaways', reg_log.audit_log_description)
+
+        from authentication.models import RegistrationRequest
+        created_company = ShippingCompany.objects.get(shipping_company_license_number='LIC-NOR-777')
+        reg_req = RegistrationRequest.objects.get(shipping_company_id=created_company)
+
+        # 2. Rejection of registration request
+        res_reject = self.client.post(
+            f'/api/admin/registration-requests/{reg_req.registration_request_id}/reject/',
+            {'rejection_reason': 'Missing official maritime license documentation.'},
+            format='json',
+            **self.admin_headers
+        )
+        self.assertEqual(res_reject.status_code, status.HTTP_200_OK)
+
+        reject_log = AuditLog.objects.filter(audit_log_action='REJECT', audit_log_category='SHIPPING_COMPANY').first()
+        self.assertIsNotNone(reject_log)
+        self.assertEqual(reject_log.audit_log_actor_name, 'Port Administrator')
+        self.assertIn('Missing official maritime license', reject_log.audit_log_description)
+
+        # 3. Approval of registration request
+        res_approve = self.client.post(
+            f'/api/admin/registration-requests/{reg_req.registration_request_id}/approve/',
+            {},
+            format='json',
+            **self.admin_headers
+        )
+        self.assertEqual(res_approve.status_code, status.HTTP_200_OK)
+
+        approve_log = AuditLog.objects.filter(audit_log_action='APPROVE', audit_log_category='SHIPPING_COMPANY').first()
+        self.assertIsNotNone(approve_log)
+        self.assertEqual(approve_log.audit_log_status, 'SUCCESS')
+
+    def test_vessel_and_arrival_request_audit_logging(self):
+        # 1. Register vessel
+        vessel_payload = {
+            'vessel_name': 'MV Star Horizon',
+            'vessel_imo_number': '9123456',
+            'vessel_type': 'CONTAINER_SHIP',
+            'vessel_flag': 'Panama',
+            'vessel_length': 280.0,
+            'vessel_draft': 12.5,
+            'vessel_capacity': 5000
+        }
+        res_vessel = self.client.post('/api/vessels/', vessel_payload, format='json', **self.company_headers)
+        self.assertEqual(res_vessel.status_code, status.HTTP_201_CREATED)
+
+        vessel_id = res_vessel.json()['data']['vessel_id']
+        vessel_log = AuditLog.objects.filter(audit_log_action='CREATE', audit_log_category='VESSEL').first()
+        self.assertIsNotNone(vessel_log)
+        self.assertIn('MV Star Horizon', vessel_log.audit_log_description)
+
+        # 2. Update vessel
+        res_upd = self.client.patch(
+            f'/api/vessels/{vessel_id}/',
+            {'vessel_draft': 13.0},
+            format='json',
+            **self.company_headers
+        )
+        self.assertEqual(res_upd.status_code, status.HTTP_200_OK)
+        upd_log = AuditLog.objects.filter(audit_log_action='UPDATE', audit_log_category='VESSEL').first()
+        self.assertIsNotNone(upd_log)
+
+        # 3. Create arrival request (4 days in advance)
+        arrival_time = timezone.now() + datetime.timedelta(days=4)
+        departure_time = arrival_time + datetime.timedelta(days=2)
+        arr_payload = {
+            'vessel_arrival_request_vessel_id': vessel_id,
+            'vessel_arrival_request_requested_arrival_at': arrival_time.isoformat(),
+            'vessel_arrival_request_requested_departure_at': departure_time.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 1200
+        }
+        res_arr = self.client.post('/api/arrival-requests/', arr_payload, format='json', **self.company_headers)
+        self.assertEqual(res_arr.status_code, status.HTTP_201_CREATED)
+        arr_id = res_arr.json()['data']['vessel_arrival_request_id']
+
+        arr_log = AuditLog.objects.filter(audit_log_action='CREATE', audit_log_category='ARRIVAL_REQUEST').first()
+        self.assertIsNotNone(arr_log)
+
+        # 4. Port Operations Officer approves arrival request
+        res_appr = self.client.post(
+            f'/api/arrival-requests/{arr_id}/approve/',
+            {'remarks': 'Approved for Berth 01 approach.'},
+            format='json',
+            **self.ops_headers
+        )
+        self.assertEqual(res_appr.status_code, status.HTTP_200_OK)
+
+        arr_appr_log = AuditLog.objects.filter(audit_log_action='APPROVE', audit_log_category='ARRIVAL_REQUEST').first()
+        self.assertIsNotNone(arr_appr_log)
+        self.assertEqual(arr_appr_log.audit_log_actor_name, 'Operations Officer John')
+
+    def test_berth_and_scheduling_audit_logging(self):
+        # 1. Admin creates Berth
+        berth_payload = {
+            'berth_name': 'Berth North 05',
+            'berth_code': 'BN-05',
+            'berth_type': 'CONTAINER_TERMINAL',
+            'berth_max_length': 380.0,
+            'berth_max_draft': 16.0,
+            'berth_capacity_teu': 15000,
+            'berth_status': 'AVAILABLE'
+        }
+        res_b = self.client.post('/api/admin/berths/', berth_payload, format='json', **self.admin_headers)
+        self.assertEqual(res_b.status_code, status.HTTP_201_CREATED)
+        berth_id = res_b.json()['data']['berth_id']
+
+        b_log = AuditLog.objects.filter(audit_log_action='CREATE', audit_log_category='BERTH').first()
+        self.assertIsNotNone(b_log)
+        self.assertIn('Berth North 05', b_log.audit_log_description)
+
+        # 2. Ops Officer toggles maintenance status
+        res_maint = self.client.patch(
+            f'/api/berths/{berth_id}/status/',
+            {'status': 'MAINTENANCE'},
+            format='json',
+            **self.ops_headers
+        )
+        self.assertEqual(res_maint.status_code, status.HTTP_200_OK)
+
+        maint_log = AuditLog.objects.filter(audit_log_action='STATUS_CHANGE', audit_log_category='BERTH').first()
+        self.assertIsNotNone(maint_log)
+        self.assertIn('MAINTENANCE', maint_log.audit_log_description)
+
+    def test_audit_logs_list_endpoint_permissions_and_filtering(self):
+        # Seed test audit logs across categories
+        create_audit_log(
+            user=self.admin_user,
+            actor_name="Port Administrator",
+            role="Port Administrator",
+            action="CREATE",
+            category="USER_MANAGEMENT",
+            target_type="User",
+            target_id="USR-101",
+            description="Created terminal operator account."
+        )
+        create_audit_log(
+            user=self.company_user,
+            actor_name="Capt. Thomas Hardy",
+            role="Shipping Company",
+            action="CREATE",
+            category="VESSEL",
+            target_type="Vessel",
+            target_id="VES-202",
+            description="Vessel registered."
+        )
+        create_audit_log(
+            user=self.ops_user,
+            actor_name="Operations Officer John",
+            role="Port Operations Officer",
+            action="STATUS_CHANGE",
+            category="BERTH",
+            target_type="Berth",
+            target_id="1",
+            description="Berth 01 marked in maintenance."
+        )
+
+        # 1. Non-admin / Shipping Company is blocked (403)
+        res_unauth = self.client.get('/api/audit-logs/', **self.company_headers)
+        self.assertEqual(res_unauth.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Port Administrator is authorized (200)
+        res_admin = self.client.get('/api/audit-logs/', **self.admin_headers)
+        self.assertEqual(res_admin.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_admin.json()['status'], 'success')
+        self.assertGreaterEqual(res_admin.json()['data']['total_count'], 3)
+
+        # 3. Category Filter
+        res_vessel = self.client.get('/api/audit-logs/?category=VESSEL', **self.admin_headers)
+        self.assertEqual(res_vessel.status_code, status.HTTP_200_OK)
+        results = res_vessel.json()['data']['results']
+        self.assertTrue(all(r['category'] == 'VESSEL' for r in results))
+
+        # 4. Search Filter
+        res_search = self.client.get('/api/audit-logs/?search=Thomas', **self.admin_headers)
+        self.assertEqual(res_search.status_code, status.HTTP_200_OK)
+        search_results = res_search.json()['data']['results']
+        self.assertTrue(len(search_results) > 0)
+        self.assertIn('Thomas', search_results[0]['actor'])
+
+        # 5. Pagination
+        res_paged = self.client.get('/api/audit-logs/?page=1&page_size=2', **self.admin_headers)
+        self.assertEqual(res_paged.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_paged.json()['data']['results']), 2)
+        self.assertEqual(res_paged.json()['data']['page_size'], 2)
+
+    def test_future_extensibility_customs_and_gate_operations_ready(self):
+        """
+        Verify that future modules (Customs Declaration, Gate & Truck Operations) can immediately
+        use the generic audit infrastructure without database alterations.
+        """
+        log_customs = create_audit_log(
+            user=None,
+            actor_name="Customs Inspector Dave",
+            role="Customs Officer",
+            action="APPROVE",
+            category="CUSTOMS",
+            target_type="CustomsDeclaration",
+            target_id="CUST-2026-888",
+            description="Customs clearance approved for container batch #CB-99.",
+            status="SUCCESS"
+        )
+        self.assertIsNotNone(log_customs)
+        self.assertEqual(log_customs.audit_log_category, "CUSTOMS")
+
+        log_gate = create_audit_log(
+            user=None,
+            actor_name="Gate Officer Sarah",
+            role="Gate Officer",
+            action="CREATE",
+            category="GATE_OPERATIONS",
+            target_type="GatePass",
+            target_id="GATE-PASS-104",
+            description="Truck TRK-784 admitted through Gate 02 for container pickup.",
+            status="SUCCESS"
+        )
+        self.assertIsNotNone(log_gate)
+        self.assertEqual(log_gate.audit_log_category, "GATE_OPERATIONS")
+
+        # Confirm queryable via AuditLogListAPIView
+        res_cust = self.client.get('/api/audit-logs/?category=CUSTOMS', **self.admin_headers)
+        self.assertEqual(res_cust.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_cust.json()['data']['results'][0]['target_resource'], "CustomsDeclaration #CUST-2026-888")
+
+
+
 
 
 
