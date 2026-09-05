@@ -47,7 +47,7 @@ export const LoginPage: React.FC = () => {
 
     if (result.success) {
       const fromPath = (location.state as any)?.from?.pathname;
-      const targetRoute = fromPath || getDefaultDashboardRoute(activeRole);
+      const targetRoute = fromPath || getDefaultDashboardRoute(result.role || activeRole);
       navigate(targetRoute, { replace: true });
     } else if (result.message) {
       setErrorMessage(result.message);
