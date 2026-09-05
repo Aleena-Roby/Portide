@@ -93,6 +93,5 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
 export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [];
 
 export const MONTHLY_VESSEL_ARRIVALS: { month: string; containerVessels: number; bulkCarriers: number; tankers: number }[] = [];
-export const BERTH_UTILIZATION_DATA: { name: string; value: number; color: string }[] = [];
 export const STORAGE_UTILIZATION_DATA: { zone: string; occupied: number; capacity: number }[] = [];
 export const HOURLY_TRUCK_TRAFFIC: { hour: string; entries: number; exits: number }[] = [];

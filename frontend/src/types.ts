@@ -130,57 +130,6 @@ export interface BackendVesselSchedule {
   vessel_schedule_updated_at: string;
 }
 
-export interface BerthBreakdownItem {
-  berth_id: number;
-  berth_name: string;
-  berth_code?: string;
-  berth_type?: string;
-  berth_type_display?: string;
-  berth_max_length: string;
-  berth_max_draft: string;
-  berth_capacity_teu: number;
-  berth_status: 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'MAINTENANCE';
-  occupied_hours: number;
-  utilisation_pct: number;
-  movements_count: number;
-  avg_stay_hours: number;
-}
-
-export interface DailyMovementItem {
-  date: string;
-  arrivals: number;
-  departures: number;
-  total: number;
-}
-
-export interface BerthUtilisationData {
-  period: 'today' | '7days' | 'month' | 'custom';
-  start_time: string;
-  end_time: string;
-  kpis: {
-    total_berths: number;
-    available_berths: number;
-    reserved_berths: number;
-    occupied_berths: number;
-    maintenance_berths: number;
-    overall_utilisation_pct: number;
-    total_occupied_hours: number;
-    total_operational_hours: number;
-    avg_occupancy_hours: number;
-    total_vessel_movements: number;
-    most_utilised_berth: BerthBreakdownItem | null;
-    least_utilised_berth: BerthBreakdownItem | null;
-  };
-  status_distribution: {
-    AVAILABLE: number;
-    RESERVED: number;
-    OCCUPIED: number;
-    MAINTENANCE: number;
-  };
-  berth_breakdown: BerthBreakdownItem[];
-  daily_movements: DailyMovementItem[];
-}
-
 export interface BackendVesselArrivalRequest {
   vessel_arrival_request_id: number;
   vessel_arrival_request_vessel_id: number;
