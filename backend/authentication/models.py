@@ -424,6 +424,85 @@ class VesselSchedule(models.Model):
         return f"Schedule #{self.vessel_schedule_id} - Request #{self.vessel_schedule_arrival_request_id.vessel_arrival_request_id} ({self.vessel_schedule_status})"
 
 
+class SystemSetting(models.Model):
+    system_setting_id = models.BigAutoField(primary_key=True)
+    system_setting_key = models.CharField(max_length=100, unique=True, db_index=True)
+    system_setting_value = models.CharField(max_length=255)
+    system_setting_description = models.TextField(null=True, blank=True)
+    system_setting_updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'tbl_system_setting'
+        verbose_name = 'System Setting'
+        verbose_name_plural = 'System Settings'
+
+    def __str__(self):
+        return f"{self.system_setting_key}: {self.system_setting_value}"
+
+
+def get_min_arrival_advance_days() -> int:
+    try:
+        setting = SystemSetting.objects.filter(system_setting_key='MIN_ARRIVAL_ADVANCE_DAYS').first()
+        if setting and setting.system_setting_value:
+            val = int(setting.system_setting_value.strip())
+            if val >= 0:
+                return val
+    except Exception:
+        pass
+    return 0
+
+
+class AuditLog(models.Model):
+    CATEGORY_CHOICES = (
+        ('AUTHENTICATION', 'Authentication'),
+        ('USER_MANAGEMENT', 'User Management'),
+        ('SHIPPING_COMPANY', 'Shipping Company'),
+        ('VESSEL', 'Vessel'),
+        ('ARRIVAL_REQUEST', 'Arrival Request'),
+        ('BERTH', 'Berth'),
+        ('CUSTOMS', 'Customs'),
+        ('GATE_OPERATIONS', 'Gate Operations'),
+        ('SYSTEM', 'System Core'),
+    )
+
+    STATUS_CHOICES = (
+        ('SUCCESS', 'Success'),
+        ('FAILED', 'Failed'),
+    )
+
+    audit_log_id = models.BigAutoField(primary_key=True)
+    audit_log_timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    audit_log_user_id = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='audit_log_user_id',
+        related_name='audit_logs',
+        db_index=True
+    )
+    audit_log_actor_name = models.CharField(max_length=150, null=True, blank=True)
+    audit_log_role = models.CharField(max_length=100, db_index=True)
+    audit_log_action = models.CharField(max_length=100, db_index=True)
+    audit_log_category = models.CharField(max_length=100, choices=CATEGORY_CHOICES, default='SYSTEM', db_index=True)
+    audit_log_target_type = models.CharField(max_length=100, db_index=True)
+    audit_log_target_id = models.CharField(max_length=100, null=True, blank=True)
+    audit_log_description = models.TextField()
+    audit_log_status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='SUCCESS', db_index=True)
+    audit_log_ip_address = models.CharField(max_length=50, null=True, blank=True)
+
+    class Meta:
+        db_table = 'tbl_audit_log'
+        verbose_name = 'Audit Log'
+        verbose_name_plural = 'Audit Logs'
+        ordering = ['-audit_log_timestamp', '-audit_log_id']
+
+    def __str__(self):
+        return f"[{self.audit_log_timestamp}] {self.audit_log_action} - {self.audit_log_category} ({self.audit_log_status})"
+
+
+
+
 
 
 
