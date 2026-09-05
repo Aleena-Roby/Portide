@@ -22,7 +22,8 @@ import {
   Compass,
   ArrowRight,
   User,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react';
 
 interface ShippingCompanyDashboardProps {
@@ -146,6 +147,27 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
   const [requestSubmitLoading, setRequestSubmitLoading] = useState<boolean>(false);
   const [requestFormError, setRequestFormError] = useState<string>('');
 
+  const getCurrentDateTimeString = () => {
+    const d = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const getDefaultArrivalDateTimeString = () => {
+    const d = new Date();
+    d.setHours(d.getHours() + 2, 0, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const getDefaultDepartureDateTimeString = (arrivalStr?: string) => {
+    const d = arrivalStr ? new Date(arrivalStr) : new Date();
+    d.setDate(d.getDate() + 2);
+    d.setHours(18, 0, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T18:00`;
+  };
+
   const fetchDashboardData = async () => {
     setLoading(true);
     setError('');
@@ -161,8 +183,10 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
         fetch('http://127.0.0.1:8000/api/arrival-requests/', { headers })
       ]);
 
-      const vesselsJson = await vesselsRes.json();
-      const requestsJson = await requestsRes.json();
+      const [vesselsJson, requestsJson] = await Promise.all([
+        vesselsRes.json(),
+        requestsRes.json()
+      ]);
 
       if (vesselsRes.ok && vesselsJson.status === 'success') {
         setVessels(vesselsJson.data || []);
@@ -221,14 +245,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     }
 
     setSelectedVesselId('');
-
-    // Default dates: tomorrow 10:00 AM to 3 days later 18:00
-    const now = new Date();
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const departure = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-
-    setRequestedArrival(tomorrow.toISOString().slice(0, 16));
-    setRequestedDeparture(departure.toISOString().slice(0, 16));
+    const initArrival = getDefaultArrivalDateTimeString();
+    setRequestedArrival(initArrival);
+    setRequestedDeparture(getDefaultDepartureDateTimeString(initArrival));
     setCargoType('Container Cargo');
     setCargoQuantity('1200');
     setRequestFormError('');
@@ -239,14 +258,51 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     e.preventDefault();
     setVesselFormError('');
 
-    if (!vesselName.trim() || !vesselImo.trim() || !vesselFlag.trim() || !vesselLength || !vesselDraft || !vesselCapacity) {
-      setVesselFormError('Please fill in all required fields.');
+    const trimmedName = vesselName.trim();
+    if (!trimmedName) {
+      setVesselFormError('Vessel Name is required and cannot be empty.');
       return;
     }
 
-    const cleanImo = vesselImo.replace(/\D/g, '').trim();
-    if (!/^\d{7}$/.test(cleanImo)) {
-      setVesselFormError('IMO Number must be exactly 7 numeric digits (e.g. 9876543).');
+    if (!editingVessel) {
+      const cleanImo = vesselImo.replace(/\D/g, '').trim();
+      if (!/^\d{7}$/.test(cleanImo)) {
+        setVesselFormError('IMO Number must be exactly 7 numeric digits (e.g. 9876543).');
+        return;
+      }
+    }
+
+    if (!vesselType.trim()) {
+      setVesselFormError('Vessel Type is required.');
+      return;
+    }
+
+    if (!vesselFlag.trim()) {
+      setVesselFormError('Flag State is required.');
+      return;
+    }
+
+    const trimmedCallSign = vesselCallSign.trim();
+    if (trimmedCallSign && !/^[A-Za-z0-9\- ]+$/.test(trimmedCallSign)) {
+      setVesselFormError('Call Sign must contain only alphanumeric characters, spaces, or hyphens.');
+      return;
+    }
+
+    const numLength = parseFloat(vesselLength);
+    if (isNaN(numLength) || numLength <= 0) {
+      setVesselFormError('Length Overall (Meters) must be a valid number greater than 0.');
+      return;
+    }
+
+    const numDraft = parseFloat(vesselDraft);
+    if (isNaN(numDraft) || numDraft <= 0) {
+      setVesselFormError('Maximum Draft (Meters) must be a valid number greater than 0.');
+      return;
+    }
+
+    const numCapacity = parseInt(vesselCapacity, 10);
+    if (isNaN(numCapacity) || numCapacity <= 0) {
+      setVesselFormError('Capacity (TEU) must be a valid integer greater than 0.');
       return;
     }
 
@@ -258,6 +314,20 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       
       const method = editingVessel ? 'PATCH' : 'POST';
 
+      const payload: Record<string, any> = {
+        vessel_name: trimmedName,
+        vessel_type: vesselType,
+        vessel_flag: vesselFlag.trim(),
+        vessel_call_sign: trimmedCallSign,
+        vessel_length: numLength,
+        vessel_draft: numDraft,
+        vessel_capacity: numCapacity
+      };
+
+      if (!editingVessel) {
+        payload.vessel_imo_number = vesselImo.trim();
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -266,16 +336,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
           'X-User-Role': 'shipping_company',
           'X-User-Id': currentUser?.id || ''
         },
-        body: JSON.stringify({
-          vessel_name: vesselName.trim(),
-          vessel_imo_number: vesselImo.trim(),
-          vessel_type: vesselType,
-          vessel_flag: vesselFlag.trim(),
-          vessel_call_sign: vesselCallSign.trim(),
-          vessel_length: parseFloat(vesselLength),
-          vessel_draft: parseFloat(vesselDraft),
-          vessel_capacity: parseInt(vesselCapacity, 10)
-        })
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
@@ -285,9 +346,12 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
         addToast(
           'success', 
           editingVessel ? 'Vessel Updated' : 'Vessel Registered', 
-          result.message || `Vessel '${vesselName}' has been saved successfully.`
+          editingVessel 
+            ? (result.message || 'Vessel details updated successfully.')
+            : (result.message || `Vessel '${trimmedName}' registered successfully.`)
         );
         setIsRegisterVesselOpen(false);
+        setEditingVessel(null);
         fetchDashboardData();
       } else {
         const errorDetail = result.errors 
@@ -319,7 +383,8 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     const depDate = new Date(requestedDeparture);
     const now = new Date();
 
-    if (arrDate < now) {
+    // 5 minutes buffer for minor client-server clock drift
+    if (arrDate.getTime() < now.getTime() - 5 * 60 * 1000) {
       setRequestFormError('Requested arrival time cannot be in the past.');
       return;
     }
@@ -373,7 +438,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       setRequestSubmitLoading(false);
 
       if (response.ok && result.status === 'success') {
-        addToast('success', 'Arrival Request Submitted', 'Vessel arrival request submitted successfully.');
+        addToast('success', 'Arrival Request Submitted', result.message || 'Vessel arrival request submitted successfully.');
         setIsNewArrivalOpen(false);
         fetchDashboardData();
       } else {
@@ -440,9 +505,12 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       {/* REGISTER / EDIT VESSEL MODAL */}
       <Modal
         isOpen={isRegisterVesselOpen}
-        onClose={() => setIsRegisterVesselOpen(false)}
-        title={editingVessel ? 'Edit Vessel Specifications' : 'Register New Fleet Vessel'}
-        subtitle="Submit official IMO specs & maritime vessel registration"
+        onClose={() => {
+          setIsRegisterVesselOpen(false);
+          setEditingVessel(null);
+        }}
+        title={editingVessel ? 'Edit Vessel Details' : 'Register New Fleet Vessel'}
+        subtitle={editingVessel ? 'Update registered vessel information' : 'Submit official IMO specs & maritime vessel registration'}
         icon={<Ship className="w-4 h-4 text-[#D49A24]" />}
         maxWidth="3xl"
       >
@@ -470,26 +538,40 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                IMO Number *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  IMO Number *
+                </label>
+                {editingVessel && (
+                  <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Read Only
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required
+                readOnly={!!editingVessel}
                 disabled={!!editingVessel}
                 value={vesselImo}
                 onChange={(e) => {
-                  const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 7);
-                  setVesselImo(cleanDigits);
-                  if (vesselFormError) setVesselFormError('');
+                  if (!editingVessel) {
+                    const cleanDigits = e.target.value.replace(/\D/g, '').slice(0, 7);
+                    setVesselImo(cleanDigits);
+                    if (vesselFormError) setVesselFormError('');
+                  }
                 }}
                 placeholder="e.g. 9876543"
                 maxLength={7}
                 pattern="\d{7}"
-                title="IMO Number must be exactly 7 numeric digits"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold text-[#D49A24] focus:outline-none focus:border-[#D49A24] disabled:opacity-60"
+                title={editingVessel ? "IMO Number cannot be changed." : "IMO Number must be exactly 7 numeric digits"}
+                className={`w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold text-[#D49A24] focus:outline-none focus:border-[#D49A24] ${
+                  editingVessel ? 'cursor-not-allowed bg-slate-100 dark:bg-slate-800/80 opacity-80 select-none' : ''
+                }`}
               />
-              <p className="text-[9px] text-slate-400 mt-0.5">Unique 7-digit IMO ship identifier.</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                {editingVessel ? 'Permanent 7-digit IMO ship identifier (locked).' : 'Unique 7-digit IMO ship identifier.'}
+              </p>
             </div>
 
             <div>
@@ -524,16 +606,20 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Call Sign
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Call Sign
+                </label>
+                <span className="text-[9px] font-medium text-slate-400">Optional</span>
+              </div>
               <input
                 type="text"
                 value={vesselCallSign}
                 onChange={(e) => setVesselCallSign(e.target.value)}
-                placeholder="3E245"
+                placeholder="e.g. 3E245"
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold focus:outline-none focus:border-[#D49A24]"
               />
+              <p className="text-[9px] text-slate-400 mt-0.5">Maritime radio call sign identifier (if assigned).</p>
             </div>
 
             <div>
@@ -584,17 +670,22 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
           <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
-              onClick={() => setIsRegisterVesselOpen(false)}
-              className="px-4 py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs cursor-pointer"
+              onClick={() => {
+                setIsRegisterVesselOpen(false);
+                setEditingVessel(null);
+              }}
+              className="px-4 py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={vesselSubmitLoading}
-              className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831c] text-xs shadow-md disabled:opacity-50 cursor-pointer border border-[#D49A24]"
+              className="px-5 py-2.5 rounded-xl font-bold uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831c] text-xs shadow-md disabled:opacity-50 cursor-pointer border border-[#D49A24] transition-all"
             >
-              {vesselSubmitLoading ? 'Saving Vessel...' : editingVessel ? 'Update Vessel' : 'Register Vessel'}
+              {vesselSubmitLoading 
+                ? (editingVessel ? 'Saving Changes...' : 'Registering Vessel...') 
+                : (editingVessel ? 'Save Changes' : 'Register Vessel')}
             </button>
           </div>
         </form>
@@ -641,29 +732,50 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Requested Arrival *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Requested Arrival *
+                </label>
+              </div>
               <input
                 type="datetime-local"
                 required
+                min={getCurrentDateTimeString()}
                 value={requestedArrival}
-                onChange={(e) => setRequestedArrival(e.target.value)}
+                onChange={(e) => {
+                  setRequestedArrival(e.target.value);
+                  if (requestFormError) setRequestFormError('');
+                }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500"
               />
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                Arrival must be today or a future date.
+              </p>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Requested Departure *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Requested Departure *
+                </label>
+                <span className="text-[9px] font-medium text-slate-400">
+                  After Arrival
+                </span>
+              </div>
               <input
                 type="datetime-local"
                 required
+                min={requestedArrival || getCurrentDateTimeString()}
                 value={requestedDeparture}
-                onChange={(e) => setRequestedDeparture(e.target.value)}
+                onChange={(e) => {
+                  setRequestedDeparture(e.target.value);
+                  if (requestFormError) setRequestFormError('');
+                }}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500"
               />
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                Departure must be later than requested arrival.
+              </p>
             </div>
 
             <div>
@@ -1238,20 +1350,27 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                           {vessel.vessel_status || 'ACTIVE'}
                         </span>
                       </td>
-                      <td className="p-4 text-right space-x-1.5">
+                      <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           onClick={(e) => { e.stopPropagation(); setSelectedVesselDetail(vessel); }}
-                          className="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
+                          className="p-2 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 transition-colors cursor-pointer inline-flex items-center"
+                          title="View Details"
                         >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Details</span>
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleOpenEditVessel(vessel); }}
+                          className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors cursor-pointer inline-flex items-center"
+                          title="Edit Vessel Details"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setVesselToDelete(vessel); }}
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer inline-flex items-center"
                           title="Delete Vessel"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -1407,21 +1526,21 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                         {req.vessel_arrival_request_status}
                       </span>
                     </td>
-                    <td className="p-4 text-right space-x-1.5">
+                    <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
                       <button
                         onClick={() => setSelectedRequestDetail(req)}
-                        className="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
+                        className="p-2 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 transition-colors cursor-pointer inline-flex items-center"
+                        title="View Details"
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View Details</span>
+                        <Eye className="w-4 h-4" />
                       </button>
                       {req.vessel_arrival_request_status === 'PENDING' && (
                         <button
                           onClick={() => setRequestToDelete(req)}
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer inline-flex items-center"
                           title="Delete Arrival Request"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </td>
