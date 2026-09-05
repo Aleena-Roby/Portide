@@ -17,7 +17,6 @@ import {
   LogOut,
   User,
   Anchor,
-  PieChart,
   Clock
 } from 'lucide-react';
 
@@ -87,7 +86,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
           { id: 'berth-availability', label: 'Berth Availability', icon: Anchor, path: `${basePath}/berth-availability` },
-          { id: 'berth-utilisation', label: 'Berth Utilisation', icon: PieChart, path: `${basePath}/berth-utilisation` },
           { id: 'arrival-requests', label: 'Vessel Arrival Requests', icon: FileCheck, path: `${basePath}/arrival-requests` },
           { id: 'scheduling', label: 'Berth & Scheduling', icon: Clock, path: `${basePath}/scheduling` },
           { id: 'vessels', label: 'Vessel Directory', icon: Ship, path: `${basePath}/vessels` }
