@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { PortideLogo } from '../common/PortideLogo';
 import { getDefaultDashboardRoute } from '../auth/ProtectedRoute';
+import { getStoredSession } from '../../services/api';
 import { 
   Anchor, 
   Ship, 
@@ -69,8 +70,15 @@ const StatCounter: React.FC<StatCounterProps> = ({ end, suffix = '', decimals = 
 };
 
 export const LandingPage: React.FC = () => {
-  const { setGlobalSearchQuery, isAuthenticated, activeRole } = useApp();
+  const { setGlobalSearchQuery, isAuthenticated, activeRole, logoutUser } = useApp();
   const navigate = useNavigate();
+
+  // Cleanly terminate active dashboard session when returning to or viewing the public landing page
+  useEffect(() => {
+    if (isAuthenticated || getStoredSession()) {
+      logoutUser(true);
+    }
+  }, [isAuthenticated, logoutUser]);
   
   // Hero Slide State
   const [currentSlide] = useState(0);
@@ -230,13 +238,13 @@ export const LandingPage: React.FC = () => {
               href="#platform-core" 
               className="hover:text-[#c88d27] transition-colors py-1"
             >
-              PLATFORM CORE
+              PLATFORM
             </a>
             <a 
               href="#ecosystem" 
               className="hover:text-[#c88d27] transition-colors py-1"
             >
-              ECOSYSTEM
+              OPERATIONS
             </a>
             <a 
               href="#tracking" 
@@ -258,7 +266,7 @@ export const LandingPage: React.FC = () => {
               onClick={() => navigate('/login')}
               className="px-7 py-2.5 rounded-full bg-[#c88d27] hover:bg-[#b57e1e] text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-amber-500/20 transition-all duration-200 hover:scale-105 cursor-pointer"
             >
-              GET QUOTE / PORTAL
+              LOGIN TO PORTIDE
             </button>
 
             {/* Mobile Menu Toggle Button */}
@@ -288,14 +296,14 @@ export const LandingPage: React.FC = () => {
               onClick={() => setMobileMenuOpen(false)}
               className="block text-xs font-bold uppercase tracking-wider text-slate-800 hover:text-[#c88d27] py-1"
             >
-              PLATFORM CORE
+              PLATFORM
             </a>
             <a 
               href="#ecosystem" 
               onClick={() => setMobileMenuOpen(false)}
               className="block text-xs font-bold uppercase tracking-wider text-slate-800 hover:text-[#c88d27] py-1"
             >
-              ECOSYSTEM
+              OPERATIONS
             </a>
             <a 
               href="#tracking" 
@@ -311,6 +319,15 @@ export const LandingPage: React.FC = () => {
             >
               CONTACT
             </a>
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                navigate('/login');
+              }}
+              className="block w-full text-left text-xs font-bold uppercase tracking-wider text-slate-800 hover:text-[#c88d27] py-1"
+            >
+              LOGIN TO PORTIDE
+            </button>
           </div>
         )}
       </header>
