@@ -19,15 +19,17 @@ from corsheaders.defaults import default_headers
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load .env from project root directory (one directory up from BASE_DIR)
-load_dotenv(os.path.join(BASE_DIR.parent, '.env'))
+# Load .env from project root or BASE_DIR if present
+for env_path in [BASE_DIR / '.env', BASE_DIR.parent / '.env']:
+    if env_path.exists():
+        load_dotenv(env_path)
 
 
 # Quick-start development settings - unsuitable for production
 
-SECRET_KEY = 'django-insecure-ilu2@_(%iijbz%j!g951u+h=j(l6gnedz^gv55#@fu!k+1qs)&'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-ilu2@_(%iijbz%j!g951u+h=j(l6gnedz^gv55#@fu!k+1qs)&')
 
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = ['*']
 
@@ -89,12 +91,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database
-def _is_postgres_available():
+DB_HOST = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost'
+DB_PORT = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432'
+DB_NAME = os.getenv('POSTGRES_DB') or os.getenv('DB_NAME') or 'portide_db'
+DB_USER = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or 'portide_user'
+DB_PASSWORD = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD')
 
-    host = os.getenv('POSTGRES_HOST', 'localhost')
+def _is_postgres_available():
     try:
-        port = int(os.getenv('POSTGRES_PORT', '5432'))
-        with socket.create_connection((host, port), timeout=1):
+        port = int(DB_PORT)
+        with socket.create_connection((DB_HOST, port), timeout=2):
             return True
     except (socket.error, socket.timeout, ValueError):
         return False
@@ -103,11 +109,11 @@ if _is_postgres_available():
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('POSTGRES_DB', 'portide_db'),
-            'USER': os.getenv('POSTGRES_USER', 'portide_user'),
-            'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+            'NAME': DB_NAME,
+            'USER': DB_USER,
+            'PASSWORD': DB_PASSWORD,
+            'HOST': DB_HOST,
+            'PORT': DB_PORT,
         }
     }
 else:
