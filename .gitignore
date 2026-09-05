@@ -18,6 +18,7 @@ __pycache__/
 # Database & Storage
 *.sqlite3
 db.sqlite3
+*.sql
 media/
 **/media/
 sent_emails/
