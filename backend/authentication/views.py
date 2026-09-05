@@ -20,7 +20,10 @@ from authentication.models import (
     Vessel,
     VesselArrivalRequest,
     Berth,
-    VesselSchedule
+    VesselSchedule,
+    SystemSetting,
+    AuditLog,
+    get_min_arrival_advance_days
 )
 from authentication.serializers import (
     LoginSerializer, 
@@ -34,11 +37,14 @@ from authentication.serializers import (
     ChangePasswordSerializer,
     VesselSerializer,
     VesselCreateSerializer,
+    VesselUpdateSerializer,
     VesselArrivalRequestSerializer,
     VesselArrivalRequestCreateSerializer,
     BerthSerializer,
     AdminBerthCreateUpdateSerializer,
-    VesselScheduleSerializer
+    VesselScheduleSerializer,
+    SystemSettingSerializer,
+    AuditLogSerializer
 )
 from authentication.permissions import (
     IsPortAdministrator, 
@@ -47,6 +53,7 @@ from authentication.permissions import (
     IsPortOperationsOfficerOnly,
     get_authenticated_user_and_company
 )
+from authentication.audit_service import create_audit_log
 
 class LoginAPIView(APIView):
     """
@@ -75,6 +82,18 @@ class LoginAPIView(APIView):
         try:
             login_obj = Login.objects.get(login_email__iexact=email.strip())
         except Login.DoesNotExist:
+            create_audit_log(
+                user=None,
+                actor_name=email.strip(),
+                role='Unknown',
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=None,
+                description=f"Failed login attempt for non-existent user: {email.strip()}",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -85,6 +104,18 @@ class LoginAPIView(APIView):
 
         # 2. Verify password against PBKDF2 hash
         if not check_password(password, login_obj.login_password):
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Failed login attempt for {login_obj.login_email} (Incorrect password)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -99,6 +130,18 @@ class LoginAPIView(APIView):
 
         # Status check rules:
         if login_obj.login_status == 'PENDING' or (user_profile and user_profile.user_status == 'PENDING'):
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Pending approval)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -108,6 +151,18 @@ class LoginAPIView(APIView):
             )
 
         if login_obj.login_status == 'REJECTED' or (user_profile and user_profile.user_status == 'REJECTED'):
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Registration rejected)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -117,6 +172,18 @@ class LoginAPIView(APIView):
             )
 
         if login_obj.login_status == 'SUSPENDED' or (user_profile and user_profile.user_status == 'SUSPENDED'):
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Account suspended)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -126,6 +193,18 @@ class LoginAPIView(APIView):
             )
 
         if company and company.shipping_company_status == 'PENDING':
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Company pending approval)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -135,6 +214,18 @@ class LoginAPIView(APIView):
             )
 
         if company and company.shipping_company_status == 'SUSPENDED':
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Company suspended)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -144,6 +235,18 @@ class LoginAPIView(APIView):
             )
 
         if not login_obj.login_is_active:
+            create_audit_log(
+                user=login_obj,
+                actor_name=login_obj.login_email,
+                role=login_obj.login_role,
+                action='LOGIN_FAILED',
+                category='AUTHENTICATION',
+                target_type='Authentication',
+                target_id=login_obj.login_id,
+                description=f"Login attempt rejected for {login_obj.login_email} (Account inactive)",
+                status='FAILED',
+                request=request
+            )
             return Response(
                 {
                     "status": "error",
@@ -158,6 +261,21 @@ class LoginAPIView(APIView):
             request.session['login_id'] = login_obj.login_id
             request.session['user_role'] = login_obj.login_role
             request.session.save()
+
+        # Audit successful login
+        actor_display = user_profile.user_full_name if user_profile else login_obj.login_email
+        create_audit_log(
+            user=user_profile or login_obj,
+            actor_name=actor_display,
+            role=login_obj.login_role,
+            action='LOGIN',
+            category='AUTHENTICATION',
+            target_type='Authentication',
+            target_id=login_obj.login_id,
+            description=f"User {actor_display} ({login_obj.login_email}) logged in successfully.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -184,6 +302,24 @@ class LogoutAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        actor_email = request.headers.get('X-User-Email') or (login_obj.login_email if login_obj else None)
+        actor_role = request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else 'User')
+        actor_name = (user_obj.user_full_name if user_obj else None) or actor_email or 'User'
+
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role=actor_role,
+            action='LOGOUT',
+            category='AUTHENTICATION',
+            target_type='Authentication',
+            target_id=login_obj.login_id if login_obj else None,
+            description=f"User {actor_name} logged out.",
+            status='SUCCESS',
+            request=request
+        )
+
         if hasattr(request, 'session'):
             request.session.flush()
         return Response(
@@ -261,6 +397,20 @@ class ShippingCompanyRegistrationAPIView(APIView):
             )
 
         registration_obj = serializer.save()
+
+        create_audit_log(
+            user=None,
+            actor_name=registration_obj.registration_request_applicant_name,
+            role='Shipping Company',
+            action='CREATE',
+            category='SHIPPING_COMPANY',
+            target_type='ShippingCompany',
+            target_id=registration_obj.shipping_company_id.shipping_company_id,
+            description=f"Shipping company registration submitted for '{registration_obj.shipping_company_id.shipping_company_name}'.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -369,6 +519,19 @@ class AdminApproveRegistrationRequestAPIView(APIView):
                         user.login_id.login_is_active = True
                         user.login_id.save()
 
+        create_audit_log(
+            user=admin_user,
+            actor_name=admin_user.user_full_name if admin_user else 'Port Administrator',
+            role='Port Administrator',
+            action='APPROVE',
+            category='SHIPPING_COMPANY',
+            target_type='ShippingCompany',
+            target_id=company.shipping_company_id if company else req_obj.registration_request_id,
+            description=f"Approved registration request #{req_obj.registration_request_id} for shipping company '{company.shipping_company_name if company else 'Unknown'}'.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response({
             "status": "success",
             "message": "Shipping Company registration approved successfully."
@@ -429,6 +592,19 @@ class AdminRejectRegistrationRequestAPIView(APIView):
                         user.login_id.login_status = 'REJECTED'
                         user.login_id.login_is_active = False
                         user.login_id.save()
+
+        create_audit_log(
+            user=admin_user,
+            actor_name=admin_user.user_full_name if admin_user else 'Port Administrator',
+            role='Port Administrator',
+            action='REJECT',
+            category='SHIPPING_COMPANY',
+            target_type='ShippingCompany',
+            target_id=company.shipping_company_id if company else req_obj.registration_request_id,
+            description=f"Rejected registration request #{req_obj.registration_request_id} for shipping company '{company.shipping_company_name if company else 'Unknown'}'. Reason: {rejection_reason}",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response({
             "status": "success",
@@ -529,39 +705,54 @@ PORTIDE Enterprise Platform
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+        create_audit_log(
+            user=login_obj,
+            actor_name=login_obj.login_email,
+            role=login_obj.login_role,
+            action='PASSWORD_RESET_REQUEST',
+            category='AUTHENTICATION',
+            target_type='User',
+            target_id=login_obj.login_id,
+            description=f"Password reset link requested for {login_obj.login_email}.",
+            status='SUCCESS',
+            request=request
+        )
+
         return GENERIC_SUCCESS_RESPONSE
 
 
 class ResetPasswordAPIView(APIView):
     """
-    Public API Endpoint to Reset Password with Secure Token.
-    Endpoint: POST /api/auth/reset-password
+    Public API Endpoint to Validate Token and Reset Password.
+    Endpoints:
+      - GET  /api/auth/reset-password?token=<TOKEN> (Validate token before showing form)
+      - POST /api/auth/reset-password (Set new password with valid token)
     """
     permission_classes = [AllowAny]
 
-    def post(self, request):
-        serializer = ResetPasswordSerializer(data=request.data)
-        if not serializer.is_valid():
+    def get(self, request):
+        """
+        Validate password reset token before allowing user to change password.
+        """
+        token = request.query_params.get('token', '').strip()
+        if not token:
             return Response(
                 {
                     "status": "error",
-                    "message": "Validation failed.",
-                    "errors": serializer.errors
+                    "message": "This password reset link is invalid or has expired."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        token = serializer.validated_data['token']
-        new_password = serializer.validated_data['new_password']
         token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
 
         try:
-            token_obj = PasswordResetToken.objects.get(token_hash=token_hash)
+            token_obj = PasswordResetToken.objects.select_related('login_id').get(token_hash=token_hash)
         except PasswordResetToken.DoesNotExist:
             return Response(
                 {
                     "status": "error",
-                    "message": "Invalid, expired, or already used password reset link."
+                    "message": "This password reset link is invalid or has expired."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -570,19 +761,103 @@ class ResetPasswordAPIView(APIView):
             return Response(
                 {
                     "status": "error",
-                    "message": "This password reset link has expired or already been used. Please request a new password reset link."
+                    "message": "This password reset link is invalid or has expired."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        login_obj = token_obj.login_id
+        if not login_obj or not login_obj.login_is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "The associated user account is inactive or no longer exists."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Password reset token is valid."
+            },
+            status=status.HTTP_200_OK
+        )
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            first_err = "Validation failed."
+            if serializer.errors:
+                first_key = next(iter(serializer.errors))
+                val = serializer.errors[first_key]
+                if isinstance(val, list) and len(val) > 0:
+                    first_err = str(val[0])
+                elif isinstance(val, str):
+                    first_err = val
+            return Response(
+                {
+                    "status": "error",
+                    "message": first_err,
+                    "errors": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        token = serializer.validated_data['token'].strip()
+        new_password = serializer.validated_data['new_password']
+        token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+        try:
+            token_obj = PasswordResetToken.objects.select_related('login_id').get(token_hash=token_hash)
+        except PasswordResetToken.DoesNotExist:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "This password reset link is invalid or has expired."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not token_obj.is_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": "This password reset link is invalid or has expired."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        login_obj = token_obj.login_id
+        if not login_obj or not login_obj.login_is_active:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "The associated user account is inactive or no longer exists."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Update login password securely with PBKDF2 hash
-        login_obj = token_obj.login_id
         login_obj.login_password = make_password(new_password)
         login_obj.save()
 
-        # Mark token as used
+        # Mark token as used immediately
         token_obj.used_at = timezone.now()
         token_obj.save()
+
+        create_audit_log(
+            user=login_obj,
+            actor_name=login_obj.login_email,
+            role=login_obj.login_role,
+            action='PASSWORD_RESET_SUCCESS',
+            category='AUTHENTICATION',
+            target_type='User',
+            target_id=login_obj.login_id,
+            description=f"Password successfully reset for {login_obj.login_email}.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -613,6 +888,20 @@ class AdminCreateStaffAPIView(APIView):
             )
 
         user_obj = serializer.save()
+
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Administrator',
+            role='Port Administrator',
+            action='CREATE',
+            category='USER_MANAGEMENT',
+            target_type='User',
+            target_id=user_obj.user_id,
+            description=f"Created internal staff account for {user_obj.user_full_name} ({user_obj.login_id.login_email}) with role '{user_obj.login_id.login_role}'.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -713,11 +1002,28 @@ class AdminUserDetailAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        del_name = target_user.user_full_name
+        del_email = target_user.login_id.login_email if target_user.login_id else ''
+        del_id = target_user.user_id
+
         with transaction.atomic():
             login_record = target_user.login_id
             target_user.delete()
             if login_record:
                 login_record.delete()
+
+        create_audit_log(
+            user=requesting_user,
+            actor_name=requesting_user.user_full_name if requesting_user else 'Port Administrator',
+            role='Port Administrator',
+            action='DELETE',
+            category='USER_MANAGEMENT',
+            target_type='User',
+            target_id=del_id,
+            description=f"Deleted user account {del_name} ({del_email}).",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -790,6 +1096,19 @@ class AdminUserDetailAPIView(APIView):
         updated_user = serializer.save()
         detail_serializer = UserDetailSerializer(updated_user)
 
+        create_audit_log(
+            user=requesting_user,
+            actor_name=requesting_user.user_full_name if requesting_user else 'Port Administrator',
+            role='Port Administrator',
+            action='UPDATE',
+            category='USER_MANAGEMENT',
+            target_type='User',
+            target_id=updated_user.user_id,
+            description=f"Updated user account for {updated_user.user_full_name} (Status: {updated_user.user_status}).",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -798,7 +1117,6 @@ class AdminUserDetailAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
-
 
 
 class ChangePasswordAPIView(APIView):
@@ -860,6 +1178,19 @@ class ChangePasswordAPIView(APIView):
         # 2. Hash new password securely with PBKDF2
         login_obj.login_password = make_password(new_password)
         login_obj.save()
+
+        create_audit_log(
+            user=login_obj,
+            actor_name=login_obj.login_email,
+            role=login_obj.login_role,
+            action='PASSWORD_CHANGE',
+            category='AUTHENTICATION',
+            target_type='User',
+            target_id=login_obj.login_id,
+            description=f"Password changed for user {login_obj.login_email}.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -939,6 +1270,20 @@ class VesselListCreateAPIView(APIView):
             )
 
         vessel_obj = serializer.save(vessel_shipping_company_id=company_obj)
+        actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role='Shipping Company',
+            action='CREATE',
+            category='VESSEL',
+            target_type='Vessel',
+            target_id=vessel_obj.vessel_id,
+            description=f"Vessel '{vessel_obj.vessel_name}' (IMO: {vessel_obj.vessel_imo_number}) registered.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1030,7 +1375,7 @@ class VesselDetailAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        serializer = VesselCreateSerializer(vessel, data=request.data, partial=True)
+        serializer = VesselUpdateSerializer(vessel, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response(
                 {
@@ -1042,10 +1387,24 @@ class VesselDetailAPIView(APIView):
             )
 
         updated_vessel = serializer.save()
+        actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role='Shipping Company',
+            action='UPDATE',
+            category='VESSEL',
+            target_type='Vessel',
+            target_id=updated_vessel.vessel_id,
+            description=f"Vessel '{updated_vessel.vessel_name}' details updated.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
-                "message": f"Vessel '{updated_vessel.vessel_name}' updated successfully.",
+                "message": "Vessel details updated successfully.",
                 "data": VesselSerializer(updated_vessel).data
             },
             status=status.HTTP_200_OK
@@ -1097,7 +1456,24 @@ class VesselDetailAPIView(APIView):
             )
 
         vessel_name = vessel.vessel_name
+        vessel_imo = vessel.vessel_imo_number
+        vessel_id_val = vessel.vessel_id
+        actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
+
         vessel.delete()
+
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role='Shipping Company',
+            action='DELETE',
+            category='VESSEL',
+            target_type='Vessel',
+            target_id=vessel_id_val,
+            description=f"Vessel '{vessel_name}' (IMO: {vessel_imo}) deleted.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -1197,6 +1573,21 @@ class ArrivalRequestListCreateAPIView(APIView):
             )
 
         arrival_request = serializer.save(vessel_arrival_request_status='PENDING')
+        actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
+
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role='Shipping Company',
+            action='CREATE',
+            category='ARRIVAL_REQUEST',
+            target_type='ArrivalRequest',
+            target_id=arrival_request.vessel_arrival_request_id,
+            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} submitted for vessel '{vessel_obj.vessel_name}'.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1300,7 +1691,24 @@ class ArrivalRequestDetailAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        req_id_val = arrival_request.vessel_arrival_request_id
+        v_name = vessel.vessel_name
+        actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
+
         arrival_request.delete()
+
+        create_audit_log(
+            user=user_obj or login_obj,
+            actor_name=actor_name,
+            role='Shipping Company',
+            action='DELETE',
+            category='ARRIVAL_REQUEST',
+            target_type='ArrivalRequest',
+            target_id=req_id_val,
+            description=f"Arrival request #{req_id_val} for vessel '{v_name}' deleted.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -1344,6 +1752,20 @@ class ArrivalRequestApproveAPIView(APIView):
             arrival_request.vessel_arrival_request_remarks = str(remarks).strip()
 
         arrival_request.save()
+
+        reviewer_name = user_obj.user_full_name if user_obj else 'Port Operations Officer'
+        create_audit_log(
+            user=user_obj,
+            actor_name=reviewer_name,
+            role='Port Operations Officer',
+            action='APPROVE',
+            category='ARRIVAL_REQUEST',
+            target_type='ArrivalRequest',
+            target_id=arrival_request.vessel_arrival_request_id,
+            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' approved.",
+            status='SUCCESS',
+            request=request
+        )
 
         return Response(
             {
@@ -1394,6 +1816,20 @@ class ArrivalRequestRejectAPIView(APIView):
         arrival_request.vessel_arrival_request_reviewed_by = user_obj
         arrival_request.save()
 
+        reviewer_name = user_obj.user_full_name if user_obj else 'Port Operations Officer'
+        create_audit_log(
+            user=user_obj,
+            actor_name=reviewer_name,
+            role='Port Operations Officer',
+            action='REJECT',
+            category='ARRIVAL_REQUEST',
+            target_type='ArrivalRequest',
+            target_id=arrival_request.vessel_arrival_request_id,
+            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' rejected. Remarks: {remarks}",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1436,6 +1872,20 @@ class AdminBerthListCreateAPIView(APIView):
             )
 
         berth_obj = serializer.save()
+
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Administrator',
+            role='Port Administrator',
+            action='CREATE',
+            category='BERTH',
+            target_type='Berth',
+            target_id=berth_obj.berth_id,
+            description=f"Berth '{berth_obj.berth_name}' configured in berth master.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1516,6 +1966,19 @@ class AdminBerthDetailAPIView(APIView):
             updated_berth.berth_status = 'AVAILABLE'
             updated_berth.save()
 
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Administrator',
+            role='Port Administrator',
+            action='UPDATE',
+            category='BERTH',
+            target_type='Berth',
+            target_id=updated_berth.berth_id,
+            description=f"Berth '{updated_berth.berth_name}' configuration updated (Status: {updated_berth.berth_status}).",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1547,7 +2010,22 @@ class AdminBerthDetailAPIView(APIView):
             )
 
         berth_name = berth.berth_name
+        berth_id_val = berth.berth_id
         berth.delete()
+
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Administrator',
+            role='Port Administrator',
+            action='DELETE',
+            category='BERTH',
+            target_type='Berth',
+            target_id=berth_id_val,
+            description=f"Berth '{berth_name}' deleted.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1696,6 +2174,20 @@ class BerthMaintenanceStatusAPIView(APIView):
                 berth.berth_status = 'AVAILABLE'
 
         berth.save()
+
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Operations Officer',
+            role='Port Operations Officer',
+            action='STATUS_CHANGE',
+            category='BERTH',
+            target_type='Berth',
+            target_id=berth.berth_id,
+            description=f"Berth '{berth.berth_name}' status updated to {berth.berth_status}.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1872,6 +2364,20 @@ class VesselScheduleListCreateAPIView(APIView):
             berth_obj.berth_status = 'RESERVED'
             berth_obj.save()
 
+        actor_name = user_obj.user_full_name if user_obj else 'Port Operations Officer'
+        create_audit_log(
+            user=user_obj,
+            actor_name=actor_name,
+            role='Port Operations Officer',
+            action='CREATE',
+            category='BERTH',
+            target_type='VesselSchedule',
+            target_id=schedule.vessel_schedule_id,
+            description=f"Schedule created for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' at berth '{berth_obj.berth_name}'.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -1994,6 +2500,20 @@ class VesselScheduleUpdateStatusAPIView(APIView):
             berth.save()
 
         vessel_name = schedule.vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_name
+
+        create_audit_log(
+            user=None,
+            actor_name=request.headers.get('X-User-Email') or 'Port Operations Officer',
+            role='Port Operations Officer',
+            action='STATUS_CHANGE',
+            category='BERTH',
+            target_type='VesselSchedule',
+            target_id=schedule.vessel_schedule_id,
+            description=f"Operational status for vessel '{vessel_name}' schedule #{schedule.vessel_schedule_id} updated to {new_status}.",
+            status='SUCCESS',
+            request=request
+        )
+
         return Response(
             {
                 "status": "success",
@@ -2004,220 +2524,163 @@ class VesselScheduleUpdateStatusAPIView(APIView):
         )
 
 
-class BerthUtilisationAPIView(APIView):
+class PortSettingsAPIView(APIView):
     """
-    API Endpoint for Port Operations Officer to view Berth Utilisation KPIs and Analytics.
-    Calculates operational statistics based on real database records.
-    Endpoint: GET /api/berths/utilisation/
+    Port Settings API:
+    - GET: Retrieves public system settings including minimum advance arrival booking days and port timezone.
+    - PATCH: Allows Port Administrator to update settings.
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
-        period = request.query_params.get('period', 'today').lower().strip()
-        start_date_param = request.query_params.get('start_date')
-        end_date_param = request.query_params.get('end_date')
-
-        now = timezone.now()
-
-        if period == 'today':
-            start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_time = now
-        elif period == '7days':
-            start_time = now - datetime.timedelta(days=7)
-            end_time = now
-        elif period == 'month':
-            start_time = now - datetime.timedelta(days=30)
-            end_time = now
-        elif period == 'custom' and start_date_param and end_date_param:
-            try:
-                start_dt = datetime.datetime.fromisoformat(start_date_param.replace('Z', '+00:00'))
-                end_dt = datetime.datetime.fromisoformat(end_date_param.replace('Z', '+00:00'))
-                if timezone.is_naive(start_dt):
-                    start_dt = timezone.make_aware(start_dt)
-                if timezone.is_naive(end_dt):
-                    end_dt = timezone.make_aware(end_dt)
-                start_time = start_dt
-                end_time = end_dt
-            except ValueError:
-                start_time = now - datetime.timedelta(days=7)
-                end_time = now
-        else:
-            period = 'today'
-            start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_time = now
-
-        period_duration_hours = max(0.1, (end_time - start_time).total_seconds() / 3600.0)
-
-        berths = Berth.objects.all().order_by('berth_id')
-        total_berths = berths.count()
-
-        if total_berths == 0:
-            default_berths = [
-                {'berth_name': 'Berth 01', 'berth_code': 'B-01', 'berth_type': 'CONTAINER_TERMINAL', 'berth_max_length': 350.00, 'berth_max_draft': 15.00, 'berth_capacity_teu': 14000, 'berth_status': 'AVAILABLE'},
-                {'berth_name': 'Berth 02', 'berth_code': 'B-02', 'berth_type': 'CONTAINER_TERMINAL', 'berth_max_length': 320.00, 'berth_max_draft': 14.50, 'berth_capacity_teu': 11000, 'berth_status': 'AVAILABLE'},
-                {'berth_name': 'Berth 03', 'berth_code': 'B-03', 'berth_type': 'BULK_CARGO', 'berth_max_length': 280.00, 'berth_max_draft': 14.00, 'berth_capacity_teu': 8500, 'berth_status': 'AVAILABLE'},
-                {'berth_name': 'Berth 04', 'berth_code': 'B-04', 'berth_type': 'OIL_TANKER', 'berth_max_length': 250.00, 'berth_max_draft': 13.50, 'berth_capacity_teu': 6000, 'berth_status': 'AVAILABLE'},
-            ]
-            for b_data in default_berths:
-                Berth.objects.create(**b_data)
-            berths = Berth.objects.all().order_by('berth_id')
-            total_berths = berths.count()
-
-        available_operational_hours_total = total_berths * period_duration_hours
-
-        schedules = VesselSchedule.objects.select_related(
-            'vessel_schedule_berth_id',
-            'vessel_schedule_arrival_request_id',
-            'vessel_schedule_arrival_request_id__vessel_arrival_request_vessel_id'
-        ).filter(
-            vessel_schedule_scheduled_arrival_at__lt=end_time,
-            vessel_schedule_scheduled_departure_at__gt=start_time
+        min_days = get_min_arrival_advance_days()
+        now_local = timezone.localtime(timezone.now())
+        return Response(
+            {
+                "status": "success",
+                "data": {
+                    "min_arrival_advance_days": min_days,
+                    "port_timezone": str(timezone.get_current_timezone_name()),
+                    "server_current_time": now_local.isoformat(),
+                    "server_today_date": now_local.date().isoformat()
+                }
+            },
+            status=status.HTTP_200_OK
         )
 
-        berth_stats = {}
-        for b in berths:
-            berth_stats[b.berth_id] = {
-                'berth': b,
-                'occupied_hours': 0.0,
-                'movements_count': 0,
-                'completed_stays': 0,
-                'total_stay_duration': 0.0,
+    def patch(self, request):
+        role = request.headers.get('X-User-Role')
+        if role != 'port_administrator':
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Only Port Administrators are authorized to update system settings."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        min_days = request.data.get('min_arrival_advance_days')
+        if min_days is not None:
+            try:
+                min_days_val = int(min_days)
+                if min_days_val < 0:
+                    return Response(
+                        {
+                            "status": "error",
+                            "message": "min_arrival_advance_days must be a non-negative integer."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                setting, _ = SystemSetting.objects.get_or_create(
+                    system_setting_key='MIN_ARRIVAL_ADVANCE_DAYS',
+                    defaults={'system_setting_description': 'Minimum advance days required for vessel arrival requests.'}
+                )
+                setting.system_setting_value = str(min_days_val)
+                setting.save()
+            except (ValueError, TypeError):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Invalid integer value for min_arrival_advance_days."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        return self.get(request)
+
+
+class AuditLogListAPIView(APIView):
+    """
+    Protected API Endpoint for Port Administrator to View, Search, Filter, and Paginate System Audit Logs.
+    Endpoint: GET /api/audit-logs/
+    """
+    permission_classes = [IsPortAdministrator]
+
+    def get(self, request):
+        search_query = request.query_params.get('search', '').strip()
+        category_filter = request.query_params.get('category', '').strip()
+        page = request.query_params.get('page', 1)
+        page_size = request.query_params.get('page_size', 15)
+
+        try:
+            page = max(1, int(page))
+        except (ValueError, TypeError):
+            page = 1
+
+        try:
+            page_size = max(1, min(100, int(page_size)))
+        except (ValueError, TypeError):
+            page_size = 15
+
+        queryset = AuditLog.objects.select_related(
+            'audit_log_user_id',
+            'audit_log_user_id__login_id'
+        ).all().order_by('-audit_log_timestamp', '-audit_log_id')
+
+        # Category filtering
+        if category_filter and category_filter.lower() != 'all':
+            category_mapping = {
+                'auth': 'AUTHENTICATION',
+                'authentication': 'AUTHENTICATION',
+                'user': 'USER_MANAGEMENT',
+                'user_management': 'USER_MANAGEMENT',
+                'shipping': 'SHIPPING_COMPANY',
+                'shipping_company': 'SHIPPING_COMPANY',
+                'vessel': 'VESSEL',
+                'arrival_request': 'ARRIVAL_REQUEST',
+                'arrival': 'ARRIVAL_REQUEST',
+                'berth': 'BERTH',
+                'customs': 'CUSTOMS',
+                'gate': 'GATE_OPERATIONS',
+                'gate_operations': 'GATE_OPERATIONS',
+                'system': 'SYSTEM'
             }
+            normalized_cat = category_mapping.get(category_filter.lower(), category_filter.upper())
+            queryset = queryset.filter(audit_log_category__iexact=normalized_cat)
 
-        total_occupied_hours = 0.0
-        total_movements = 0
-        total_completed_stays = 0
-        total_stay_duration_all = 0.0
+        # Search filtering
+        if search_query:
+            from django.db.models import Q
+            q_filter = (
+                Q(audit_log_actor_name__icontains=search_query) |
+                Q(audit_log_user_id__user_full_name__icontains=search_query) |
+                Q(audit_log_user_id__login_id__login_email__icontains=search_query) |
+                Q(audit_log_role__icontains=search_query) |
+                Q(audit_log_action__icontains=search_query) |
+                Q(audit_log_category__icontains=search_query) |
+                Q(audit_log_target_type__icontains=search_query) |
+                Q(audit_log_target_id__icontains=search_query) |
+                Q(audit_log_description__icontains=search_query) |
+                Q(audit_log_status__icontains=search_query) |
+                Q(audit_log_ip_address__icontains=search_query)
+            )
+            queryset = queryset.filter(q_filter)
 
-        for sch in schedules:
-            b_id = sch.vessel_schedule_berth_id_id
-            if b_id not in berth_stats:
-                continue
+        total_count = queryset.count()
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
 
-            stay_start = sch.vessel_schedule_actual_at_berth_at or sch.vessel_schedule_actual_arrival_at or sch.vessel_schedule_scheduled_arrival_at
-            if sch.vessel_schedule_status == 'DEPARTED':
-                stay_end = sch.vessel_schedule_actual_departure_at or sch.vessel_schedule_scheduled_departure_at
-            elif sch.vessel_schedule_status == 'AT_BERTH':
-                stay_end = now
-            else:
-                stay_end = sch.vessel_schedule_scheduled_departure_at
+        offset = (page - 1) * page_size
+        paged_records = queryset[offset:offset + page_size]
 
-            if stay_end > stay_start:
-                overlap_start = max(start_time, stay_start)
-                overlap_end = min(end_time, stay_end)
-                if overlap_end > overlap_start:
-                    hours = (overlap_end - overlap_start).total_seconds() / 3600.0
-                    berth_stats[b_id]['occupied_hours'] += hours
-                    total_occupied_hours += hours
-
-                stay_hours = (stay_end - stay_start).total_seconds() / 3600.0
-                berth_stats[b_id]['completed_stays'] += 1
-                berth_stats[b_id]['total_stay_duration'] += stay_hours
-                total_completed_stays += 1
-                total_stay_duration_all += stay_hours
-
-            berth_stats[b_id]['movements_count'] += 1
-            total_movements += 1
-
-        overall_utilisation_pct = round((total_occupied_hours / available_operational_hours_total) * 100.0, 1) if available_operational_hours_total > 0 else 0.0
-        overall_utilisation_pct = min(100.0, overall_utilisation_pct)
-
-        avg_occupancy_hours = round(total_stay_duration_all / total_completed_stays, 1) if total_completed_stays > 0 else 0.0
-
-        berth_breakdown = []
-        for b_id, stat in berth_stats.items():
-            b = stat['berth']
-            b_hours = round(stat['occupied_hours'], 1)
-            b_avail_hours = period_duration_hours
-            b_util = round((b_hours / b_avail_hours) * 100.0, 1) if b_avail_hours > 0 else 0.0
-            b_util = min(100.0, b_util)
-            b_avg_stay = round(stat['total_stay_duration'] / stat['completed_stays'], 1) if stat['completed_stays'] > 0 else 0.0
-
-            berth_breakdown.append({
-                'berth_id': b.berth_id,
-                'berth_name': b.berth_name,
-                'berth_code': b.berth_code,
-                'berth_type': b.berth_type,
-                'berth_type_display': b.get_berth_type_display(),
-                'berth_max_length': str(b.berth_max_length),
-                'berth_max_draft': str(b.berth_max_draft),
-                'berth_capacity_teu': b.berth_capacity_teu,
-                'berth_status': b.berth_status,
-                'occupied_hours': b_hours,
-                'utilisation_pct': b_util,
-                'movements_count': stat['movements_count'],
-                'avg_stay_hours': b_avg_stay,
-            })
-
-        sorted_by_util = sorted(berth_breakdown, key=lambda x: x['utilisation_pct'], reverse=True)
-        most_utilised = sorted_by_util[0] if sorted_by_util else None
-        least_utilised = sorted_by_util[-1] if sorted_by_util else None
-
-        daily_movements = []
-        days_count = max(1, min(30, int(period_duration_hours / 24) or 1))
-        for d_offset in range(days_count - 1, -1, -1):
-            day_dt = (now - datetime.timedelta(days=d_offset)).date()
-            day_str = day_dt.strftime('%b %d')
-
-            arrived_on_day = VesselSchedule.objects.filter(
-                vessel_schedule_actual_arrival_at__date=day_dt
-            ).count()
-            if arrived_on_day == 0:
-                arrived_on_day = VesselSchedule.objects.filter(
-                    vessel_schedule_scheduled_arrival_at__date=day_dt
-                ).count()
-
-            departed_on_day = VesselSchedule.objects.filter(
-                vessel_schedule_actual_departure_at__date=day_dt
-            ).count()
-            if departed_on_day == 0:
-                departed_on_day = VesselSchedule.objects.filter(
-                    vessel_schedule_scheduled_departure_at__date=day_dt,
-                    vessel_schedule_status='DEPARTED'
-                ).count()
-
-            daily_movements.append({
-                'date': day_str,
-                'arrivals': arrived_on_day,
-                'departures': departed_on_day,
-                'total': arrived_on_day + departed_on_day
-            })
-
-        status_counts = {
-            'AVAILABLE': Berth.objects.filter(berth_status='AVAILABLE').count(),
-            'RESERVED': Berth.objects.filter(berth_status='RESERVED').count(),
-            'OCCUPIED': Berth.objects.filter(berth_status='OCCUPIED').count(),
-            'MAINTENANCE': Berth.objects.filter(berth_status='MAINTENANCE').count(),
-        }
+        serializer = AuditLogSerializer(paged_records, many=True)
 
         return Response(
             {
                 "status": "success",
                 "data": {
-                    "period": period,
-                    "start_time": start_time.isoformat(),
-                    "end_time": end_time.isoformat(),
-                    "kpis": {
-                        "total_berths": total_berths,
-                        "available_berths": status_counts['AVAILABLE'],
-                        "reserved_berths": status_counts['RESERVED'],
-                        "occupied_berths": status_counts['OCCUPIED'],
-                        "maintenance_berths": status_counts['MAINTENANCE'],
-                        "overall_utilisation_pct": overall_utilisation_pct,
-                        "total_occupied_hours": round(total_occupied_hours, 1),
-                        "total_operational_hours": round(available_operational_hours_total, 1),
-                        "avg_occupancy_hours": avg_occupancy_hours,
-                        "total_vessel_movements": total_movements,
-                        "most_utilised_berth": most_utilised,
-                        "least_utilised_berth": least_utilised
-                    },
-                    "status_distribution": status_counts,
-                    "berth_breakdown": berth_breakdown,
-                    "daily_movements": daily_movements
+                    "total_count": total_count,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_previous": page > 1,
+                    "results": serializer.data
                 }
             },
             status=status.HTTP_200_OK
         )
+
+
 
 
 
