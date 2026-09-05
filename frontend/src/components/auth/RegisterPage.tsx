@@ -6,6 +6,11 @@ import { checkPasswordRequirements } from '../../utils/passwordValidation';
 import { PasswordRequirementChecklist } from '../common/PasswordRequirementChecklist';
 import { InternationalPhoneInput } from '../common/InternationalPhoneInput';
 import { 
+  SUPPORTED_COUNTRIES, 
+  SUPPORTED_COUNTRY_NAMES, 
+  getCountryByName 
+} from '../../utils/countryConfig';
+import { 
 
 
   Ship, 
@@ -58,22 +63,6 @@ export const RegisterPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isPhoneValid, setIsPhoneValid] = useState(false);
 
-
-  // Country options list
-  const countriesList = [
-    'Singapore',
-    'India',
-    'United Arab Emirates',
-    'United Kingdom',
-    'Germany',
-    'Japan',
-    'United States',
-    'Netherlands',
-    'Greece',
-    'China',
-    'Panama',
-    'Marshall Islands'
-  ];
 
   const handleLicenseSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -411,6 +400,7 @@ export const RegisterPage: React.FC = () => {
                     label="Direct Contact Phone"
                     required
                     value={formData.phone}
+                    selectedCountryCode={getCountryByName(formData.country)?.iso2 || 'SG'}
                     defaultCountry="SG"
                     onChange={(e164, isValid) => {
                       setFormData({ ...formData, phone: e164 });
@@ -432,7 +422,7 @@ export const RegisterPage: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                       className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-slate-900 text-xs focus:outline-none focus:border-[#D49A24] focus:ring-1 focus:ring-[#D49A24]/20 transition-all font-medium cursor-pointer"
                     >
-                      {countriesList.map(c => (
+                      {SUPPORTED_COUNTRY_NAMES.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
