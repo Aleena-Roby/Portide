@@ -80,7 +80,6 @@ export interface BackendBerth {
   berth_type_display?: string;
   berth_max_length?: number | string;
   berth_max_draft: number | string;
-  berth_capacity_teu: number;
   berth_status: 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'MAINTENANCE' | 'INACTIVE';
   berth_is_active?: boolean;
   current_vessel?: {
@@ -138,6 +137,8 @@ export interface BackendVesselArrivalRequest {
   vessel_arrival_request_requested_departure_at: string;
   vessel_arrival_request_cargo_type: string;
   vessel_arrival_request_cargo_quantity: number | string;
+  vessel_arrival_request_preferred_berth_id?: number | null;
+  preferred_berth?: BackendBerth | null;
   vessel_arrival_request_status: 'PENDING' | 'APPROVED' | 'REJECTED';
   vessel_arrival_request_submitted_at: string;
   vessel_arrival_request_reviewed_at?: string | null;
@@ -146,6 +147,33 @@ export interface BackendVesselArrivalRequest {
   vessel_arrival_request_remarks?: string | null;
   schedule?: BackendVesselSchedule | null;
   scheduling_status?: string;
+  duration_hours?: number;
+}
+
+export interface BerthAvailabilityEvaluation {
+  berth_id: number;
+  berth_name: string;
+  berth_code?: string | null;
+  berth_type: string;
+  berth_type_display: string;
+  berth_max_length: number;
+  berth_max_draft: number;
+  berth_status: string;
+  berth_is_active: boolean;
+  is_length_compatible: boolean;
+  is_draft_compatible: boolean;
+  is_operational: boolean;
+  has_approved_conflict: boolean;
+  has_pending_requests: boolean;
+  pending_request_count: number;
+  suitability_status: 'AVAILABLE' | 'SUITABLE_PENDING' | 'OCCUPIED' | 'MAINTENANCE' | 'INACTIVE' | 'NOT_SUITABLE';
+  can_select_as_preferred: boolean;
+  rejection_reasons: string[];
+  conflicting_schedule?: {
+    vessel_name?: string | null;
+    scheduled_arrival_at: string;
+    scheduled_departure_at: string;
+  } | null;
 }
 
 export interface Berth {
