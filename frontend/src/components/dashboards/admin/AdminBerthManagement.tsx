@@ -46,7 +46,6 @@ export const AdminBerthManagement: React.FC = () => {
   const [formType, setFormType] = useState<string>('CONTAINER_TERMINAL');
   const [formMaxLength, setFormMaxLength] = useState<string>('300.00');
   const [formMaxDraft, setFormMaxDraft] = useState<string>('14.50');
-  const [formCapacity, setFormCapacity] = useState<string>('10000');
   const [formStatus, setFormStatus] = useState<string>('AVAILABLE');
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState<string>('');
@@ -96,7 +95,6 @@ export const AdminBerthManagement: React.FC = () => {
     setFormType('CONTAINER_TERMINAL');
     setFormMaxLength('300.00');
     setFormMaxDraft('14.50');
-    setFormCapacity('10000');
     setFormStatus('AVAILABLE');
     setFormIsActive(true);
     setFormError('');
@@ -110,7 +108,6 @@ export const AdminBerthManagement: React.FC = () => {
     setFormType(berth.berth_type || 'CONTAINER_TERMINAL');
     setFormMaxLength(String(berth.berth_max_length || '300.00'));
     setFormMaxDraft(String(berth.berth_max_draft));
-    setFormCapacity(String(berth.berth_capacity_teu));
     setFormStatus(berth.berth_status);
     setFormIsActive(berth.berth_is_active !== false);
     setFormError('');
@@ -135,11 +132,6 @@ export const AdminBerthManagement: React.FC = () => {
     const draftVal = parseFloat(formMaxDraft);
     if (isNaN(draftVal) || draftVal <= 0) {
       setFormError('Maximum draft must be greater than 0 meters.');
-      return;
-    }
-    const capVal = parseInt(formCapacity, 10);
-    if (isNaN(capVal) || capVal <= 0) {
-      setFormError('Capacity must be greater than 0 TEU.');
       return;
     }
 
@@ -167,7 +159,6 @@ export const AdminBerthManagement: React.FC = () => {
           berth_type: formType,
           berth_max_length: lenVal,
           berth_max_draft: draftVal,
-          berth_capacity_teu: capVal,
           berth_status: formIsActive ? formStatus : 'INACTIVE',
           berth_is_active: formIsActive
         })
@@ -294,7 +285,7 @@ export const AdminBerthManagement: React.FC = () => {
             Berth Master Management
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
-            Configure berth specifications, max lengths, draft constraints, capacity TEU, and activation statuses.
+            Configure berth specifications, vessel size limits, draft constraints, and operational statuses.
           </p>
         </div>
 
@@ -421,7 +412,6 @@ export const AdminBerthManagement: React.FC = () => {
                 <th className="py-3.5 px-4">Berth Type</th>
                 <th className="py-3.5 px-4">Max Length</th>
                 <th className="py-3.5 px-4">Max Draft</th>
-                <th className="py-3.5 px-4">Capacity</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4">Activation</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
@@ -446,9 +436,8 @@ export const AdminBerthManagement: React.FC = () => {
                   <td className="py-3.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
                     {b.berth_type_display || b.berth_type}
                   </td>
-                  <td className="py-3.5 px-4 font-semibold">{b.berth_max_length ? `${b.berth_max_length} m` : '300.00 m'}</td>
+                  <td className="py-3.5 px-4 font-semibold">{b.berth_max_length ? `${b.berth_max_length} m` : '—'}</td>
                   <td className="py-3.5 px-4 font-semibold">{b.berth_max_draft} m</td>
-                  <td className="py-3.5 px-4 font-semibold">{b.berth_capacity_teu} TEU</td>
                   <td className="py-3.5 px-4">
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                       b.berth_status === 'AVAILABLE' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
@@ -580,43 +569,35 @@ export const AdminBerthManagement: React.FC = () => {
               </select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Max Vessel Length (m) *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Maximum Vessel Length (m) *</label>
                 <input
                   type="number"
                   step="0.01"
-                  min="1"
+                  min="0.01"
                   required
                   value={formMaxLength}
                   onChange={(e) => setFormMaxLength(e.target.value)}
+                  placeholder="e.g. 300.00"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
+                <p className="text-[10px] text-slate-400">Maximum vessel length that can be accommodated at this berth.</p>
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Max Allowed Draft (m) *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Maximum Draft (m) *</label>
                 <input
                   type="number"
                   step="0.01"
-                  min="1"
+                  min="0.01"
                   required
                   value={formMaxDraft}
                   onChange={(e) => setFormMaxDraft(e.target.value)}
+                  placeholder="e.g. 14.50"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Capacity (TEU / DWT) *</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={formCapacity}
-                  onChange={(e) => setFormCapacity(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
+                <p className="text-[10px] text-slate-400">Maximum vessel draft that can be safely accommodated at this berth.</p>
               </div>
             </div>
 
@@ -827,18 +808,13 @@ export const AdminBerthManagement: React.FC = () => {
               </div>
 
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Max Vessel Length</span>
-                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedBerthDetails.berth_max_length} m</div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Maximum Vessel Length</span>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedBerthDetails.berth_max_length ? `${selectedBerthDetails.berth_max_length} m` : '—'}</div>
               </div>
 
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Max Allowed Draft</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Maximum Draft</span>
                 <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedBerthDetails.berth_max_draft} m</div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capacity Rating</span>
-                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedBerthDetails.berth_capacity_teu} TEU</div>
               </div>
 
               <div>

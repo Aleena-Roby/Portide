@@ -361,7 +361,7 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
                   </div>
 
                   {/* Operational Metrics Pill */}
-                  <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-center border border-slate-100 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-center border border-slate-100 dark:border-slate-800">
                     <div>
                       <div className="text-[10px] font-semibold text-slate-400 uppercase">Max Length</div>
                       <div className="text-xs font-black text-slate-800 dark:text-slate-200">
@@ -371,10 +371,6 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
                     <div>
                       <div className="text-[10px] font-semibold text-slate-400 uppercase">Max Draft</div>
                       <div className="text-xs font-black text-slate-800 dark:text-slate-200">{berth.berth_max_draft} m</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-semibold text-slate-400 uppercase">Capacity</div>
-                      <div className="text-xs font-black text-slate-800 dark:text-slate-200">{berth.berth_capacity_teu} TEU</div>
                     </div>
                   </div>
 
@@ -469,7 +465,6 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
                 <th className="py-3.5 px-4">Type</th>
                 <th className="py-3.5 px-4">Max Length</th>
                 <th className="py-3.5 px-4">Max Draft</th>
-                <th className="py-3.5 px-4">Capacity</th>
                 <th className="py-3.5 px-4">Current Status</th>
                 <th className="py-3.5 px-4">Assigned Vessel</th>
                 <th className="py-3.5 px-4">Scheduled Arrival</th>
@@ -486,7 +481,6 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
                   <td className="py-3 px-4 font-semibold">{b.berth_type_display || b.berth_type || 'General Cargo'}</td>
                   <td className="py-3 px-4 font-semibold">{b.berth_max_length ? `${b.berth_max_length} m` : '300.00 m'}</td>
                   <td className="py-3 px-4 font-semibold">{b.berth_max_draft} m</td>
-                  <td className="py-3 px-4 font-semibold">{b.berth_capacity_teu} TEU</td>
                   <td className="py-3 px-4">{getStatusBadge(b.berth_status)}</td>
                   <td className="py-3 px-4">
                     {b.current_vessel ? (
@@ -613,8 +607,8 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 space-y-1">
-                <div className="text-slate-400 font-semibold">Capacity TEU</div>
-                <div className="font-bold text-slate-900 dark:text-white">{selectedBerthDetail.berth_capacity_teu} TEU</div>
+                <div className="text-slate-400 font-semibold">Berth Status</div>
+                <div className="font-bold text-slate-900 dark:text-white">{selectedBerthDetail.berth_status}</div>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 space-y-1">

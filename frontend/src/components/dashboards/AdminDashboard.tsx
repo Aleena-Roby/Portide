@@ -21,7 +21,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'ove
     {
       id: 'berths',
       title: 'Berth Master Management',
-      description: 'Configure port berth infrastructure, draft & length specifications, capacity, and activation status.',
+      description: 'Configure port berth infrastructure, draft & length specifications, and operational status.',
       icon: Anchor
     },
     {
