@@ -42,10 +42,15 @@ interface RegistrationRequestData {
   registration_request_applicant_name: string;
   registration_request_license_file: string | null;
   registration_request_id_file: string | null;
+  registration_request_previous_license_file?: string | null;
+  registration_request_previous_id_file?: string | null;
   registration_request_terms_accepted: boolean;
-  registration_request_status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  registration_request_status: 'PENDING' | 'ACTION_REQUIRED' | 'APPROVED' | 'REJECTED';
+  registration_request_action_required_docs?: string | null;
+  registration_request_admin_remarks?: string | null;
   registration_request_rejection_reason?: string | null;
   registration_request_submitted_at: string;
+  registration_request_resubmitted_at?: string | null;
   registration_request_reviewed_at?: string | null;
   user_id?: number | null;
   reviewer_name?: string | null;
@@ -58,7 +63,7 @@ export const CompanyApprovals: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   
-  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'ACTION_REQUIRED' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Selected request for View Application Modal
@@ -71,6 +76,14 @@ export const CompanyApprovals: React.FC = () => {
   // Selected request for Rejection Confirmation Dialog
   const [rejectingRequest, setRejectingRequest] = useState<RegistrationRequestData | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
+  
+  // Selected request for Action Required Dialog
+  const [actionRequiredRequest, setActionRequiredRequest] = useState<RegistrationRequestData | null>(null);
+  const [reqDocLicence, setReqDocLicence] = useState<boolean>(true);
+  const [reqDocId, setReqDocId] = useState<boolean>(false);
+  const [reqDocOther, setReqDocOther] = useState<boolean>(false);
+  const [actionRequiredRemarks, setActionRequiredRemarks] = useState<string>('');
+
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   const fetchRegistrationRequests = async () => {
@@ -185,6 +198,52 @@ export const CompanyApprovals: React.FC = () => {
     }
   };
 
+  const handleConfirmActionRequired = async () => {
+    if (!actionRequiredRequest) return;
+    const remarks = actionRequiredRemarks.trim();
+    if (!remarks) {
+      addToast('error', 'Remarks Required', 'Please enter admin instructions or remarks for the applicant.');
+      return;
+    }
+
+    const docs = [];
+    if (reqDocLicence) docs.push('Company Operating Licence');
+    if (reqDocId) docs.push('Representative Identification Document');
+    if (reqDocOther) docs.push('Other Registration Details');
+    const docsString = docs.join(', ') || 'Supporting Documentation';
+
+    setActionLoading(true);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/admin/registration-requests/${actionRequiredRequest.registration_request_id}/action-required/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action_required_docs: docsString,
+          admin_remarks: remarks
+        })
+      });
+      const result = await response.json();
+
+      if (response.ok) {
+        addToast('success', 'Action Required Triggered', `Notification email sent to "${actionRequiredRequest.shipping_company?.shipping_company_name}".`);
+        if (selectedRequest?.registration_request_id === actionRequiredRequest.registration_request_id) {
+          setSelectedRequest(null);
+        }
+        setActionRequiredRequest(null);
+        setActionRequiredRemarks('');
+        fetchRegistrationRequests();
+      } else {
+        addToast('error', 'Update Failed', result.message || 'Unable to update registration status.');
+      }
+    } catch {
+      addToast('error', 'Network Error', 'Unable to connect to backend service.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Filter requests
   const filteredRequests = requests.filter(req => {
     const matchesStatus = statusFilter === 'ALL' || req.registration_request_status === statusFilter;
@@ -200,12 +259,18 @@ export const CompanyApprovals: React.FC = () => {
     return matchesStatus && matchesSearch;
   });
 
-  const getStatusBadge = (status: 'PENDING' | 'APPROVED' | 'REJECTED') => {
+  const getStatusBadge = (status: 'PENDING' | 'ACTION_REQUIRED' | 'APPROVED' | 'REJECTED') => {
     switch (status) {
       case 'APPROVED':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="w-3 h-3" /> Approved
+          </span>
+        );
+      case 'ACTION_REQUIRED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-500/10 border border-orange-500/30 text-orange-600 dark:text-orange-400">
+            <AlertTriangle className="w-3 h-3" /> Action Required
           </span>
         );
       case 'REJECTED':
@@ -218,7 +283,7 @@ export const CompanyApprovals: React.FC = () => {
       default:
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-            <Clock className="w-3 h-3 animate-pulse" /> Pending Approval
+            <Clock className="w-3 h-3 animate-pulse" /> Pending Review
           </span>
         );
     }
@@ -277,10 +342,18 @@ export const CompanyApprovals: React.FC = () => {
         
         {/* Status Tabs */}
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60">
-          {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((status) => {
+          {(['PENDING', 'ACTION_REQUIRED', 'APPROVED', 'REJECTED', 'ALL'] as const).map((status) => {
             const count = status === 'ALL' 
               ? requests.length 
               : requests.filter(r => r.registration_request_status === status).length;
+
+            const label = status === 'ALL' 
+              ? 'All Requests' 
+              : status === 'ACTION_REQUIRED' 
+              ? 'Action Required' 
+              : status === 'PENDING' 
+              ? 'Pending Review' 
+              : status.charAt(0) + status.slice(1).toLowerCase();
 
             return (
               <button
@@ -292,7 +365,7 @@ export const CompanyApprovals: React.FC = () => {
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <span>{status === 'ALL' ? 'All Requests' : status.charAt(0) + status.slice(1).toLowerCase()}</span>
+                <span>{label}</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
                   statusFilter === status
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
@@ -415,7 +488,13 @@ export const CompanyApprovals: React.FC = () => {
 
                       {/* Submitted Date */}
                       <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
-                        {formatDate(req.registration_request_submitted_at)}
+                        <div>{formatDate(req.registration_request_submitted_at)}</div>
+                        {req.registration_request_resubmitted_at && (
+                          <div className="text-[10px] text-sky-600 dark:text-sky-400 font-bold mt-1 flex items-center gap-1">
+                            <RefreshCw className="w-2.5 h-2.5 shrink-0" />
+                            <span>Resubmitted: {formatDate(req.registration_request_resubmitted_at)}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -459,21 +538,31 @@ export const CompanyApprovals: React.FC = () => {
               Close
             </button>
 
-            {selectedRequest?.registration_request_status === 'PENDING' && (
-              <div className="flex items-center gap-2.5">
+            {(selectedRequest?.registration_request_status === 'PENDING' || selectedRequest?.registration_request_status === 'ACTION_REQUIRED') && (
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleRejectClickInModal(selectedRequest)}
                   disabled={actionLoading}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <XCircle className="w-4 h-4" /> Reject Application
+                  <XCircle className="w-4 h-4" /> Reject
+                </button>
+                <button
+                  onClick={() => {
+                    setActionRequiredRequest(selectedRequest);
+                    setActionRequiredRemarks(selectedRequest.registration_request_admin_remarks || '');
+                  }}
+                  disabled={actionLoading}
+                  className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <AlertTriangle className="w-4 h-4" /> Action Required
                 </button>
                 <button
                   onClick={() => handleApprove(selectedRequest)}
                   disabled={actionLoading}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Approve Application
+                  <CheckCircle2 className="w-4 h-4" /> Approve
                 </button>
               </div>
             )}
@@ -617,6 +706,23 @@ export const CompanyApprovals: React.FC = () => {
                     )}
                   </div>
 
+                  {selectedRequest.registration_request_previous_license_file && (
+                    <div className="p-2 px-3 rounded-lg bg-slate-100/80 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">Previous Licence File (Preserved)</div>
+                        <div className="text-[9px] text-slate-400">Archived copy prior to resubmission</div>
+                      </div>
+                      <a
+                        href={getFileUrl(selectedRequest.registration_request_previous_license_file)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      >
+                        <Download className="w-3 h-3" /> View Archive
+                      </a>
+                    </div>
+                  )}
+
                   <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                     <div>
                       <div className="font-bold text-slate-900 dark:text-white text-xs">Representative ID Document</div>
@@ -651,6 +757,23 @@ export const CompanyApprovals: React.FC = () => {
                       <span className="text-[10px] font-medium text-slate-400">N/A</span>
                     )}
                   </div>
+
+                  {selectedRequest.registration_request_previous_id_file && (
+                    <div className="p-2 px-3 rounded-lg bg-slate-100/80 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">Previous Representative ID (Preserved)</div>
+                        <div className="text-[9px] text-slate-400">Archived copy prior to resubmission</div>
+                      </div>
+                      <a
+                        href={getFileUrl(selectedRequest.registration_request_previous_id_file)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"
+                      >
+                        <Download className="w-3 h-3" /> View Archive
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -686,6 +809,21 @@ export const CompanyApprovals: React.FC = () => {
                         {remarksError}
                       </div>
                     )}
+                  </div>
+                </div>
+              ) : selectedRequest.registration_request_status === 'ACTION_REQUIRED' ? (
+                <div className="p-3.5 rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-orange-900 dark:text-orange-200 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-orange-600" />
+                    <span>Correction Request Active</span>
+                  </div>
+                  <div className="text-[11px] text-orange-800 dark:text-orange-300">
+                    <span className="font-bold">Required Documents: </span>
+                    {selectedRequest.registration_request_action_required_docs || 'Supporting Documents'}
+                  </div>
+                  <div className="text-[11px] text-orange-800 dark:text-orange-300 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-orange-200 dark:border-orange-800">
+                    <span className="font-bold block mb-0.5">Instructions Given to Applicant:</span>
+                    {selectedRequest.registration_request_admin_remarks || 'No specific instructions recorded.'}
                   </div>
                 </div>
               ) : (
@@ -768,6 +906,99 @@ export const CompanyApprovals: React.FC = () => {
                 placeholder="Enter detailed feedback / rejection reason..."
                 rows={3}
                 className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-rose-500 transition-all"
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ACTION REQUIRED MODAL */}
+      <Modal
+        isOpen={!!actionRequiredRequest}
+        onClose={() => {
+          setActionRequiredRequest(null);
+          setActionRequiredRemarks('');
+        }}
+        title="Request Document Corrections"
+        subtitle={actionRequiredRequest?.shipping_company?.shipping_company_name}
+        icon={<AlertTriangle className="w-4 h-4 text-orange-500" />}
+        maxWidth="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <button
+              onClick={() => {
+                setActionRequiredRequest(null);
+                setActionRequiredRemarks('');
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmActionRequired}
+              disabled={actionLoading || !actionRequiredRemarks.trim()}
+              className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>{actionLoading ? 'Sending...' : 'Send Correction Request'}</span>
+            </button>
+          </div>
+        }
+      >
+        {actionRequiredRequest && (
+          <div className="space-y-4 text-xs">
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+              Specify which documents or details require applicant correction. The applicant will receive an email notification and can upload revised files via their Registration Status portal.
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Select Documents Requiring Correction:
+              </label>
+              
+              <div className="space-y-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={reqDocLicence}
+                    onChange={(e) => setReqDocLicence(e.target.checked)}
+                    className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500"
+                  />
+                  <span>Company Operating Licence / Maritime Authority Permit</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={reqDocId}
+                    onChange={(e) => setReqDocId(e.target.checked)}
+                    className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500"
+                  />
+                  <span>Authorized Representative Identification Document (Passport / National ID)</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-800 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={reqDocOther}
+                    onChange={(e) => setReqDocOther(e.target.checked)}
+                    className="w-4 h-4 rounded text-orange-600 focus:ring-orange-500"
+                  />
+                  <span>Other Registration Particulars / Clarifications</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Administrator Remarks & Specific Instructions (Required):
+              </label>
+              <textarea
+                value={actionRequiredRemarks}
+                onChange={(e) => setActionRequiredRemarks(e.target.value)}
+                placeholder="e.g. The uploaded operating license expired on Jan 2026. Please upload the valid 2026 renewal certificate."
+                rows={3}
+                className="w-full p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-orange-500 transition-all"
               />
             </div>
           </div>
