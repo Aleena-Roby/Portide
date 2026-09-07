@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { BackendVessel, BackendVesselArrivalRequest, BackendBerth, BackendVesselSchedule } from '../../types';
 import { BerthAvailabilityView } from './BerthAvailabilityView';
+import { cleanBerthDisplayName } from '../../utils/berthUtils';
 import { 
   Anchor, 
   Ship, 
@@ -60,6 +61,9 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
 
   // Confirmation Modals State
   const [approvingRequest, setApprovingRequest] = useState<BackendVesselArrivalRequest | null>(null);
+  const [approvalBerthOption, setApprovalBerthOption] = useState<'preferred' | 'alternate' | 'none'>('preferred');
+  const [approvalSelectedBerthId, setApprovalSelectedBerthId] = useState<string>('');
+  const [approvalError, setApprovalError] = useState<string>('');
   const [rejectingRequest, setRejectingRequest] = useState<BackendVesselArrivalRequest | null>(null);
   const [confirmRejectionReason, setConfirmRejectionReason] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<boolean>(false);
@@ -273,12 +277,86 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
     setRemarksError('');
   };
 
-  const handleApproveClick = (req: BackendVesselArrivalRequest) => {
+  const handleApproveClick = (req: BackendVesselArrivalRequest, forcedOption?: 'preferred' | 'alternate') => {
     setApprovingRequest(req);
+    setApprovalError('');
+    if (req.preferred_berth) {
+      const vLen = parseFloat(String(req.vessel?.vessel_length || 0));
+      const vDraft = parseFloat(String(req.vessel?.vessel_draft || 0));
+      const bLen = parseFloat(String(req.preferred_berth.berth_max_length ?? (req.preferred_berth as any).berth_length_capacity ?? 0));
+      const bDraft = parseFloat(String(req.preferred_berth.berth_max_draft ?? (req.preferred_berth as any).berth_draft_capacity ?? 0));
+      const isSuitable = vLen <= bLen && vDraft <= bDraft && req.preferred_berth.berth_status !== 'MAINTENANCE' && req.preferred_berth.berth_status !== 'INACTIVE';
+
+      // Check conflict
+      const reqArr = new Date(req.vessel_arrival_request_requested_arrival_at).getTime();
+      const reqDep = new Date(req.vessel_arrival_request_requested_departure_at).getTime();
+      const conflict = schedules.find(sch => {
+        const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+        if (schBerthId !== req.preferred_berth?.berth_id) return false;
+        if (sch.vessel_schedule_status === 'DEPARTED') return false;
+        const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+        const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+        return schA < reqDep && schD > reqArr;
+      });
+
+      if (forcedOption === 'alternate' || !isSuitable || conflict) {
+        setApprovalBerthOption('alternate');
+        setApprovalSelectedBerthId('');
+      } else {
+        setApprovalBerthOption('preferred');
+        setApprovalSelectedBerthId(String(req.preferred_berth.berth_id));
+      }
+    } else {
+      setApprovalBerthOption('alternate');
+      setApprovalSelectedBerthId('');
+    }
   };
 
   const handleConfirmApproval = async () => {
     if (!approvingRequest) return;
+    setApprovalError('');
+
+    const payload: Record<string, any> = {
+      remarks: reviewRemarks.trim() || 'Approved for port operations and scheduling.'
+    };
+
+    if (approvalBerthOption === 'preferred' && approvingRequest.preferred_berth) {
+      const vLen = parseFloat(String(approvingRequest.vessel?.vessel_length || 0));
+      const vDraft = parseFloat(String(approvingRequest.vessel?.vessel_draft || 0));
+      const bLen = parseFloat(String(approvingRequest.preferred_berth.berth_max_length ?? (approvingRequest.preferred_berth as any).berth_length_capacity ?? 0));
+      const bDraft = parseFloat(String(approvingRequest.preferred_berth.berth_max_draft ?? (approvingRequest.preferred_berth as any).berth_draft_capacity ?? 0));
+      if (vLen > bLen || vDraft > bDraft) {
+        setApprovalError('Preferred berth is technically incompatible with vessel dimensions. Please select an alternate suitable berth.');
+        return;
+      }
+      if (approvingRequest.preferred_berth.berth_status === 'MAINTENANCE' || approvingRequest.preferred_berth.berth_status === 'INACTIVE') {
+        setApprovalError('Preferred berth is currently inactive or under maintenance. Please select an alternate berth.');
+        return;
+      }
+      // Check conflict
+      const reqArr = new Date(approvingRequest.vessel_arrival_request_requested_arrival_at).getTime();
+      const reqDep = new Date(approvingRequest.vessel_arrival_request_requested_departure_at).getTime();
+      const conflict = schedules.find(sch => {
+        const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+        if (schBerthId !== approvingRequest.preferred_berth?.berth_id) return false;
+        if (sch.vessel_schedule_status === 'DEPARTED') return false;
+        const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+        const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+        return schA < reqDep && schD > reqArr;
+      });
+      if (conflict) {
+        setApprovalError(`Berth availability conflict: ${cleanBerthDisplayName(approvingRequest.preferred_berth.berth_name)} is already allocated to '${conflict.vessel_name || 'scheduled vessel'}' during this timeframe. Please choose an alternate berth.`);
+        return;
+      }
+      payload.berth_id = approvingRequest.preferred_berth.berth_id;
+    } else if (approvalBerthOption === 'alternate') {
+      if (!approvalSelectedBerthId) {
+        setApprovalError('Please select an alternate berth to allocate.');
+        return;
+      }
+      payload.berth_id = parseInt(approvalSelectedBerthId, 10);
+    }
+
     setActionLoading(true);
     try {
       const response = await fetch(`http://127.0.0.1:8000/api/arrival-requests/${approvingRequest.vessel_arrival_request_id}/approve/`, {
@@ -289,26 +367,31 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
           'X-User-Role': 'port_operations_officer',
           'X-User-Id': currentUser?.id || ''
         },
-        body: JSON.stringify({
-          remarks: reviewRemarks.trim() || 'Approved for further port scheduling.'
-        })
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
       setActionLoading(false);
 
       if (response.ok && result.status === 'success') {
-        addToast('success', 'Arrival Request Approved', `Arrival request for '${approvingRequest.vessel?.vessel_name}' approved successfully for further port scheduling.`);
+        const isAllocated = !!(result.data?.schedule || payload.berth_id);
+        addToast(
+          'success', 
+          isAllocated ? 'Arrival Request Approved & Berth Allocated' : 'Arrival Request Approved', 
+          result.message || `Arrival request for '${approvingRequest.vessel?.vessel_name}' approved successfully.`
+        );
         if (selectedRequest?.vessel_arrival_request_id === approvingRequest.vessel_arrival_request_id) {
           setSelectedRequest(null);
         }
         setApprovingRequest(null);
         fetchOperationsData();
       } else {
-        addToast('error', 'Approval Failed', result.message || 'Failed to approve arrival request.');
+        setApprovalError(result.message || 'Failed to approve arrival request.');
+        addToast('error', 'Approval Blocked', result.message || 'Failed to approve arrival request.');
       }
     } catch (err) {
       setActionLoading(false);
+      setApprovalError('Unable to connect to server. Please try again.');
       addToast('error', 'Network Error', 'Unable to connect to server. Please try again.');
     }
   };
@@ -1294,6 +1377,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                     <th className="p-4">REQUESTED ARRIVAL</th>
                     <th className="p-4">REQUESTED DEPARTURE</th>
                     <th className="p-4">CARGO TYPE</th>
+                    <th className="p-4">PREFERRED BERTH</th>
                     <th className="p-4">STATUS</th>
                     <th className="p-4 text-right">OPERATIONAL ACTIONS</th>
                   </tr>
@@ -1335,6 +1419,21 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                       <td className="p-4">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">{req.vessel_arrival_request_cargo_type}</div>
                         <div className="text-[10px] text-slate-400 font-mono">{req.vessel_arrival_request_cargo_quantity} units</div>
+                      </td>
+
+                      <td className="p-4">
+                        {req.preferred_berth ? (
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                              <span>{cleanBerthDisplayName(req.preferred_berth.berth_name)}</span>
+                            </div>
+                            <div className="text-[10px] font-mono text-sky-600 dark:text-sky-400">
+                              {req.preferred_berth.berth_code}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">Open allocation</span>
+                        )}
                       </td>
 
                       <td className="p-4">
@@ -1408,33 +1507,93 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
         icon={<Anchor className="w-4 h-4 text-emerald-600" />}
         maxWidth="3xl"
         footer={
-          <div className="flex items-center justify-between w-full">
-            <button
-              onClick={() => setSelectedRequest(null)}
-              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-            >
-              Close
-            </button>
+          (() => {
+            const vLen = parseFloat(String(selectedRequest?.vessel?.vessel_length || 0));
+            const vDraft = parseFloat(String(selectedRequest?.vessel?.vessel_draft || 0));
+            const pref = selectedRequest?.preferred_berth;
+            const bLen = parseFloat(String(pref?.berth_max_length ?? (pref as any)?.berth_length_capacity ?? 0));
+            const bDraft = parseFloat(String(pref?.berth_max_draft ?? (pref as any)?.berth_draft_capacity ?? 0));
+            const isLenOk = pref ? vLen <= bLen : false;
+            const isDraftOk = pref ? vDraft <= bDraft : false;
+            const isCompatible = pref ? (isLenOk && isDraftOk) : false;
+            const isOperational = pref ? (pref.berth_is_active !== false && pref.berth_status !== 'MAINTENANCE' && pref.berth_status !== 'INACTIVE') : false;
 
-            {selectedRequest?.vessel_arrival_request_status === 'PENDING' && (
-              <div className="flex items-center gap-2.5">
+            const reqArr = selectedRequest ? new Date(selectedRequest.vessel_arrival_request_requested_arrival_at).getTime() : 0;
+            const reqDep = selectedRequest ? new Date(selectedRequest.vessel_arrival_request_requested_departure_at).getTime() : 0;
+
+            const conflictingSchedule = pref ? schedules.find(sch => {
+              const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+              if (schBerthId !== pref.berth_id) return false;
+              if (sch.vessel_schedule_status === 'DEPARTED') return false;
+              const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+              const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+              return schA < reqDep && schD > reqArr;
+            }) : null;
+
+            const canApprovePreferred = pref ? (isCompatible && isOperational && !conflictingSchedule) : false;
+
+            return (
+              <div className="flex items-center justify-between w-full">
                 <button
-                  onClick={() => handleRejectClick(selectedRequest)}
-                  disabled={actionLoading}
-                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  onClick={() => setSelectedRequest(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
                 >
-                  <XCircle className="w-4 h-4" /> Reject Request
+                  Close
                 </button>
-                <button
-                  onClick={() => handleApproveClick(selectedRequest)}
-                  disabled={actionLoading}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Approve Request
-                </button>
+
+                {selectedRequest?.vessel_arrival_request_status === 'PENDING' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleRejectClick(selectedRequest)}
+                      disabled={actionLoading}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" /> Reject Request
+                    </button>
+
+                    {pref ? (
+                      canApprovePreferred ? (
+                        <>
+                          <button
+                            onClick={() => handleApproveClick(selectedRequest, 'alternate')}
+                            disabled={actionLoading}
+                            className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                            title="Assign an alternative berth instead of preferred"
+                          >
+                            <ArrowRight className="w-3.5 h-3.5 text-sky-600" /> Change Berth
+                          </button>
+                          <button
+                            onClick={() => handleApproveClick(selectedRequest, 'preferred')}
+                            disabled={actionLoading}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="w-4 h-4" /> Approve Request
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleApproveClick(selectedRequest, 'alternate')}
+                          disabled={actionLoading}
+                          className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                          title="Preferred berth cannot be finalized. Select another suitable berth to approve."
+                        >
+                          <ArrowRight className="w-4 h-4" /> Change Berth &amp; Approve
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => handleApproveClick(selectedRequest, 'alternate')}
+                        disabled={actionLoading}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Assign Berth &amp; Approve
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()
         }
       >
         {selectedRequest && (
@@ -1591,9 +1750,166 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
               </div>
             </div>
 
+            {/* 5. PREFERRED BERTH & QUAYSIDE SUITABILITY */}
+            <div className="space-y-2">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 border-b border-slate-200 dark:border-slate-800 pb-1 flex items-center justify-between">
+                <span>5. Quayside Preferred Berth Request</span>
+                <span className="text-[9px] font-normal text-slate-400 lowercase">
+                  {selectedRequest.preferred_berth ? 'Shipping Company indicated preference' : 'No preference specified'}
+                </span>
+              </h3>
+              {selectedRequest.preferred_berth ? (
+                (() => {
+                  const pref = selectedRequest.preferred_berth;
+                  const vLen = parseFloat(String(selectedRequest.vessel?.vessel_length || 0));
+                  const vDraft = parseFloat(String(selectedRequest.vessel?.vessel_draft || 0));
+                  const bLen = parseFloat(String(pref.berth_max_length ?? (pref as any)?.berth_length_capacity ?? 0));
+                  const bDraft = parseFloat(String(pref.berth_max_draft ?? (pref as any)?.berth_draft_capacity ?? 0));
+                  const isLenOk = vLen <= bLen;
+                  const isDraftOk = vDraft <= bDraft;
+                  const isCompatible = isLenOk && isDraftOk;
+                  const isOperational = pref.berth_is_active !== false && pref.berth_status !== 'MAINTENANCE' && pref.berth_status !== 'INACTIVE';
+
+                  const reqArr = new Date(selectedRequest.vessel_arrival_request_requested_arrival_at).getTime();
+                  const reqDep = new Date(selectedRequest.vessel_arrival_request_requested_departure_at).getTime();
+
+                  const conflictingSchedule = schedules.find(sch => {
+                    const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+                    if (schBerthId !== pref.berth_id) return false;
+                    if (sch.vessel_schedule_status === 'DEPARTED') return false;
+                    const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+                    const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+                    return schA < reqDep && schD > reqArr;
+                  });
+
+                  const competingPendingRequests = arrivalRequests.filter(other => {
+                    if (other.vessel_arrival_request_id === selectedRequest.vessel_arrival_request_id) return false;
+                    if (other.vessel_arrival_request_status !== 'PENDING') return false;
+                    const otherBerthId = other.preferred_berth?.berth_id || other.vessel_arrival_request_preferred_berth_id;
+                    if (otherBerthId !== pref.berth_id) return false;
+                    const otherArr = new Date(other.vessel_arrival_request_requested_arrival_at).getTime();
+                    const otherDep = new Date(other.vessel_arrival_request_requested_departure_at).getTime();
+                    return otherArr < reqDep && otherDep > reqArr;
+                  });
+
+                  const canApprove = isCompatible && isOperational && !conflictingSchedule;
+
+                  return (
+                    <div className="p-3.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800/60 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                          <Anchor className="w-3.5 h-3.5 text-sky-600" />
+                          <span>{cleanBerthDisplayName(pref.berth_name)}</span>
+                          <span className="font-mono text-sky-600 text-[11px]">({pref.berth_code})</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300">
+                          Requested Preference
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200/80 dark:border-slate-800">
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Type</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">{pref.berth_type || 'General'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Max LOA</span>
+                          <span className="font-mono text-slate-900 dark:text-white font-bold text-xs">{bLen} m</span>
+                          <span className="text-[10px] text-slate-400 block font-mono">Vessel: {vLen} m</span>
+                          <span className={`text-[10px] font-bold block mt-0.5 ${isLenOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {isLenOk ? '✓ Length OK' : '✕ Length Exceeded'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Max Draft</span>
+                          <span className="font-mono text-slate-900 dark:text-white font-bold text-xs">{bDraft} m</span>
+                          <span className="text-[10px] text-slate-400 block font-mono">Vessel: {vDraft} m</span>
+                          <span className={`text-[10px] font-bold block mt-0.5 ${isDraftOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {isDraftOk ? '✓ Draft OK' : '✕ Draft Exceeded'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase font-bold block">Technical Match</span>
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-bold mt-1 px-2 py-0.5 rounded ${
+                            isCompatible 
+                              ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' 
+                              : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+                          }`}>
+                            {isCompatible ? '✓ Compatible' : '✕ Dimensions Exceeded'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status Diagnostics / Warnings */}
+                      {canApprove ? (
+                        <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium flex flex-wrap items-center gap-3">
+                          <span className="font-bold">✓ Preferred berth is technically compatible</span>
+                          <span>•</span>
+                          <span className="font-bold">✓ Berth is operational &amp; available</span>
+                          <span>•</span>
+                          <span className="font-bold">✓ No scheduling conflict</span>
+                        </div>
+                      ) : !isCompatible ? (
+                        <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-rose-700 dark:text-rose-300">⚠ Preferred berth is technically incompatible.</div>
+                            <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                              The vessel exceeds the permitted dimensions of this berth ({!isLenOk && !isDraftOk ? 'Length and Draft exceeded' : !isLenOk ? 'Length exceeded' : 'Draft exceeded'}). Use &quot;Change Berth &amp; Approve&quot; below to assign an alternative suitable berth.
+                            </div>
+                          </div>
+                        </div>
+                      ) : conflictingSchedule ? (
+                        <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-xs flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-rose-700 dark:text-rose-300">⚠ Berth Scheduling Conflict Detected</div>
+                            <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                              {cleanBerthDisplayName(pref.berth_name)} has an active allocation for &apos;{conflictingSchedule.vessel_name || 'Scheduled Vessel'}&apos; during this timeframe ({formatDate(conflictingSchedule.vessel_schedule_scheduled_arrival_at)} – {formatDate(conflictingSchedule.vessel_schedule_scheduled_departure_at)}). Please assign an alternative berth.
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-amber-800 dark:text-amber-300">⚠ Berth Inactive / Maintenance</div>
+                            <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                              {cleanBerthDisplayName(pref.berth_name)} status is currently {pref.berth_status}. Please select an active alternative berth.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Competing Pending Requests Warning */}
+                      {competingPendingRequests.length > 0 && (
+                        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs flex items-start gap-2">
+                          <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-amber-800 dark:text-amber-300">⚠ Competing Pending Allocation ({competingPendingRequests.length} other request{competingPendingRequests.length > 1 ? 's' : ''})</div>
+                            <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5 space-y-0.5">
+                              {competingPendingRequests.map(other => (
+                                <div key={other.vessel_arrival_request_id} className="font-mono text-[10px]">
+                                  • Request #AR-00{other.vessel_arrival_request_id}: {other.vessel?.vessel_name} ({other.vessel?.company_name || 'Shipping Line'})
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500">
+                  The shipping company did not specify a preferred berth. Port Operations will assign an available berth.
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-slate-800">
               <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#D49A24]">
-                5. Operational Review
+                6. Operational Review
               </h3>
 
               {selectedRequest.vessel_arrival_request_status === 'PENDING' ? (
@@ -1656,10 +1972,10 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
       <Modal
         isOpen={!!approvingRequest}
         onClose={() => setApprovingRequest(null)}
-        title="Approve Arrival Request"
-        subtitle={approvingRequest?.vessel?.vessel_name}
+        title="Approve Arrival Request & Berth Allocation"
+        subtitle={`Request #AR-00${approvingRequest?.vessel_arrival_request_id} • ${approvingRequest?.vessel?.vessel_name}`}
         icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-        maxWidth="xl"
+        maxWidth="2xl"
         footer={
           <div className="flex items-center justify-end gap-2.5 w-full">
             <button
@@ -1671,21 +1987,282 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
             <button
               onClick={handleConfirmApproval}
               disabled={actionLoading}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              {actionLoading ? 'Approving...' : 'Confirm Approval'}
+              <Check className="w-3.5 h-3.5" />
+              <span>{actionLoading ? 'Processing Approval...' : 'Confirm Approval & Allocation'}</span>
             </button>
           </div>
         }
       >
         {approvingRequest && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Are you sure you want to approve this vessel arrival request for{' '}
-              <span className="font-bold text-slate-900 dark:text-white">
-                {approvingRequest.vessel?.vessel_name}
-              </span> for further port scheduling?
-            </p>
+          <div className="space-y-4">
+            {approvalError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{approvalError}</span>
+              </div>
+            )}
+
+            {/* Vessel & Window Summary */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-[9px] uppercase font-bold text-slate-400 block">Vessel</span>
+                <span className="font-bold text-slate-900 dark:text-white truncate block">{approvingRequest.vessel?.vessel_name}</span>
+                <span className="font-mono text-[10px] text-slate-500 block">IMO: {approvingRequest.vessel?.vessel_imo_number}</span>
+              </div>
+              <div>
+                <span className="text-[9px] uppercase font-bold text-slate-400 block">Dimensions</span>
+                <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
+                  LOA: {approvingRequest.vessel?.vessel_length}m
+                </span>
+                <span className="font-mono text-emerald-600 font-bold text-[11px] block">
+                  Draft: {approvingRequest.vessel?.vessel_draft}m
+                </span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block">Requested Window</span>
+                <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
+                  {formatDate(approvingRequest.vessel_arrival_request_requested_arrival_at)}
+                </span>
+                <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
+                  → {formatDate(approvingRequest.vessel_arrival_request_requested_departure_at)}
+                </span>
+              </div>
+            </div>
+
+            {/* Berth Allocation Options */}
+            <div className="space-y-2.5">
+              <label className="block text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Berth Allocation Decision
+              </label>
+
+              {/* Option 1: Preferred Berth */}
+              {approvingRequest.preferred_berth ? (
+                (() => {
+                  const pref = approvingRequest.preferred_berth;
+                  const vLen = parseFloat(String(approvingRequest.vessel?.vessel_length || 0));
+                  const vDraft = parseFloat(String(approvingRequest.vessel?.vessel_draft || 0));
+                  const bLen = parseFloat(String(pref.berth_max_length ?? (pref as any)?.berth_length_capacity ?? 0));
+                  const bDraft = parseFloat(String(pref.berth_max_draft ?? (pref as any)?.berth_draft_capacity ?? 0));
+                  const isLenOk = vLen <= bLen;
+                  const isDraftOk = vDraft <= bDraft;
+                  const isCompatible = isLenOk && isDraftOk;
+                  const isOperational = pref.berth_is_active !== false && pref.berth_status !== 'MAINTENANCE' && pref.berth_status !== 'INACTIVE';
+
+                  const reqArr = new Date(approvingRequest.vessel_arrival_request_requested_arrival_at).getTime();
+                  const reqDep = new Date(approvingRequest.vessel_arrival_request_requested_departure_at).getTime();
+                  const conflict = schedules.find(sch => {
+                    const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+                    if (schBerthId !== pref.berth_id) return false;
+                    if (sch.vessel_schedule_status === 'DEPARTED') return false;
+                    const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+                    const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+                    return schA < reqDep && schD > reqArr;
+                  });
+
+                  const isPrefSuitable = isCompatible && isOperational && !conflict;
+
+                  return (
+                    <div 
+                      onClick={() => {
+                        if (isPrefSuitable) {
+                          setApprovalBerthOption('preferred');
+                          setApprovalSelectedBerthId(String(pref.berth_id));
+                        }
+                      }}
+                      className={`p-3 rounded-xl border transition-all ${
+                        approvalBerthOption === 'preferred'
+                          ? 'bg-sky-500/10 border-sky-500 ring-2 ring-sky-500/20'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-sky-300'
+                      } ${!isPrefSuitable ? 'opacity-60 cursor-not-allowed bg-slate-50 dark:bg-slate-900/40' : 'cursor-pointer'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <label className={`flex items-center gap-2 ${isPrefSuitable ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                          <input
+                            type="radio"
+                            name="berthAllocationChoice"
+                            value="preferred"
+                            checked={approvalBerthOption === 'preferred'}
+                            disabled={!isPrefSuitable}
+                            onChange={() => {
+                              if (isPrefSuitable) {
+                                setApprovalBerthOption('preferred');
+                                setApprovalSelectedBerthId(String(pref.berth_id));
+                              }
+                            }}
+                            className="text-sky-600 focus:ring-sky-500"
+                          />
+                          <span className="font-bold text-xs text-slate-900 dark:text-white">
+                            Allocate Preferred Berth: {cleanBerthDisplayName(pref.berth_name)} ({pref.berth_code})
+                          </span>
+                        </label>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isPrefSuitable 
+                            ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'
+                            : 'bg-rose-500/10 text-rose-600 border border-rose-500/30'
+                        }`}>
+                          {isPrefSuitable ? '✓ Suitable' : !isCompatible ? '✕ Dimensions Exceeded' : !isOperational ? '✕ Inactive/Maintenance' : '✕ Schedule Conflict'}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-slate-500 grid grid-cols-3 gap-2 pl-5 font-mono">
+                        <div>Type: <span className="font-sans font-medium text-slate-700 dark:text-slate-300">{pref.berth_type || 'General'}</span></div>
+                        <div>Max LOA: <span className={isLenOk ? 'text-slate-700 dark:text-slate-300 font-bold' : 'text-rose-600 font-bold'}>{bLen}m</span> ({isLenOk ? '✓' : `✕ Exceeded by ${(vLen - bLen).toFixed(1)}m`})</div>
+                        <div>Max Draft: <span className={isDraftOk ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>{bDraft}m</span> ({isDraftOk ? '✓' : `✕ Exceeded by ${(vDraft - bDraft).toFixed(1)}m`})</div>
+                      </div>
+
+                      {!isPrefSuitable && (
+                        <div className="mt-2.5 ml-5 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 text-[11px] text-rose-700 dark:text-rose-300 font-medium">
+                          {!isCompatible
+                            ? 'Preferred berth is technically incompatible with vessel dimensions. Please choose "Assign Alternative Berth" below.'
+                            : conflict
+                            ? `Conflict: Berth already allocated to ${conflict.vessel_name || 'another vessel'} during this timeframe. Please choose an alternative berth.`
+                            : 'Berth is currently under maintenance or inactive. Please choose an alternative berth.'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs text-slate-500">
+                  No preferred berth was requested by the shipping company.
+                </div>
+              )}
+
+              {/* Option 2: Alternate Berth Selection */}
+              <div 
+                className={`p-3 rounded-xl border transition-all ${
+                  approvalBerthOption === 'alternate'
+                    ? 'bg-sky-500/10 border-sky-500 ring-2 ring-sky-500/20'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-sky-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="berthAllocationChoice"
+                      value="alternate"
+                      checked={approvalBerthOption === 'alternate'}
+                      onChange={() => setApprovalBerthOption('alternate')}
+                      className="text-sky-600 focus:ring-sky-500"
+                    />
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">
+                      Assign Alternative Berth
+                    </span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Vessel LOA: {approvingRequest.vessel?.vessel_length}m • Draft: {approvingRequest.vessel?.vessel_draft}m
+                  </span>
+                </div>
+
+                {approvalBerthOption === 'alternate' && (
+                  <div className="mt-2 pl-5 space-y-2">
+                    <select
+                      value={approvalSelectedBerthId}
+                      onChange={(e) => {
+                        setApprovalSelectedBerthId(e.target.value);
+                        if (approvalError) setApprovalError('');
+                      }}
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="">-- Choose Alternative Berth --</option>
+                      {berths.map(b => {
+                        const vLen = parseFloat(String(approvingRequest.vessel?.vessel_length || 0));
+                        const vDraft = parseFloat(String(approvingRequest.vessel?.vessel_draft || 0));
+                        const bLen = parseFloat(String(b.berth_max_length ?? (b as any).berth_length_capacity ?? 0));
+                        const bDraft = parseFloat(String(b.berth_max_draft ?? (b as any).berth_draft_capacity ?? 0));
+                        const isLenOk = vLen <= bLen;
+                        const isDraftOk = vDraft <= bDraft;
+                        const isCompatible = isLenOk && isDraftOk;
+                        const isOperational = b.berth_is_active !== false && b.berth_status !== 'MAINTENANCE' && b.berth_status !== 'INACTIVE';
+
+                        const reqArr = new Date(approvingRequest.vessel_arrival_request_requested_arrival_at).getTime();
+                        const reqDep = new Date(approvingRequest.vessel_arrival_request_requested_departure_at).getTime();
+                        const conflict = schedules.find(sch => {
+                          const schBerthId = sch.vessel_schedule_berth_id || sch.berth?.berth_id;
+                          if (schBerthId !== b.berth_id) return false;
+                          if (sch.vessel_schedule_status === 'DEPARTED') return false;
+                          const schA = new Date(sch.vessel_schedule_scheduled_arrival_at).getTime();
+                          const schD = new Date(sch.vessel_schedule_scheduled_departure_at).getTime();
+                          return schA < reqDep && schD > reqArr;
+                        });
+
+                        const fits = isCompatible && isOperational && !conflict;
+                        let statusText = '✓ Suitable & Available';
+                        if (!isCompatible) {
+                          if (!isLenOk && !isDraftOk) statusText = '✕ Length & Draft Exceeded';
+                          else if (!isLenOk) statusText = '✕ Length Exceeded';
+                          else statusText = '✕ Draft Exceeded';
+                        } else if (!isOperational) {
+                          statusText = `✕ ${b.berth_status}`;
+                        } else if (conflict) {
+                          statusText = '✕ Conflict (Occupied)';
+                        }
+
+                        return (
+                          <option 
+                            key={b.berth_id} 
+                            value={b.berth_id} 
+                            disabled={!fits}
+                          >
+                            {cleanBerthDisplayName(b.berth_name)} ({b.berth_code}) — Max LOA: {bLen}m, Draft: {bDraft}m [{statusText}]
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    {/* Summary of selected alternate berth */}
+                    {approvalSelectedBerthId && (() => {
+                      const selectedAlt = berths.find(b => String(b.berth_id) === String(approvalSelectedBerthId));
+                      if (!selectedAlt) return null;
+                      const bLen = parseFloat(String(selectedAlt.berth_max_length ?? (selectedAlt as any).berth_length_capacity ?? 0));
+                      const bDraft = parseFloat(String(selectedAlt.berth_max_draft ?? (selectedAlt as any).berth_draft_capacity ?? 0));
+                      return (
+                        <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            Selected: {cleanBerthDisplayName(selectedAlt.berth_name)} ({selectedAlt.berth_code})
+                          </span>
+                          <span className="font-mono text-[11px]">
+                            Max LOA: {bLen}m • Draft: {bDraft}m
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* Option 3: Approve without Allocation */}
+              <div 
+                className={`p-3 rounded-xl border transition-all ${
+                  approvalBerthOption === 'none'
+                    ? 'bg-sky-500/10 border-sky-500 ring-2 ring-sky-500/20'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-sky-300'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="berthAllocationChoice"
+                    value="none"
+                    checked={approvalBerthOption === 'none'}
+                    onChange={() => setApprovalBerthOption('none')}
+                    className="text-sky-600 focus:ring-sky-500"
+                  />
+                  <div>
+                    <span className="font-bold text-xs text-slate-900 dark:text-white block">
+                      Approve Request Only (Schedule Berth Later)
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      Approves the arrival request without immediately assigning a berth or creating a schedule.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
 
             {reviewRemarks.trim() && (
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
