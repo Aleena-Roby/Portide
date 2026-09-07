@@ -7,6 +7,9 @@ from authentication.views import (
     AdminRegistrationRequestsAPIView,
     AdminApproveRegistrationRequestAPIView,
     AdminRejectRegistrationRequestAPIView,
+    AdminActionRequiredRegistrationRequestAPIView,
+    PublicRegistrationStatusAPIView,
+    ShippingCompanyResubmitAPIView,
     ForgotPasswordAPIView,
     ResetPasswordAPIView,
     AdminCreateStaffAPIView,
@@ -36,6 +39,10 @@ urlpatterns = [
     path('me/', CurrentUserAPIView.as_view(), name='current_user'),
     path('me', CurrentUserAPIView.as_view(), name='current_user_noslash'),
     path('registration/', ShippingCompanyRegistrationAPIView.as_view(), name='registration'),
+    path('registration-status/', PublicRegistrationStatusAPIView.as_view(), name='registration_status'),
+    path('registration-status', PublicRegistrationStatusAPIView.as_view(), name='registration_status_noslash'),
+    path('registration-resubmit/', ShippingCompanyResubmitAPIView.as_view(), name='registration_resubmit'),
+    path('registration-resubmit', ShippingCompanyResubmitAPIView.as_view(), name='registration_resubmit_noslash'),
     path('change-password/', ChangePasswordAPIView.as_view(), name='change_password'),
 
     # Vessel Management Endpoints
@@ -77,6 +84,8 @@ urlpatterns = [
     path('admin/registration-requests/<int:pk>/', AdminRegistrationRequestsAPIView.as_view(), name='admin_registration_requests_detail'),
     path('admin/registration-requests/<int:pk>/approve/', AdminApproveRegistrationRequestAPIView.as_view(), name='admin_registration_requests_approve'),
     path('admin/registration-requests/<int:pk>/reject/', AdminRejectRegistrationRequestAPIView.as_view(), name='admin_registration_requests_reject'),
+    path('admin/registration-requests/<int:pk>/action-required/', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_registration_requests_action_required'),
+    path('admin/registration-requests/<int:pk>/action-required', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_registration_requests_action_required_noslash'),
     
     # Admin Staff Account Management & User Listing
     path('admin/users/staff/', AdminCreateStaffAPIView.as_view(), name='admin_create_staff'),
@@ -90,6 +99,8 @@ urlpatterns = [
     path('admin/company-approvals/', AdminRegistrationRequestsAPIView.as_view(), name='admin_company_approvals_list'),
     path('admin/company-approvals/<int:pk>/approve/', AdminApproveRegistrationRequestAPIView.as_view(), name='admin_company_approvals_approve'),
     path('admin/company-approvals/<int:pk>/reject/', AdminRejectRegistrationRequestAPIView.as_view(), name='admin_company_approvals_reject'),
+    path('admin/company-approvals/<int:pk>/action-required/', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_company_approvals_action_required'),
+    path('admin/company-approvals/<int:pk>/action-required', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_company_approvals_action_required_noslash'),
 
     path('forgot-password', ForgotPasswordAPIView.as_view(), name='forgot_password'),
     path('forgot-password/', ForgotPasswordAPIView.as_view(), name='forgot_password_slash'),

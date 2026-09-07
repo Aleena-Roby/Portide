@@ -29,6 +29,7 @@ from authentication.serializers import (
     LoginSerializer, 
     RegistrationRequestSerializer, 
     RegistrationRequestDetailSerializer,
+    RegistrationResubmissionSerializer,
     ForgotPasswordSerializer, 
     ResetPasswordSerializer,
     CreateStaffSerializer,
@@ -45,6 +46,13 @@ from authentication.serializers import (
     VesselScheduleSerializer,
     SystemSettingSerializer,
     AuditLogSerializer
+)
+from authentication.email_service import (
+    send_registration_submitted_email,
+    send_registration_action_required_email,
+    send_registration_resubmitted_email,
+    send_registration_approved_email,
+    send_registration_rejected_email
 )
 from authentication.permissions import (
     IsPortAdministrator, 
@@ -127,9 +135,16 @@ class LoginAPIView(APIView):
         # 3. Fetch linked profile details & status
         user_profile = getattr(login_obj, 'profile', None)
         company = user_profile.shipping_company_id if user_profile else None
+        reg_req = None
+        if company:
+            reg_req = RegistrationRequest.objects.filter(shipping_company_id=company).order_by('-registration_request_submitted_at').first()
 
         # Status check rules:
-        if login_obj.login_status == 'PENDING' or (user_profile and user_profile.user_status == 'PENDING'):
+        # Check ACTION_REQUIRED first
+        if (login_obj.login_status == 'ACTION_REQUIRED' or 
+            (user_profile and user_profile.user_status == 'ACTION_REQUIRED') or 
+            (company and company.shipping_company_status == 'ACTION_REQUIRED') or 
+            (reg_req and reg_req.registration_request_status == 'ACTION_REQUIRED')):
             create_audit_log(
                 user=login_obj,
                 actor_name=login_obj.login_email,
@@ -138,19 +153,21 @@ class LoginAPIView(APIView):
                 category='AUTHENTICATION',
                 target_type='Authentication',
                 target_id=login_obj.login_id,
-                description=f"Login attempt rejected for {login_obj.login_email} (Pending approval)",
+                description=f"Login attempt blocked for {login_obj.login_email} (Additional documentation required)",
                 status='FAILED',
                 request=request
             )
             return Response(
                 {
                     "status": "error",
-                    "message": "Your registration is awaiting Port Administrator approval."
+                    "registration_status": "ACTION_REQUIRED",
+                    "registration_request_id": reg_req.registration_request_id if reg_req else None,
+                    "message": "Additional documentation is required for your registration before access can be granted. Please check your registration status to upload the required documents."
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        if login_obj.login_status == 'REJECTED' or (user_profile and user_profile.user_status == 'REJECTED'):
+        if login_obj.login_status == 'REJECTED' or (user_profile and user_profile.user_status == 'REJECTED') or (company and company.shipping_company_status == 'REJECTED') or (reg_req and reg_req.registration_request_status == 'REJECTED'):
             create_audit_log(
                 user=login_obj,
                 actor_name=login_obj.login_email,
@@ -163,15 +180,18 @@ class LoginAPIView(APIView):
                 status='FAILED',
                 request=request
             )
+            rejection_reason = reg_req.registration_request_rejection_reason if reg_req else "Compliance requirements not met."
             return Response(
                 {
                     "status": "error",
-                    "message": "Your registration request has been rejected."
+                    "registration_status": "REJECTED",
+                    "registration_request_id": reg_req.registration_request_id if reg_req else None,
+                    "message": f"Your registration request has been rejected. Reason: {rejection_reason}"
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        if login_obj.login_status == 'SUSPENDED' or (user_profile and user_profile.user_status == 'SUSPENDED'):
+        if login_obj.login_status == 'SUSPENDED' or (user_profile and user_profile.user_status == 'SUSPENDED') or (company and company.shipping_company_status == 'SUSPENDED'):
             create_audit_log(
                 user=login_obj,
                 actor_name=login_obj.login_email,
@@ -187,12 +207,14 @@ class LoginAPIView(APIView):
             return Response(
                 {
                     "status": "error",
+                    "registration_status": "SUSPENDED",
+                    "registration_request_id": reg_req.registration_request_id if reg_req else None,
                     "message": "Your account has been suspended. Please contact the Port Administrator."
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        if company and company.shipping_company_status == 'PENDING':
+        if login_obj.login_status == 'PENDING' or (user_profile and user_profile.user_status == 'PENDING') or (company and company.shipping_company_status == 'PENDING'):
             create_audit_log(
                 user=login_obj,
                 actor_name=login_obj.login_email,
@@ -201,35 +223,16 @@ class LoginAPIView(APIView):
                 category='AUTHENTICATION',
                 target_type='Authentication',
                 target_id=login_obj.login_id,
-                description=f"Login attempt rejected for {login_obj.login_email} (Company pending approval)",
+                description=f"Login attempt rejected for {login_obj.login_email} (Pending approval)",
                 status='FAILED',
                 request=request
             )
             return Response(
                 {
                     "status": "error",
+                    "registration_status": "PENDING",
+                    "registration_request_id": reg_req.registration_request_id if reg_req else None,
                     "message": "Your registration is awaiting Port Administrator approval."
-                },
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if company and company.shipping_company_status == 'SUSPENDED':
-            create_audit_log(
-                user=login_obj,
-                actor_name=login_obj.login_email,
-                role=login_obj.login_role,
-                action='LOGIN_FAILED',
-                category='AUTHENTICATION',
-                target_type='Authentication',
-                target_id=login_obj.login_id,
-                description=f"Login attempt rejected for {login_obj.login_email} (Company suspended)",
-                status='FAILED',
-                request=request
-            )
-            return Response(
-                {
-                    "status": "error",
-                    "message": "Your company account has been suspended. Please contact the Port Administrator."
                 },
                 status=status.HTTP_401_UNAUTHORIZED
             )
@@ -398,6 +401,9 @@ class ShippingCompanyRegistrationAPIView(APIView):
 
         registration_obj = serializer.save()
 
+        # Send confirmation email
+        send_registration_submitted_email(registration_obj)
+
         create_audit_log(
             user=None,
             actor_name=registration_obj.registration_request_applicant_name,
@@ -532,6 +538,9 @@ class AdminApproveRegistrationRequestAPIView(APIView):
             request=request
         )
 
+        # Send approval notification email
+        send_registration_approved_email(req_obj)
+
         return Response({
             "status": "success",
             "message": "Shipping Company registration approved successfully."
@@ -554,7 +563,7 @@ class AdminRejectRegistrationRequestAPIView(APIView):
                 "message": "Registration request not found."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        rejection_reason = (request.data.get('rejection_reason') or request.data.get('review_remarks') or '').strip()
+        rejection_reason = (request.data.get('rejection_reason') or request.data.get('review_remarks') or request.data.get('admin_remarks') or '').strip()
         if not rejection_reason:
             return Response({
                 "status": "error",
@@ -573,15 +582,16 @@ class AdminRejectRegistrationRequestAPIView(APIView):
             # 1. Update registration request status -> REJECTED
             req_obj.registration_request_status = 'REJECTED'
             req_obj.registration_request_rejection_reason = rejection_reason
+            req_obj.registration_request_admin_remarks = rejection_reason
             req_obj.registration_request_reviewed_at = timezone.now()
             if admin_user:
                 req_obj.user_id = admin_user
             req_obj.save()
 
-            # 2. Shipping company status MUST REMAIN PENDING (do NOT set to ACTIVE)
+            # 2. Shipping company status updated to REJECTED
             company = req_obj.shipping_company_id
             if company:
-                company.shipping_company_status = 'PENDING'
+                company.shipping_company_status = 'REJECTED'
                 company.save()
 
                 # 3. Update associated user profiles & login credentials -> REJECTED
@@ -606,9 +616,236 @@ class AdminRejectRegistrationRequestAPIView(APIView):
             request=request
         )
 
+        # Send rejection notification email
+        send_registration_rejected_email(req_obj, rejection_reason)
+
         return Response({
             "status": "success",
             "message": "Shipping Company registration rejected."
+        }, status=status.HTTP_200_OK)
+
+
+class AdminActionRequiredRegistrationRequestAPIView(APIView):
+    """
+    Protected API Endpoint for Port Administrator to mark a Registration Request as ACTION_REQUIRED.
+    Endpoint: POST /api/admin/registration-requests/<id>/action-required/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, pk):
+        try:
+            req_obj = RegistrationRequest.objects.get(registration_request_id=pk)
+        except RegistrationRequest.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Registration request not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        raw_docs = request.data.get('action_required_docs') or request.data.get('actionRequiredDocs') or ''
+        if isinstance(raw_docs, list):
+            action_required_docs = ', '.join(str(d).strip() for d in raw_docs if str(d).strip())
+        else:
+            action_required_docs = str(raw_docs).strip()
+        admin_remarks = (request.data.get('admin_remarks') or request.data.get('adminRemarks') or request.data.get('review_remarks') or '').strip()
+
+        if not admin_remarks:
+            return Response({
+                "status": "error",
+                "message": "Admin remarks / instructions are required when requesting document corrections."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        admin_user = None
+        user_id_header = request.headers.get('X-User-Id')
+        if user_id_header:
+            try:
+                admin_user = User.objects.get(user_id=user_id_header)
+            except (User.DoesNotExist, ValueError):
+                pass
+
+        with transaction.atomic():
+            req_obj.registration_request_status = 'ACTION_REQUIRED'
+            req_obj.registration_request_action_required_docs = action_required_docs
+            req_obj.registration_request_admin_remarks = admin_remarks
+            req_obj.registration_request_reviewed_at = timezone.now()
+            if admin_user:
+                req_obj.user_id = admin_user
+            req_obj.save()
+
+            company = req_obj.shipping_company_id
+            if company:
+                company.shipping_company_status = 'ACTION_REQUIRED'
+                company.save()
+
+                for user in company.users.all():
+                    user.user_status = 'ACTION_REQUIRED'
+                    user.save()
+                    if user.login_id:
+                        user.login_id.login_status = 'ACTION_REQUIRED'
+                        user.login_id.login_is_active = False
+                        user.login_id.save()
+
+        create_audit_log(
+            user=admin_user,
+            actor_name=admin_user.user_full_name if admin_user else 'Port Administrator',
+            role='Port Administrator',
+            action='ACTION_REQUIRED',
+            category='SHIPPING_COMPANY',
+            target_type='ShippingCompany',
+            target_id=company.shipping_company_id if company else req_obj.registration_request_id,
+            description=f"Marked registration request #{req_obj.registration_request_id} for '{company.shipping_company_name if company else 'Unknown'}' as ACTION REQUIRED. Required docs: '{action_required_docs}'. Remarks: {admin_remarks}",
+            status='SUCCESS',
+            request=request
+        )
+
+        send_registration_action_required_email(req_obj, action_required_docs, admin_remarks)
+
+        return Response({
+            "status": "success",
+            "message": "Registration request marked as Action Required and notification email sent.",
+            "data": RegistrationRequestDetailSerializer(req_obj).data
+        }, status=status.HTTP_200_OK)
+
+
+class PublicRegistrationStatusAPIView(APIView):
+    """
+    Public API Endpoint to check Shipping Company Registration Status.
+    Endpoint: GET /api/auth/registration-status/?request_id=... or ?email=...
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        request_id_param = request.query_params.get('request_id') or request.query_params.get('id')
+        email_param = request.query_params.get('email')
+
+        if not request_id_param and not email_param:
+            return Response({
+                "status": "error",
+                "message": "Please provide a registration request ID or company email address."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = RegistrationRequest.objects.select_related('shipping_company_id', 'user_id').all()
+        reg_obj = None
+
+        if request_id_param:
+            req_id_str = str(request_id_param).strip()
+            # Support REG-2026-001 or raw numeric ID
+            if '-' in req_id_str:
+                parts = req_id_str.split('-')
+                try:
+                    numeric_id = int(parts[-1])
+                    reg_obj = queryset.filter(registration_request_id=numeric_id).first()
+                except ValueError:
+                    reg_obj = None
+            else:
+                try:
+                    numeric_id = int(req_id_str)
+                    reg_obj = queryset.filter(registration_request_id=numeric_id).first()
+                except ValueError:
+                    reg_obj = None
+        elif email_param:
+            reg_obj = queryset.filter(
+                shipping_company_id__shipping_company_email__iexact=email_param.strip()
+            ).order_by('-registration_request_submitted_at').first()
+
+        if not reg_obj:
+            return Response({
+                "status": "error",
+                "message": "No registration request found with the provided details. Please verify your Request ID or Email address."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = RegistrationRequestDetailSerializer(reg_obj)
+        return Response({
+            "status": "success",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class ShippingCompanyResubmitAPIView(APIView):
+    """
+    Public API Endpoint for Shipping Companies to Resubmit Corrected Documents.
+    Endpoint: POST /api/auth/registration-resubmit/
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegistrationResubmissionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                "status": "error",
+                "message": "Validation failed.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        reg_id = data['registration_request_id']
+
+        try:
+            req_obj = RegistrationRequest.objects.select_related('shipping_company_id').get(registration_request_id=reg_id)
+        except RegistrationRequest.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Registration request not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        if req_obj.registration_request_status not in ['ACTION_REQUIRED', 'PENDING']:
+            return Response({
+                "status": "error",
+                "message": f"Cannot resubmit documents for registration request in '{req_obj.registration_request_status}' status."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        license_file = data.get('request_license_file')
+        id_file = data.get('request_id_file')
+        applicant_notes = data.get('applicant_notes')
+
+        with transaction.atomic():
+            # If new license file provided, preserve existing one in previous_license_file
+            if license_file:
+                if req_obj.registration_request_license_file:
+                    req_obj.registration_request_previous_license_file = req_obj.registration_request_license_file
+                req_obj.registration_request_license_file = license_file
+
+            # If new ID file provided, preserve existing one in previous_id_file
+            if id_file:
+                if req_obj.registration_request_id_file:
+                    req_obj.registration_request_previous_id_file = req_obj.registration_request_id_file
+                req_obj.registration_request_id_file = id_file
+
+            req_obj.registration_request_status = 'PENDING'
+            req_obj.registration_request_resubmitted_at = timezone.now()
+            req_obj.save()
+
+            company = req_obj.shipping_company_id
+            if company:
+                company.shipping_company_status = 'PENDING'
+                company.save()
+
+                for user in company.users.all():
+                    user.user_status = 'PENDING'
+                    user.save()
+                    if user.login_id:
+                        user.login_id.login_status = 'PENDING'
+                        user.login_id.login_is_active = False
+                        user.login_id.save()
+
+        create_audit_log(
+            user=None,
+            actor_name=req_obj.registration_request_applicant_name,
+            role='Shipping Company',
+            action='RESUBMIT',
+            category='SHIPPING_COMPANY',
+            target_type='ShippingCompany',
+            target_id=company.shipping_company_id if company else req_obj.registration_request_id,
+            description=f"Resubmitted corrected documents for registration request #{req_obj.registration_request_id} ('{company.shipping_company_name if company else 'Unknown'}'). Notes: {applicant_notes or 'None'}",
+            status='SUCCESS',
+            request=request
+        )
+
+        send_registration_resubmitted_email(req_obj)
+
+        return Response({
+            "status": "success",
+            "message": "Corrected documents submitted successfully! Your application is now pending Port Administrator review.",
+            "data": RegistrationRequestDetailSerializer(req_obj).data
         }, status=status.HTTP_200_OK)
 
 
