@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
-import { BackendVessel, BackendVesselArrivalRequest } from '../../types';
+import { ErrorBoundary } from '../common/ErrorBoundary';
+import { BackendVessel, BackendVesselArrivalRequest, BackendBerth, BerthAvailabilityEvaluation } from '../../types';
+import { GraphicalBerthSelection } from './shipping/GraphicalBerthSelection';
+import { cleanBerthDisplayName } from '../../utils/berthUtils';
 import { 
   Ship, 
   FileCheck, 
@@ -30,6 +33,11 @@ interface ShippingCompanyDashboardProps {
   activeTab?: string;
   onNavigate?: (tab: string) => void;
 }
+
+const HOURLY_TIME_OPTIONS: string[] = Array.from({ length: 24 }, (_, i) => {
+  const h = i.toString().padStart(2, '0');
+  return `${h}:00`;
+});
 
 export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> = ({ 
   activeTab = 'overview', 
@@ -140,32 +148,38 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
 
   // Form States - New Arrival Request
   const [selectedVesselId, setSelectedVesselId] = useState<string>('');
-  const [requestedArrival, setRequestedArrival] = useState<string>('');
-  const [requestedDeparture, setRequestedDeparture] = useState<string>('');
+  const [arrivalDate, setArrivalDate] = useState<string>('');
+  const [arrivalTime, setArrivalTime] = useState<string>('08:00');
+  const [departureDate, setDepartureDate] = useState<string>('');
+  const [departureTime, setDepartureTime] = useState<string>('18:00');
   const [cargoType, setCargoType] = useState<string>('Container Cargo');
   const [cargoQuantity, setCargoQuantity] = useState<string>('1200');
+  const [selectedPreferredBerthId, setSelectedPreferredBerthId] = useState<number | null>(null);
+  const [selectedPreferredBerthObj, setSelectedPreferredBerthObj] = useState<BerthAvailabilityEvaluation | null>(null);
+  const [showBerthSelection, setShowBerthSelection] = useState<boolean>(false);
   const [requestSubmitLoading, setRequestSubmitLoading] = useState<boolean>(false);
   const [requestFormError, setRequestFormError] = useState<string>('');
 
-  const getCurrentDateTimeString = () => {
+  const getTodayDateString = () => {
     const d = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-  const getDefaultArrivalDateTimeString = () => {
-    const d = new Date();
-    d.setHours(d.getHours() + 2, 0, 0, 0);
+  const getFutureDateString = (daysAhead: number = 1, baseDateStr?: string) => {
+    const d = baseDateStr ? new Date(`${baseDateStr}T00:00:00`) : new Date();
+    d.setDate(d.getDate() + daysAhead);
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-  const getDefaultDepartureDateTimeString = (arrivalStr?: string) => {
-    const d = arrivalStr ? new Date(arrivalStr) : new Date();
-    d.setDate(d.getDate() + 2);
-    d.setHours(18, 0, 0, 0);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T18:00`;
+  const calculateDurationInHours = (arrD: string, arrT: string, depD: string, depT: string): number | null => {
+    if (!arrD || !arrT || !depD || !depT) return null;
+    const arr = new Date(`${arrD}T${arrT}:00`);
+    const dep = new Date(`${depD}T${depT}:00`);
+    if (isNaN(arr.getTime()) || isNaN(dep.getTime())) return null;
+    const diffMs = dep.getTime() - arr.getTime();
+    return Math.round(diffMs / (1000 * 60 * 60));
   };
 
   const fetchDashboardData = async () => {
@@ -245,11 +259,30 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     }
 
     setSelectedVesselId('');
-    const initArrival = getDefaultArrivalDateTimeString();
-    setRequestedArrival(initArrival);
-    setRequestedDeparture(getDefaultDepartureDateTimeString(initArrival));
+    const today = getTodayDateString();
+    const now = new Date();
+    // Default arrival: 2 hours ahead rounded to full hour (or next day if late)
+    let nextH = now.getHours() + 2;
+    let initialArrDate = today;
+    if (nextH >= 24) {
+      nextH = nextH % 24;
+      initialArrDate = getFutureDateString(1, today);
+    }
+    const initialArrTime = `${nextH.toString().padStart(2, '0')}:00`;
+
+    // Default departure: 2 days after arrival at 18:00
+    const initialDepDate = getFutureDateString(2, initialArrDate);
+    const initialDepTime = '18:00';
+
+    setArrivalDate(initialArrDate);
+    setArrivalTime(initialArrTime);
+    setDepartureDate(initialDepDate);
+    setDepartureTime(initialDepTime);
     setCargoType('Container Cargo');
     setCargoQuantity('1200');
+    setSelectedPreferredBerthId(null);
+    setSelectedPreferredBerthObj(null);
+    setShowBerthSelection(false);
     setRequestFormError('');
     setIsNewArrivalOpen(true);
   };
@@ -374,13 +407,15 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       return;
     }
 
-    if (!requestedArrival || !requestedDeparture || !cargoType.trim() || !cargoQuantity) {
+    if (!arrivalDate || !arrivalTime || !departureDate || !departureTime || !cargoType.trim() || !cargoQuantity) {
       setRequestFormError('Please fill in all required fields.');
       return;
     }
 
-    const arrDate = new Date(requestedArrival);
-    const depDate = new Date(requestedDeparture);
+    const isoArrival = `${arrivalDate}T${arrivalTime}:00`;
+    const isoDeparture = `${departureDate}T${departureTime}:00`;
+    const arrDate = new Date(isoArrival);
+    const depDate = new Date(isoDeparture);
     const now = new Date();
 
     // 5 minutes buffer for minor client-server clock drift
@@ -389,8 +424,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       return;
     }
 
-    if (depDate <= arrDate) {
-      setRequestFormError('Requested departure time must be later than requested arrival time.');
+    const durationSeconds = (depDate.getTime() - arrDate.getTime()) / 1000;
+    if (durationSeconds < 3600) {
+      setRequestFormError('Departure must be at least 1 hour after arrival.');
       return;
     }
 
@@ -427,8 +463,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
         },
         body: JSON.stringify({
           vessel_arrival_request_vessel_id: targetVesselId,
-          vessel_arrival_request_requested_arrival_at: requestedArrival,
-          vessel_arrival_request_requested_departure_at: requestedDeparture,
+          vessel_arrival_request_preferred_berth_id: selectedPreferredBerthId || null,
+          vessel_arrival_request_requested_arrival_at: isoArrival,
+          vessel_arrival_request_requested_departure_at: isoDeparture,
           vessel_arrival_request_cargo_type: cargoType.trim(),
           vessel_arrival_request_cargo_quantity: qty
         })
@@ -696,9 +733,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
         isOpen={isNewArrivalOpen}
         onClose={() => setIsNewArrivalOpen(false)}
         title="Submit Vessel Arrival Request"
-        subtitle="Schedule ETA/ETD window and cargo declaration"
+        subtitle="Schedule ETA/ETD window, choose preferred berth & declare cargo"
         icon={<Anchor className="w-4 h-4 text-sky-600" />}
-        maxWidth="3xl"
+        maxWidth="5xl"
       >
         <form onSubmit={handleSaveArrivalRequestSubmit} className="space-y-4">
           {requestFormError && (
@@ -716,6 +753,8 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
               value={selectedVesselId}
               onChange={(e) => {
                 setSelectedVesselId(e.target.value);
+                setSelectedPreferredBerthId(null);
+                setSelectedPreferredBerthObj(null);
                 if (requestFormError) setRequestFormError('');
               }}
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white focus:outline-none focus:border-sky-500"
@@ -723,61 +762,209 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
               <option value="">Select a registered vessel</option>
               {vessels.map((v) => (
                 <option key={v.vessel_id} value={v.vessel_id}>
-                  {v.vessel_name} (IMO: {v.vessel_imo_number}) - {v.vessel_capacity} TEU
+                  {v.vessel_name} (IMO: {v.vessel_imo_number}) - LOA: {v.vessel_length}m, Draft: {v.vessel_draft}m, Capacity: {v.vessel_capacity} TEU
                 </option>
               ))}
             </select>
             <p className="text-[9px] text-slate-400 mt-0.5">Contains vessels belonging to your registered shipping company.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
+          {/* ARRIVAL & DEPARTURE DATE / TIME SELECTORS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+            {/* REQUESTED ARRIVAL */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
                 <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   Requested Arrival *
                 </label>
+                <span className="text-[9px] font-medium text-slate-400">Date & Hourly Time</span>
               </div>
-              <input
-                type="datetime-local"
-                required
-                min={getCurrentDateTimeString()}
-                value={requestedArrival}
-                onChange={(e) => {
-                  setRequestedArrival(e.target.value);
-                  if (requestFormError) setRequestFormError('');
-                }}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500"
-              />
-              <p className="text-[9px] text-slate-400 mt-0.5">
-                Arrival must be today or a future date.
-              </p>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="col-span-3">
+                  <input
+                    type="date"
+                    required
+                    min={getTodayDateString()}
+                    value={arrivalDate}
+                    onChange={(e) => {
+                      const newArrDate = e.target.value;
+                      setArrivalDate(newArrDate);
+                      if (departureDate && departureDate < newArrDate) {
+                        setDepartureDate(newArrDate);
+                      }
+                      if (requestFormError) setRequestFormError('');
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <select
+                    value={arrivalTime}
+                    onChange={(e) => {
+                      setArrivalTime(e.target.value);
+                      if (requestFormError) setRequestFormError('');
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
+                  >
+                    {HOURLY_TIME_OPTIONS.map(time => (
+                      <option key={`arr-${time}`} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-[9px] text-slate-400">Arrival must be today or a future date at full hour.</p>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
+            {/* REQUESTED DEPARTURE */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
                 <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   Requested Departure *
                 </label>
-                <span className="text-[9px] font-medium text-slate-400">
-                  After Arrival
-                </span>
+                <span className="text-[9px] font-medium text-slate-400">Date & Hourly Time</span>
               </div>
-              <input
-                type="datetime-local"
-                required
-                min={requestedArrival || getCurrentDateTimeString()}
-                value={requestedDeparture}
-                onChange={(e) => {
-                  setRequestedDeparture(e.target.value);
-                  if (requestFormError) setRequestFormError('');
-                }}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500"
-              />
-              <p className="text-[9px] text-slate-400 mt-0.5">
-                Departure must be later than requested arrival.
-              </p>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="col-span-3">
+                  <input
+                    type="date"
+                    required
+                    min={arrivalDate || getTodayDateString()}
+                    value={departureDate}
+                    onChange={(e) => {
+                      setDepartureDate(e.target.value);
+                      if (requestFormError) setRequestFormError('');
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <select
+                    value={departureTime}
+                    onChange={(e) => {
+                      setDepartureTime(e.target.value);
+                      if (requestFormError) setRequestFormError('');
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
+                  >
+                    {HOURLY_TIME_OPTIONS.map(time => (
+                      <option key={`dep-${time}`} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-[9px] text-slate-400">Departure must be at least 1 hour after arrival.</p>
+            </div>
+          </div>
+
+          {/* DYNAMIC DURATION CALCULATION CARD */}
+          {(() => {
+            const currentDuration = calculateDurationInHours(arrivalDate, arrivalTime, departureDate, departureTime);
+            if (currentDuration === null) return null;
+
+            if (currentDuration < 1) {
+              return (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 flex items-center gap-2.5 text-rose-700 dark:text-rose-400 text-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <div>
+                    <span className="font-bold">Invalid Duration Window:</span> Departure must be at least 1 hour after arrival.
+                  </div>
+                </div>
+              );
+            }
+
+            const days = Math.floor(currentDuration / 24);
+            const remHours = currentDuration % 24;
+            let durationBreakdown = '';
+            if (days > 0) {
+              durationBreakdown = remHours === 0 
+                ? `${days} day${days !== 1 ? 's' : ''} exactly (${currentDuration} hours total)`
+                : `${days} day${days !== 1 ? 's' : ''} ${remHours} hr${remHours !== 1 ? 's' : ''} (${currentDuration} hours total)`;
+            } else {
+              durationBreakdown = `Single-day stay (${currentDuration} hours total)`;
+            }
+
+            return (
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-500/10 via-sky-500/5 to-transparent border border-sky-500/30 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                      Estimated Stay Duration
+                    </div>
+                    <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {durationBreakdown}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-black text-lg text-sky-600 dark:text-sky-400 font-mono leading-none">
+                    {currentDuration} <span className="text-xs font-bold font-sans">HRS</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">
+                    Calculated Window
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* GRAPHICAL PREFERRED BERTH SELECTION */}
+          <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
+              <div>
+                <div className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Anchor className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Quayside Preferred Berth Selection</span>
+                  <span className="text-[10px] font-normal text-slate-400 lowercase">(optional preference)</span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Select your preferred quayside berth. Final allocation remains under Port Operations control.
+                </p>
+              </div>
+
+              {selectedPreferredBerthObj && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400">
+                    Preference: {cleanBerthDisplayName(selectedPreferredBerthObj.berth_name)} ({selectedPreferredBerthObj.berth_code})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPreferredBerthId(null);
+                      setSelectedPreferredBerthObj(null);
+                    }}
+                    className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
             </div>
 
+            <ErrorBoundary
+              fallbackTitle="Berth Selector Notice"
+              fallbackMessage="Could not load graphical berth availability selector. You can still submit your arrival request without a preferred berth."
+            >
+              <GraphicalBerthSelection
+                vessel={vessels.find(v => String(v.vessel_id) === String(selectedVesselId)) || null}
+                selectedVessel={vessels.find(v => String(v.vessel_id) === String(selectedVesselId)) || null}
+                arrivalDate={arrivalDate}
+                arrivalTime={arrivalTime}
+                departureDate={departureDate}
+                departureTime={departureTime}
+                durationHours={calculateDurationInHours(arrivalDate, arrivalTime, departureDate, departureTime) || 0}
+                selectedBerthId={selectedPreferredBerthId}
+                onSelectBerth={(berthId, berthObj) => {
+                  setSelectedPreferredBerthId(berthId);
+                  setSelectedPreferredBerthObj(berthObj);
+                }}
+              />
+            </ErrorBoundary>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 pt-1 border-t border-slate-200 dark:border-slate-800">
             <div>
               <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                 Cargo Type *
@@ -788,7 +975,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                 value={cargoType}
                 onChange={(e) => setCargoType(e.target.value)}
                 placeholder="e.g. Container / Bulk Grain / Oil"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500"
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-medium focus:outline-none focus:border-sky-500 text-xs"
               />
             </div>
 
@@ -813,6 +1000,70 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
               </div>
             </div>
           </div>
+
+          {/* ARRIVAL REQUEST REVIEW SUMMARY */}
+          {(() => {
+            const activeVessel = vessels.find(v => String(v.vessel_id) === String(selectedVesselId));
+            const durationHrs = calculateDurationInHours(arrivalDate, arrivalTime, departureDate, departureTime);
+
+            return (
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <FileCheck className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Arrival Request Summary</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                    Status: Pending Port Operations Approval
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Vessel</span>
+                    <span className="font-bold text-slate-900 dark:text-white truncate block">
+                      {activeVessel ? activeVessel.vessel_name : '—'}
+                    </span>
+                    {activeVessel && (
+                      <span className="text-[10px] text-slate-500 font-mono block">
+                        LOA: {activeVessel.vessel_length}m | Draft: {activeVessel.vessel_draft}m
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Schedule Window</span>
+                    <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
+                      {arrivalDate ? `${arrivalDate} ${arrivalTime}` : '—'}
+                    </span>
+                    <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
+                      → {departureDate ? `${departureDate} ${departureTime}` : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Estimated Stay</span>
+                    <span className="font-mono font-bold text-sky-600 dark:text-sky-400 text-sm block">
+                      {durationHrs || 0} hrs
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Requested Berth</span>
+                    {selectedPreferredBerthObj ? (
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-white block truncate">
+                          {cleanBerthDisplayName(selectedPreferredBerthObj.berth_name)}
+                        </span>
+                        <span className="text-[10px] font-mono text-sky-600 dark:text-sky-400 block">
+                          {selectedPreferredBerthObj.berth_code} (Preference)
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic block">Open (No preference)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-200 dark:border-slate-800">
             <button
@@ -905,7 +1156,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
                 <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Requested Arrival</div>
                 <div className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">{formatDate(selectedRequestDetail.vessel_arrival_request_requested_arrival_at)}</div>
@@ -915,6 +1166,28 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                 <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Requested Departure</div>
                 <div className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">{formatDate(selectedRequestDetail.vessel_arrival_request_requested_departure_at)}</div>
               </div>
+
+              <div className="p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60">
+                <div className="text-sky-600 dark:text-sky-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Stay Duration</span>
+                </div>
+                <div className="font-black text-slate-900 dark:text-white text-xs mt-0.5">
+                  {(() => {
+                    const arr = new Date(selectedRequestDetail.vessel_arrival_request_requested_arrival_at).getTime();
+                    const dep = new Date(selectedRequestDetail.vessel_arrival_request_requested_departure_at).getTime();
+                    const hrs = selectedRequestDetail.duration_hours !== undefined 
+                      ? selectedRequestDetail.duration_hours 
+                      : Math.round((dep - arr) / 3600000);
+                    if (hrs <= 0) return 'N/A';
+                    const d = Math.floor(hrs / 24);
+                    const rem = hrs % 24;
+                    return d > 0 
+                      ? `${hrs} hrs (${d}d ${rem}h)`
+                      : `${hrs} hrs`;
+                  })()}
+                </div>
+              </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
@@ -923,6 +1196,33 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                 {selectedRequestDetail.vessel_arrival_request_cargo_type} ({selectedRequestDetail.vessel_arrival_request_cargo_quantity} TEU)
               </div>
             </div>
+
+            {/* PREFERRED BERTH SELECTION CARD */}
+            {selectedRequestDetail.preferred_berth ? (
+              <div className="p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-sky-600 dark:text-sky-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <Anchor className="w-3.5 h-3.5" />
+                    <span>Requested Preferred Berth</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300">
+                    Preference Only
+                  </span>
+                </div>
+                <div className="font-bold text-slate-900 dark:text-white text-sm">
+                  {cleanBerthDisplayName(selectedRequestDetail.preferred_berth.berth_name)}{' '}
+                  <span className="font-mono text-sky-600 dark:text-sky-400 text-xs">({selectedRequestDetail.preferred_berth.berth_code})</span>
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Type: <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedRequestDetail.preferred_berth.berth_type}</span> • Max LOA: <span className="font-mono">{selectedRequestDetail.preferred_berth.berth_max_length ?? (selectedRequestDetail.preferred_berth as any).berth_length_capacity}m</span> • Max Draft: <span className="font-mono text-emerald-600">{selectedRequestDetail.preferred_berth.berth_max_draft ?? (selectedRequestDetail.preferred_berth as any).berth_draft_capacity}m</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
+                <span className="font-medium text-[10px] uppercase tracking-wider text-slate-400 block mb-0.5">Requested Preferred Berth</span>
+                No specific berth preference requested (Open quayside assignment).
+              </div>
+            )}
 
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
               <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Review Audit Trail & Operational Remarks</div>
@@ -1494,6 +1794,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                   <th className="p-4">REQUESTED ARRIVAL</th>
                   <th className="p-4">REQUESTED DEPARTURE</th>
                   <th className="p-4">CARGO SPECIFICATIONS</th>
+                  <th className="p-4">PREFERRED BERTH</th>
                   <th className="p-4">STATUS</th>
                   <th className="p-4 text-right">ACTIONS</th>
                 </tr>
@@ -1512,10 +1813,39 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                       </div>
                     </td>
                     <td className="p-4 font-medium text-slate-800 dark:text-slate-200">{formatDate(req.vessel_arrival_request_requested_arrival_at)}</td>
-                    <td className="p-4 font-medium text-slate-800 dark:text-slate-200">{formatDate(req.vessel_arrival_request_requested_departure_at)}</td>
+                    <td className="p-4">
+                      <div className="font-medium text-slate-800 dark:text-slate-200">
+                        {formatDate(req.vessel_arrival_request_requested_departure_at)}
+                      </div>
+                      <div className="text-[10px] font-mono text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1 mt-0.5">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        <span>
+                          {(() => {
+                            const arr = new Date(req.vessel_arrival_request_requested_arrival_at).getTime();
+                            const dep = new Date(req.vessel_arrival_request_requested_departure_at).getTime();
+                            const hrs = req.duration_hours !== undefined ? req.duration_hours : Math.round((dep - arr) / 3600000);
+                            return hrs > 0 ? `${hrs}h duration` : '';
+                          })()}
+                        </span>
+                      </div>
+                    </td>
                     <td className="p-4">
                       <div className="font-semibold text-slate-800 dark:text-slate-200">{req.vessel_arrival_request_cargo_type}</div>
                       <div className="text-[10px] text-slate-400 font-mono">{req.vessel_arrival_request_cargo_quantity} TEU</div>
+                    </td>
+                    <td className="p-4">
+                      {req.preferred_berth ? (
+                        <div>
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                            <span>{cleanBerthDisplayName(req.preferred_berth.berth_name)}</span>
+                          </div>
+                          <div className="text-[10px] font-mono text-sky-600 dark:text-sky-400">
+                            {req.preferred_berth.berth_code}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs italic">Open allocation</span>
+                      )}
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
