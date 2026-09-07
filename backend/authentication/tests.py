@@ -992,6 +992,17 @@ class ArrivalRequestAdvanceValidationTests(TestCase):
         self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("Requested departure time must be later than requested arrival time.", str(res2.json()))
 
+        # 3. Departure less than 1 hour after arrival (e.g. 30 mins)
+        res3 = self.client.post('/api/arrival-requests/', {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': valid_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': (valid_arrival + datetime.timedelta(minutes=30)).isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }, format='json', **headers)
+        self.assertEqual(res3.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Departure must be at least 1 hour after arrival.", str(res3.json()))
+
     def test_dynamic_configurable_advance_days(self):
         from rest_framework import status
         from authentication.models import SystemSetting
@@ -1300,7 +1311,6 @@ class SecurityAuditLogModuleTests(TestCase):
             'berth_type': 'CONTAINER_TERMINAL',
             'berth_max_length': 380.0,
             'berth_max_draft': 16.0,
-            'berth_capacity_teu': 15000,
             'berth_status': 'AVAILABLE'
         }
         res_b = self.client.post('/api/admin/berths/', berth_payload, format='json', **self.admin_headers)
@@ -1423,6 +1433,307 @@ class SecurityAuditLogModuleTests(TestCase):
         res_cust = self.client.get('/api/audit-logs/?category=CUSTOMS', **self.admin_headers)
         self.assertEqual(res_cust.status_code, status.HTTP_200_OK)
         self.assertEqual(res_cust.json()['data']['results'][0]['target_resource'], "CustomsDeclaration #CUST-2026-888")
+
+
+class GraphicalBerthSelectionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+        # 1. Shipping Company
+        self.company = ShippingCompany.objects.create(
+            shipping_company_name="Oceanic Logistics",
+            shipping_company_license_number="LIC-OCN-001",
+            shipping_company_email="ops@oceanic.com",
+            shipping_company_phone="+1-555-8888",
+            shipping_company_address="Quayside Pier 5",
+            shipping_company_jurisdiction="International",
+            shipping_company_status="ACTIVE"
+        )
+        self.shipping_login = Login.objects.create(
+            login_email="ops@oceanic.com",
+            login_password="pbkdf2_sha256$hashedpassword",
+            login_role="shipping_company",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        self.shipping_user = User.objects.create(
+            login_id=self.shipping_login,
+            shipping_company_id=self.company,
+            user_full_name="Oceanic Dispatcher",
+            user_status="ACTIVE"
+        )
+        self.shipping_headers = {
+            'HTTP_X_USER_EMAIL': 'ops@oceanic.com',
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.shipping_user.user_id)
+        }
+
+        # 2. Port Operations Officer
+        self.ops_login = Login.objects.create(
+            login_email="harbor.master@portide.gov",
+            login_password="pbkdf2_sha256$hashedpassword",
+            login_role="port_operations_officer",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        self.ops_user = User.objects.create(
+            login_id=self.ops_login,
+            user_full_name="Harbor Master Dave",
+            user_employee_id="HM-2026-001",
+            user_status="ACTIVE"
+        )
+        self.ops_headers = {
+            'HTTP_X_USER_EMAIL': 'harbor.master@portide.gov',
+            'HTTP_X_USER_ROLE': 'port_operations_officer',
+            'HTTP_X_USER_ID': str(self.ops_user.user_id)
+        }
+
+        # 3. Vessels: Standard (250m, 12m) and Large (360m, 16m)
+        self.vessel_std = Vessel.objects.create(
+            vessel_shipping_company_id=self.company,
+            vessel_name="MV Pacific Dawn",
+            vessel_imo_number="9876543",
+            vessel_type="CONTAINER_SHIP",
+            vessel_flag="Panama",
+            vessel_length=250.0,
+            vessel_draft=12.0,
+            vessel_capacity=5000,
+            vessel_status="ACTIVE"
+        )
+        self.vessel_large = Vessel.objects.create(
+            vessel_shipping_company_id=self.company,
+            vessel_name="MV Titan Horizon",
+            vessel_imo_number="9876544",
+            vessel_type="CONTAINER_SHIP",
+            vessel_flag="Liberia",
+            vessel_length=360.0,
+            vessel_draft=16.0,
+            vessel_capacity=15000,
+            vessel_status="ACTIVE"
+        )
+
+        # 4. Berths:
+        # Berth A: Large capacity (350m, 15m draft) - Suitable for std, but exceeds large vessel LOA and draft
+        self.berth_a = Berth.objects.create(
+            berth_name="North Quayside 01",
+            berth_code="B-NQ01",
+            berth_type="CONTAINER_TERMINAL",
+            berth_max_length=350.0,
+            berth_max_draft=15.0,
+            berth_status="AVAILABLE",
+            berth_is_active=True
+        )
+        # Berth B: Mega capacity (400m, 18m draft) - Suitable for both
+        self.berth_b = Berth.objects.create(
+            berth_name="Deepwater Terminal 02",
+            berth_code="B-DW02",
+            berth_type="CONTAINER_TERMINAL",
+            berth_max_length=400.0,
+            berth_max_draft=18.0,
+            berth_status="AVAILABLE",
+            berth_is_active=True
+        )
+        # Berth C: Small feeder berth (200m, 10m draft) - Incompatible with std vessel
+        self.berth_c = Berth.objects.create(
+            berth_name="Feeder Slip 03",
+            berth_code="B-FS03",
+            berth_type="CONTAINER_TERMINAL",
+            berth_max_length=200.0,
+            berth_max_draft=10.0,
+            berth_status="AVAILABLE",
+            berth_is_active=True
+        )
+        # Berth D: Under maintenance
+        self.berth_d = Berth.objects.create(
+            berth_name="Drydock Pier 04",
+            berth_code="B-DP04",
+            berth_type="GENERAL_CARGO",
+            berth_max_length=300.0,
+            berth_max_draft=14.0,
+            berth_status="MAINTENANCE",
+            berth_is_active=True
+        )
+
+    def test_berth_availability_check_endpoint(self):
+        """
+        Verify GET /api/berths/check-availability/ evaluates length, draft, maintenance,
+        and schedule overlaps correctly.
+        """
+        now = timezone.now()
+        arr = (now + datetime.timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+        dep = arr + datetime.timedelta(hours=48)
+
+        # Query for standard vessel
+        url = f"/api/berths/check-availability/?vessel_id={self.vessel_std.vessel_id}&arrival={arr.isoformat()}&departure={dep.isoformat()}"
+        res = self.client.get(url, **self.shipping_headers)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        evaluations = res.json()['data']['evaluations']
+
+        eval_a = next(e for e in evaluations if e['berth_id'] == self.berth_a.berth_id)
+        self.assertTrue(eval_a['is_length_compatible'])
+        self.assertTrue(eval_a['is_draft_compatible'])
+        self.assertTrue(eval_a['can_select_as_preferred'])
+        self.assertEqual(eval_a['suitability_status'], 'AVAILABLE')
+
+        eval_c = next(e for e in evaluations if e['berth_id'] == self.berth_c.berth_id)
+        self.assertFalse(eval_c['is_length_compatible'])
+        self.assertFalse(eval_c['is_draft_compatible'])
+        self.assertFalse(eval_c['can_select_as_preferred'])
+
+        eval_d = next(e for e in evaluations if e['berth_id'] == self.berth_d.berth_id)
+        self.assertFalse(eval_d['can_select_as_preferred'])
+        self.assertEqual(eval_d['suitability_status'], 'MAINTENANCE')
+
+    def test_arrival_request_creation_with_preferred_berth(self):
+        """
+        Verify shipping company can submit an arrival request with a suitable preferred berth,
+        and gets rejected if the preferred berth is technically incompatible or under maintenance.
+        """
+        now = timezone.now()
+        arr = (now + datetime.timedelta(days=3)).replace(minute=0, second=0, microsecond=0)
+        dep = arr + datetime.timedelta(hours=24)
+
+        # 1. Success with suitable berth_a
+        payload = {
+            "vessel_arrival_request_vessel_id": self.vessel_std.vessel_id,
+            "vessel_arrival_request_preferred_berth_id": self.berth_a.berth_id,
+            "vessel_arrival_request_requested_arrival_at": arr.isoformat(),
+            "vessel_arrival_request_requested_departure_at": dep.isoformat(),
+            "vessel_arrival_request_cargo_type": "Container Cargo",
+            "vessel_arrival_request_cargo_quantity": 2500
+        }
+        res = self.client.post('/api/arrival-requests/', payload, format='json', **self.shipping_headers)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        req_id = res.json()['data']['vessel_arrival_request_id']
+        created_req = VesselArrivalRequest.objects.get(pk=req_id)
+        self.assertEqual(created_req.vessel_arrival_request_preferred_berth_id, self.berth_a)
+
+        # 2. Rejection if vessel exceeds berth draft/length (Berth C: 200m LOA vs 250m Vessel)
+        payload_fail = {
+            "vessel_arrival_request_vessel_id": self.vessel_std.vessel_id,
+            "vessel_arrival_request_preferred_berth_id": self.berth_c.berth_id,
+            "vessel_arrival_request_requested_arrival_at": (arr + datetime.timedelta(days=10)).isoformat(),
+            "vessel_arrival_request_requested_departure_at": (dep + datetime.timedelta(days=10)).isoformat(),
+            "vessel_arrival_request_cargo_type": "Container Cargo",
+            "vessel_arrival_request_cargo_quantity": 2500
+        }
+        res_fail = self.client.post('/api/arrival-requests/', payload_fail, format='json', **self.shipping_headers)
+        self.assertEqual(res_fail.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("exceeds", str(res_fail.json()))
+        self.assertIn("maximum length limit", str(res_fail.json()))
+
+    def test_port_operations_approval_allocates_preferred_berth(self):
+        """
+        Verify Port Operations approval allocates the requested preferred berth,
+        creating a VesselSchedule and updating Berth status.
+        """
+        now = timezone.now()
+        arr = (now + datetime.timedelta(days=4)).replace(minute=0, second=0, microsecond=0)
+        dep = arr + datetime.timedelta(hours=36)
+
+        req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_std,
+            vessel_arrival_request_preferred_berth_id=self.berth_b,
+            vessel_arrival_request_requested_arrival_at=arr,
+            vessel_arrival_request_requested_departure_at=dep,
+            vessel_arrival_request_cargo_type="Container Cargo",
+            vessel_arrival_request_cargo_quantity=1800,
+            vessel_arrival_request_status="PENDING"
+        )
+
+        approve_url = f"/api/arrival-requests/{req.vessel_arrival_request_id}/approve/"
+        res = self.client.post(approve_url, {"remarks": "Allocating requested Deepwater Terminal 02."}, format='json', **self.ops_headers)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        req.refresh_from_db()
+        self.assertEqual(req.vessel_arrival_request_status, "APPROVED")
+
+        # Verify VesselSchedule created
+        sch = VesselSchedule.objects.filter(vessel_schedule_arrival_request_id=req).first()
+        self.assertIsNotNone(sch)
+        self.assertEqual(sch.vessel_schedule_berth_id, self.berth_b)
+        self.assertEqual(sch.vessel_schedule_status, "SCHEDULED")
+
+    def test_port_operations_override_with_alternate_berth(self):
+        """
+        Verify Port Operations can override the shipping company's preferred berth
+        with an alternate suitable berth.
+        """
+        now = timezone.now()
+        arr = (now + datetime.timedelta(days=5)).replace(minute=0, second=0, microsecond=0)
+        dep = arr + datetime.timedelta(hours=24)
+
+        req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_std,
+            vessel_arrival_request_preferred_berth_id=self.berth_a,
+            vessel_arrival_request_requested_arrival_at=arr,
+            vessel_arrival_request_requested_departure_at=dep,
+            vessel_arrival_request_cargo_type="Container Cargo",
+            vessel_arrival_request_cargo_quantity=1500,
+            vessel_arrival_request_status="PENDING"
+        )
+
+        approve_url = f"/api/arrival-requests/{req.vessel_arrival_request_id}/approve/"
+        # Override with berth_b
+        res = self.client.post(
+            approve_url, 
+            {"berth_id": self.berth_b.berth_id, "remarks": "Re-routing to Berth B due to congestion."}, 
+            format='json', 
+            **self.ops_headers
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        sch = VesselSchedule.objects.filter(vessel_schedule_arrival_request_id=req).first()
+        self.assertIsNotNone(sch)
+        self.assertEqual(sch.vessel_schedule_berth_id, self.berth_b)
+
+    def test_double_allocation_prevention(self):
+        """
+        Verify that attempting to allocate an already scheduled berth during an overlapping window fails.
+        """
+        now = timezone.now()
+        arr = (now + datetime.timedelta(days=6)).replace(minute=0, second=0, microsecond=0)
+        dep = arr + datetime.timedelta(hours=48)
+
+        # Existing schedule on berth_a
+        req1 = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_std,
+            vessel_arrival_request_preferred_berth_id=self.berth_a,
+            vessel_arrival_request_requested_arrival_at=arr,
+            vessel_arrival_request_requested_departure_at=dep,
+            vessel_arrival_request_cargo_type="Bulk",
+            vessel_arrival_request_cargo_quantity=1000,
+            vessel_arrival_request_status="APPROVED"
+        )
+        VesselSchedule.objects.create(
+            vessel_schedule_arrival_request_id=req1,
+            vessel_schedule_berth_id=self.berth_a,
+            vessel_schedule_scheduled_arrival_at=arr,
+            vessel_schedule_scheduled_departure_at=dep,
+            vessel_schedule_status="SCHEDULED"
+        )
+
+        # Second request overlapping on the same berth
+        req2 = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_std,
+            vessel_arrival_request_preferred_berth_id=self.berth_a,
+            vessel_arrival_request_requested_arrival_at=arr + datetime.timedelta(hours=12),
+            vessel_arrival_request_requested_departure_at=dep + datetime.timedelta(hours=12),
+            vessel_arrival_request_cargo_type="Bulk",
+            vessel_arrival_request_cargo_quantity=1000,
+            vessel_arrival_request_status="PENDING"
+        )
+
+        approve_url = f"/api/arrival-requests/{req2.vessel_arrival_request_id}/approve/"
+        res_conflict = self.client.post(
+            approve_url, 
+            {"berth_id": self.berth_a.berth_id, "remarks": "Trying to double-book."}, 
+            format='json', 
+            **self.ops_headers
+        )
+        self.assertEqual(res_conflict.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("already allocated to an active schedule", res_conflict.json()['message'])
+
 
 
 
