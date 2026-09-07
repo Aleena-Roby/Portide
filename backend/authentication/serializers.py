@@ -621,7 +621,6 @@ class BerthSerializer(serializers.ModelSerializer):
             'berth_type_display',
             'berth_max_length',
             'berth_max_draft',
-            'berth_capacity_teu',
             'berth_status',
             'berth_is_active',
             'current_vessel',
@@ -677,7 +676,6 @@ class AdminBerthCreateUpdateSerializer(serializers.ModelSerializer):
             'berth_type',
             'berth_max_length',
             'berth_max_draft',
-            'berth_capacity_teu',
             'berth_status',
             'berth_is_active'
         ]
@@ -714,11 +712,6 @@ class AdminBerthCreateUpdateSerializer(serializers.ModelSerializer):
     def validate_berth_max_draft(self, value):
         if value <= 0:
             raise serializers.ValidationError("Maximum draft must be greater than 0.")
-        return value
-
-    def validate_berth_capacity_teu(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Berth capacity must be greater than 0.")
         return value
 
 
@@ -774,9 +767,11 @@ class VesselScheduleSerializer(serializers.ModelSerializer):
 
 class VesselArrivalRequestSerializer(serializers.ModelSerializer):
     vessel = VesselSerializer(source='vessel_arrival_request_vessel_id', read_only=True)
+    preferred_berth = BerthSerializer(source='vessel_arrival_request_preferred_berth_id', read_only=True)
     reviewed_by_name = serializers.CharField(source='vessel_arrival_request_reviewed_by.user_full_name', read_only=True, default=None)
     schedule = VesselScheduleSerializer(read_only=True)
     scheduling_status = serializers.SerializerMethodField()
+    duration_hours = serializers.SerializerMethodField()
 
     class Meta:
         model = VesselArrivalRequest
@@ -784,8 +779,11 @@ class VesselArrivalRequestSerializer(serializers.ModelSerializer):
             'vessel_arrival_request_id',
             'vessel_arrival_request_vessel_id',
             'vessel',
+            'vessel_arrival_request_preferred_berth_id',
+            'preferred_berth',
             'vessel_arrival_request_requested_arrival_at',
             'vessel_arrival_request_requested_departure_at',
+            'duration_hours',
             'vessel_arrival_request_cargo_type',
             'vessel_arrival_request_cargo_quantity',
             'vessel_arrival_request_status',
@@ -798,6 +796,12 @@ class VesselArrivalRequestSerializer(serializers.ModelSerializer):
             'scheduling_status'
         ]
 
+    def get_duration_hours(self, obj):
+        if obj.vessel_arrival_request_requested_arrival_at and obj.vessel_arrival_request_requested_departure_at:
+            diff = obj.vessel_arrival_request_requested_departure_at - obj.vessel_arrival_request_requested_arrival_at
+            return round(diff.total_seconds() / 3600.0, 2)
+        return None
+
     def get_scheduling_status(self, obj):
         if hasattr(obj, 'schedule') and obj.schedule:
             return obj.schedule.vessel_schedule_status
@@ -808,10 +812,17 @@ class VesselArrivalRequestSerializer(serializers.ModelSerializer):
 
 
 class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
+    vessel_arrival_request_preferred_berth_id = serializers.PrimaryKeyRelatedField(
+        queryset=Berth.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = VesselArrivalRequest
         fields = [
             'vessel_arrival_request_vessel_id',
+            'vessel_arrival_request_preferred_berth_id',
             'vessel_arrival_request_requested_arrival_at',
             'vessel_arrival_request_requested_departure_at',
             'vessel_arrival_request_cargo_type',
@@ -823,6 +834,7 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
         arrival = attrs.get('vessel_arrival_request_requested_arrival_at')
         departure = attrs.get('vessel_arrival_request_requested_departure_at')
         quantity = attrs.get('vessel_arrival_request_cargo_quantity')
+        preferred_berth = attrs.get('vessel_arrival_request_preferred_berth_id')
 
         if not vessel_obj:
             raise serializers.ValidationError({"vessel_arrival_request_vessel_id": "Please select a vessel."})
@@ -851,10 +863,16 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
                     "vessel_arrival_request_requested_arrival_at": advance_msg
                 })
 
-        if arrival and departure and departure <= arrival:
-            raise serializers.ValidationError({
-                "vessel_arrival_request_requested_departure_at": "Requested departure time must be later than requested arrival time."
-            })
+        if arrival and departure:
+            if departure <= arrival:
+                raise serializers.ValidationError({
+                    "vessel_arrival_request_requested_departure_at": "Requested departure time must be later than requested arrival time."
+                })
+            duration_seconds = (departure - arrival).total_seconds()
+            if duration_seconds < 3600:
+                raise serializers.ValidationError({
+                    "vessel_arrival_request_requested_departure_at": "Departure must be at least 1 hour after arrival."
+                })
 
         if quantity is not None and quantity <= 0:
             raise serializers.ValidationError({"vessel_arrival_request_cargo_quantity": "Cargo quantity must be greater than zero."})
@@ -870,6 +888,37 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
 
             if overlapping_exists:
                 raise serializers.ValidationError({"vessel_arrival_request_vessel_id": "This vessel already has an active arrival request during the selected period."})
+
+        # Preferred Berth Suitability & Conflict Validations
+        if preferred_berth:
+            if not preferred_berth.berth_is_active or preferred_berth.berth_status == 'INACTIVE':
+                raise serializers.ValidationError({
+                    "vessel_arrival_request_preferred_berth_id": f"Selected berth '{preferred_berth.berth_name}' is currently inactive and cannot be selected."
+                })
+            if preferred_berth.berth_status == 'MAINTENANCE':
+                raise serializers.ValidationError({
+                    "vessel_arrival_request_preferred_berth_id": f"Selected berth '{preferred_berth.berth_name}' is currently under maintenance."
+                })
+            if vessel_obj:
+                if vessel_obj.vessel_length > preferred_berth.berth_max_length:
+                    raise serializers.ValidationError({
+                        "vessel_arrival_request_preferred_berth_id": f"Vessel length ({vessel_obj.vessel_length}m) exceeds {preferred_berth.berth_name} maximum length limit ({preferred_berth.berth_max_length}m)."
+                    })
+                if vessel_obj.vessel_draft > preferred_berth.berth_max_draft:
+                    raise serializers.ValidationError({
+                        "vessel_arrival_request_preferred_berth_id": f"Vessel draft ({vessel_obj.vessel_draft}m) exceeds {preferred_berth.berth_name} maximum draft limit ({preferred_berth.berth_max_draft}m)."
+                    })
+            if arrival and departure:
+                conflicting_schedule = VesselSchedule.objects.filter(
+                    vessel_schedule_berth_id=preferred_berth,
+                    vessel_schedule_status__in=['SCHEDULED', 'ARRIVED', 'AT_BERTH'],
+                    vessel_schedule_scheduled_arrival_at__lt=departure,
+                    vessel_schedule_scheduled_departure_at__gt=arrival
+                ).exists()
+                if conflicting_schedule:
+                    raise serializers.ValidationError({
+                        "vessel_arrival_request_preferred_berth_id": f"Selected berth '{preferred_berth.berth_name}' is already allocated for an approved schedule during this timeframe."
+                    })
 
         return attrs
 
