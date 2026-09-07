@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.contrib.auth.hashers import check_password, make_password
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
 import secrets
 import hashlib
@@ -1501,6 +1501,7 @@ class ArrivalRequestListCreateAPIView(APIView):
         queryset = VesselArrivalRequest.objects.select_related(
             'vessel_arrival_request_vessel_id',
             'vessel_arrival_request_vessel_id__vessel_shipping_company_id',
+            'vessel_arrival_request_preferred_berth_id',
             'vessel_arrival_request_reviewed_by',
             'schedule',
             'schedule__vessel_schedule_berth_id'
@@ -1575,6 +1576,9 @@ class ArrivalRequestListCreateAPIView(APIView):
         arrival_request = serializer.save(vessel_arrival_request_status='PENDING')
         actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
 
+        pref_berth = arrival_request.vessel_arrival_request_preferred_berth_id
+        pref_desc = f" with preferred berth '{pref_berth.berth_name}'" if pref_berth else ""
+
         create_audit_log(
             user=user_obj or login_obj,
             actor_name=actor_name,
@@ -1583,7 +1587,7 @@ class ArrivalRequestListCreateAPIView(APIView):
             category='ARRIVAL_REQUEST',
             target_type='ArrivalRequest',
             target_id=arrival_request.vessel_arrival_request_id,
-            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} submitted for vessel '{vessel_obj.vessel_name}'.",
+            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} submitted for vessel '{vessel_obj.vessel_name}'{pref_desc}.",
             status='SUCCESS',
             request=request
         )
@@ -1610,6 +1614,7 @@ class ArrivalRequestDetailAPIView(APIView):
             arrival_request = VesselArrivalRequest.objects.select_related(
                 'vessel_arrival_request_vessel_id',
                 'vessel_arrival_request_vessel_id__vessel_shipping_company_id',
+                'vessel_arrival_request_preferred_berth_id',
                 'vessel_arrival_request_reviewed_by'
             ).get(pk=pk)
         except VesselArrivalRequest.DoesNotExist:
@@ -1722,6 +1727,7 @@ class ArrivalRequestDetailAPIView(APIView):
 class ArrivalRequestApproveAPIView(APIView):
     """
     API Endpoint for Port Operations Officer to Approve Arrival Requests.
+    Can approve preferred berth or assign an alternate berth, allocating schedule.
     Endpoint: POST /api/arrival-requests/<int:pk>/approve/
     """
     permission_classes = [IsPortOperationsOfficerOnly]
@@ -1729,7 +1735,8 @@ class ArrivalRequestApproveAPIView(APIView):
     def post(self, request, pk):
         try:
             arrival_request = VesselArrivalRequest.objects.select_related(
-                'vessel_arrival_request_vessel_id'
+                'vessel_arrival_request_vessel_id',
+                'vessel_arrival_request_preferred_berth_id'
             ).get(pk=pk)
         except VesselArrivalRequest.DoesNotExist:
             return Response(
@@ -1741,19 +1748,123 @@ class ArrivalRequestApproveAPIView(APIView):
             )
 
         login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
-
         remarks = request.data.get('remarks') or request.data.get('operational_remarks')
 
-        arrival_request.vessel_arrival_request_status = 'APPROVED'
-        arrival_request.vessel_arrival_request_reviewed_at = timezone.now()
-        arrival_request.vessel_arrival_request_reviewed_by = user_obj
+        # Determine target berth: explicit berth_id from request payload, or preferred berth
+        target_berth_id = request.data.get('berth_id') or request.data.get('vessel_schedule_berth_id')
+        berth_obj = None
 
-        if remarks:
-            arrival_request.vessel_arrival_request_remarks = str(remarks).strip()
+        if target_berth_id:
+            try:
+                berth_obj = Berth.objects.get(pk=target_berth_id)
+            except (Berth.DoesNotExist, ValueError):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Berth #{target_berth_id} not found."
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif arrival_request.vessel_arrival_request_preferred_berth_id:
+            berth_obj = arrival_request.vessel_arrival_request_preferred_berth_id
 
-        arrival_request.save()
+        # If a berth is being allocated upon approval
+        if berth_obj:
+            vessel_obj = arrival_request.vessel_arrival_request_vessel_id
+            arr_time = arrival_request.vessel_arrival_request_requested_arrival_at
+            dep_time = arrival_request.vessel_arrival_request_requested_departure_at
+
+            if not berth_obj.berth_is_active or berth_obj.berth_status == 'INACTIVE':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"{berth_obj.berth_name} is currently inactive and cannot be assigned."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if berth_obj.berth_status == 'MAINTENANCE':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"{berth_obj.berth_name} is currently under maintenance and cannot be assigned."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if float(vessel_obj.vessel_length) > float(berth_obj.berth_max_length):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Berth allocation blocked: Vessel length ({vessel_obj.vessel_length}m) exceeds {berth_obj.berth_name} maximum length limit ({berth_obj.berth_max_length}m). Please select an alternative suitable berth."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if float(vessel_obj.vessel_draft) > float(berth_obj.berth_max_draft):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Berth allocation blocked: Vessel draft ({vessel_obj.vessel_draft}m) exceeds {berth_obj.berth_name} maximum draft limit ({berth_obj.berth_max_draft}m). Please select an alternative suitable berth."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            with transaction.atomic():
+                # Check for overlapping final/approved schedules on this berth
+                overlapping_conflict = VesselSchedule.objects.select_for_update().filter(
+                    vessel_schedule_berth_id=berth_obj,
+                    vessel_schedule_status__in=['SCHEDULED', 'ARRIVED', 'AT_BERTH'],
+                    vessel_schedule_scheduled_arrival_at__lt=dep_time,
+                    vessel_schedule_scheduled_departure_at__gt=arr_time
+                ).exclude(vessel_schedule_arrival_request_id=arrival_request).first()
+
+                if overlapping_conflict:
+                    conflicting_vessel_name = (
+                        overlapping_conflict.vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_name
+                        if overlapping_conflict.vessel_schedule_arrival_request_id else "another vessel"
+                    )
+                    return Response(
+                        {
+                            "status": "error",
+                            "message": f"Berth availability has changed: {berth_obj.berth_name} is already allocated to an active schedule for '{conflicting_vessel_name}' during this timeframe. Please review the berth selection again."
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+
+                arrival_request.vessel_arrival_request_status = 'APPROVED'
+                arrival_request.vessel_arrival_request_reviewed_at = timezone.now()
+                arrival_request.vessel_arrival_request_reviewed_by = user_obj
+                if remarks:
+                    arrival_request.vessel_arrival_request_remarks = str(remarks).strip()
+                arrival_request.save()
+
+                # Create or update VesselSchedule
+                schedule, created = VesselSchedule.objects.update_or_create(
+                    vessel_schedule_arrival_request_id=arrival_request,
+                    defaults={
+                        'vessel_schedule_berth_id': berth_obj,
+                        'vessel_schedule_scheduled_arrival_at': arr_time,
+                        'vessel_schedule_scheduled_departure_at': dep_time,
+                        'vessel_schedule_status': 'SCHEDULED',
+                        'vessel_schedule_operational_remarks': str(remarks).strip() if remarks else f"Allocated to {berth_obj.berth_name}",
+                        'vessel_schedule_created_by': user_obj
+                    }
+                )
+
+                if berth_obj.berth_status == 'AVAILABLE':
+                    berth_obj.berth_status = 'RESERVED'
+                    berth_obj.save()
+        else:
+            arrival_request.vessel_arrival_request_status = 'APPROVED'
+            arrival_request.vessel_arrival_request_reviewed_at = timezone.now()
+            arrival_request.vessel_arrival_request_reviewed_by = user_obj
+            if remarks:
+                arrival_request.vessel_arrival_request_remarks = str(remarks).strip()
+            arrival_request.save()
 
         reviewer_name = user_obj.user_full_name if user_obj else 'Port Operations Officer'
+        alloc_detail = f" at berth '{berth_obj.berth_name}'" if berth_obj else ""
         create_audit_log(
             user=user_obj,
             actor_name=reviewer_name,
@@ -1762,7 +1873,7 @@ class ArrivalRequestApproveAPIView(APIView):
             category='ARRIVAL_REQUEST',
             target_type='ArrivalRequest',
             target_id=arrival_request.vessel_arrival_request_id,
-            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' approved.",
+            description=f"Arrival request #{arrival_request.vessel_arrival_request_id} for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' approved{alloc_detail}.",
             status='SUCCESS',
             request=request
         )
@@ -1770,7 +1881,7 @@ class ArrivalRequestApproveAPIView(APIView):
         return Response(
             {
                 "status": "success",
-                "message": f"Arrival request #{arrival_request.vessel_arrival_request_id} for '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' approved successfully.",
+                "message": f"Arrival request #{arrival_request.vessel_arrival_request_id} for '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' approved successfully{alloc_detail}.",
                 "data": VesselArrivalRequestSerializer(arrival_request).data
             },
             status=status.HTTP_200_OK
@@ -1835,6 +1946,231 @@ class ArrivalRequestRejectAPIView(APIView):
                 "status": "success",
                 "message": f"Arrival request #{arrival_request.vessel_arrival_request_id} for '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' rejected.",
                 "data": VesselArrivalRequestSerializer(arrival_request).data
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class BerthAvailabilityCheckAPIView(APIView):
+    """
+    API Endpoint to dynamically check Berth Suitability and Time Availability
+    for a specific vessel and requested arrival/departure window.
+    Endpoint: GET /api/berths/check-availability/
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
+        role = request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else None)
+        normalized_role = str(role).strip().lower() if role else ''
+
+        vessel_id = request.query_params.get('vessel_id')
+        arrival_str = request.query_params.get('arrival_at') or request.query_params.get('arrival')
+        departure_str = request.query_params.get('departure_at') or request.query_params.get('departure')
+
+        if not vessel_id or not arrival_str or not departure_str:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "vessel_id, arrival_at (or arrival), and departure_at (or departure) are required query parameters."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 1. Fetch and validate vessel
+        try:
+            vessel_obj = Vessel.objects.select_related('vessel_shipping_company_id').get(pk=vessel_id)
+        except (Vessel.DoesNotExist, ValueError):
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Vessel #{vessel_id} not found."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check authorization if shipping company
+        if normalized_role in ['shipping_company', 'shipping company / shipping agent']:
+            if not company_obj or vessel_obj.vessel_shipping_company_id_id != company_obj.shipping_company_id:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "You are not authorized to check berth availability for another company's vessel."
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # 2. Parse and validate time window
+        from django.utils.dateparse import parse_datetime
+        clean_arr = arrival_str.strip().replace(' ', '+')
+        clean_dep = departure_str.strip().replace(' ', '+')
+        arrival_dt = parse_datetime(clean_arr)
+        departure_dt = parse_datetime(clean_dep)
+
+        if not arrival_dt or not departure_dt:
+            try:
+                arrival_dt = datetime.datetime.fromisoformat(clean_arr.replace('Z', '+00:00'))
+                departure_dt = datetime.datetime.fromisoformat(clean_dep.replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Invalid date format for arrival_at or departure_at. Expected ISO 8601 string."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if timezone.is_naive(arrival_dt):
+            arrival_dt = timezone.make_aware(arrival_dt)
+        if timezone.is_naive(departure_dt):
+            departure_dt = timezone.make_aware(departure_dt)
+
+        if departure_dt <= arrival_dt:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Departure time must be later than arrival time."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        duration_seconds = (departure_dt - arrival_dt).total_seconds()
+        if duration_seconds < 3600:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Departure must be at least 1 hour after arrival."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        duration_hours = round(duration_seconds / 3600.0, 2)
+
+        # 3. Retrieve all active berths from PostgreSQL
+        berths = Berth.objects.filter(berth_is_active=True).order_by('berth_id')
+
+        # 4. Fetch all overlapping approved schedules across all berths in one query
+        overlapping_schedules = VesselSchedule.objects.filter(
+            vessel_schedule_status__in=['SCHEDULED', 'ARRIVED', 'AT_BERTH'],
+            vessel_schedule_scheduled_arrival_at__lt=departure_dt,
+            vessel_schedule_scheduled_departure_at__gt=arrival_dt
+        ).select_related('vessel_schedule_arrival_request_id__vessel_arrival_request_vessel_id')
+
+        schedule_map = {}
+        for sch in overlapping_schedules:
+            schedule_map[sch.vessel_schedule_berth_id_id] = sch
+
+        # 5. Fetch all overlapping pending arrival requests
+        overlapping_pending = VesselArrivalRequest.objects.filter(
+            vessel_arrival_request_preferred_berth_id__isnull=False,
+            vessel_arrival_request_status='PENDING',
+            vessel_arrival_request_requested_arrival_at__lt=departure_dt,
+            vessel_arrival_request_requested_departure_at__gt=arrival_dt
+        ).values('vessel_arrival_request_preferred_berth_id').annotate(count=models.Count('vessel_arrival_request_id'))
+
+        pending_count_map = {item['vessel_arrival_request_preferred_berth_id']: item['count'] for item in overlapping_pending}
+
+        evaluations = []
+        for berth in berths:
+            is_length_compatible = float(vessel_obj.vessel_length) <= float(berth.berth_max_length)
+            is_draft_compatible = float(vessel_obj.vessel_draft) <= float(berth.berth_max_draft)
+            is_operational = (berth.berth_status != 'MAINTENANCE' and berth.berth_status != 'INACTIVE')
+
+            conflicting_sch = schedule_map.get(berth.berth_id)
+            has_approved_conflict = conflicting_sch is not None
+
+            pending_count = pending_count_map.get(berth.berth_id, 0)
+            has_pending_requests = pending_count > 0
+
+            rejection_reasons = []
+            if berth.berth_status == 'MAINTENANCE':
+                rejection_reasons.append(f"{berth.berth_name} is currently under scheduled maintenance.")
+            elif not is_operational:
+                rejection_reasons.append(f"{berth.berth_name} is currently inactive.")
+
+            if not is_length_compatible:
+                diff_len = round(float(vessel_obj.vessel_length) - float(berth.berth_max_length), 2)
+                rejection_reasons.append(f"Vessel length ({vessel_obj.vessel_length}m) exceeds berth limit ({berth.berth_max_length}m) by {diff_len}m.")
+
+            if not is_draft_compatible:
+                diff_draft = round(float(vessel_obj.vessel_draft) - float(berth.berth_max_draft), 2)
+                rejection_reasons.append(f"Vessel draft ({vessel_obj.vessel_draft}m) exceeds berth draft limit ({berth.berth_max_draft}m) by {diff_draft}m.")
+
+            if has_approved_conflict:
+                sch_vessel_name = (
+                    conflicting_sch.vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_name
+                    if conflicting_sch.vessel_schedule_arrival_request_id else "another vessel"
+                )
+                rejection_reasons.append(f"Conflicting approved schedule with '{sch_vessel_name}'.")
+
+            # Determine suitability_status
+            if berth.berth_status == 'MAINTENANCE':
+                suitability_status = 'MAINTENANCE'
+            elif not is_operational:
+                suitability_status = 'INACTIVE'
+            elif not is_length_compatible or not is_draft_compatible:
+                suitability_status = 'NOT_SUITABLE'
+            elif has_approved_conflict:
+                suitability_status = 'OCCUPIED'
+            elif has_pending_requests:
+                suitability_status = 'SUITABLE_PENDING'
+            else:
+                suitability_status = 'AVAILABLE'
+
+            # Can be selected as preferred if physically compatible, operational, and no approved final conflict
+            can_select_as_preferred = is_length_compatible and is_draft_compatible and is_operational and not has_approved_conflict
+
+            conflicting_sch_info = None
+            if conflicting_sch:
+                conflicting_sch_info = {
+                    "vessel_name": (
+                        conflicting_sch.vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_name
+                        if conflicting_sch.vessel_schedule_arrival_request_id else None
+                    ),
+                    "scheduled_arrival_at": conflicting_sch.vessel_schedule_scheduled_arrival_at.isoformat(),
+                    "scheduled_departure_at": conflicting_sch.vessel_schedule_scheduled_departure_at.isoformat()
+                }
+
+            evaluations.append({
+                "berth_id": berth.berth_id,
+                "berth_name": berth.berth_name,
+                "berth_code": berth.berth_code,
+                "berth_type": berth.berth_type,
+                "berth_type_display": berth.get_berth_type_display(),
+                "berth_max_length": float(berth.berth_max_length),
+                "berth_max_draft": float(berth.berth_max_draft),
+                "berth_status": berth.berth_status,
+                "berth_is_active": berth.berth_is_active,
+                "is_length_compatible": is_length_compatible,
+                "is_draft_compatible": is_draft_compatible,
+                "is_operational": is_operational,
+                "has_approved_conflict": has_approved_conflict,
+                "has_pending_requests": has_pending_requests,
+                "pending_request_count": pending_count,
+                "suitability_status": suitability_status,
+                "can_select_as_preferred": can_select_as_preferred,
+                "rejection_reasons": rejection_reasons,
+                "conflicting_schedule": conflicting_sch_info
+            })
+
+        return Response(
+            {
+                "status": "success",
+                "data": {
+                    "vessel": {
+                        "vessel_id": vessel_obj.vessel_id,
+                        "vessel_name": vessel_obj.vessel_name,
+                        "vessel_imo_number": vessel_obj.vessel_imo_number,
+                        "vessel_type": vessel_obj.vessel_type,
+                        "vessel_length": float(vessel_obj.vessel_length),
+                        "vessel_draft": float(vessel_obj.vessel_draft)
+                    },
+                    "requested_arrival_at": arrival_dt.isoformat(),
+                    "requested_departure_at": departure_dt.isoformat(),
+                    "duration_hours": duration_hours,
+                    "berths": evaluations,
+                    "evaluations": evaluations
+                }
             },
             status=status.HTTP_200_OK
         )
@@ -2052,7 +2388,6 @@ class BerthListCreateAPIView(APIView):
                     'berth_type': 'CONTAINER_TERMINAL',
                     'berth_max_length': 350.00,
                     'berth_max_draft': 15.00,
-                    'berth_capacity_teu': 14000,
                     'berth_status': 'AVAILABLE'
                 },
                 {
@@ -2061,7 +2396,6 @@ class BerthListCreateAPIView(APIView):
                     'berth_type': 'CONTAINER_TERMINAL',
                     'berth_max_length': 320.00,
                     'berth_max_draft': 14.50,
-                    'berth_capacity_teu': 11000,
                     'berth_status': 'AVAILABLE'
                 },
                 {
@@ -2070,7 +2404,6 @@ class BerthListCreateAPIView(APIView):
                     'berth_type': 'BULK_CARGO',
                     'berth_max_length': 280.00,
                     'berth_max_draft': 14.00,
-                    'berth_capacity_teu': 8500,
                     'berth_status': 'AVAILABLE'
                 },
                 {
@@ -2079,7 +2412,6 @@ class BerthListCreateAPIView(APIView):
                     'berth_type': 'OIL_TANKER',
                     'berth_max_length': 250.00,
                     'berth_max_draft': 13.50,
-                    'berth_capacity_teu': 6000,
                     'berth_status': 'AVAILABLE'
                 },
             ]

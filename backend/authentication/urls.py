@@ -21,6 +21,7 @@ from authentication.views import (
     ArrivalRequestRejectAPIView,
     BerthListCreateAPIView,
     BerthMaintenanceStatusAPIView,
+    BerthAvailabilityCheckAPIView,
     AdminBerthListCreateAPIView,
     AdminBerthDetailAPIView,
     VesselScheduleListCreateAPIView,
@@ -54,6 +55,8 @@ urlpatterns = [
     path('arrival-requests/<int:pk>/reject', ArrivalRequestRejectAPIView.as_view(), name='arrival_request_reject_noslash'),
     
     # Berth & Scheduling Endpoints
+    path('berths/check-availability/', BerthAvailabilityCheckAPIView.as_view(), name='berth_check_availability'),
+    path('berths/check-availability', BerthAvailabilityCheckAPIView.as_view(), name='berth_check_availability_noslash'),
     path('berths/', BerthListCreateAPIView.as_view(), name='berth_list_create'),
     path('berths', BerthListCreateAPIView.as_view(), name='berth_list_create_noslash'),
     path('berths/<int:pk>/status/', BerthMaintenanceStatusAPIView.as_view(), name='berth_maintenance_status'),
