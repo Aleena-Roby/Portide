@@ -326,6 +326,14 @@ class VesselArrivalRequest(models.Model):
         db_column='vessel_arrival_request_reviewed_by',
         related_name='reviewed_arrival_requests'
     )
+    vessel_arrival_request_preferred_berth_id = models.ForeignKey(
+        'Berth',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='vessel_arrival_request_preferred_berth_id',
+        related_name='preferred_arrival_requests'
+    )
     vessel_arrival_request_remarks = models.TextField(null=True, blank=True)
 
     class Meta:
@@ -361,7 +369,6 @@ class Berth(models.Model):
     berth_type = models.CharField(max_length=50, choices=BERTH_TYPE_CHOICES, default='CONTAINER_TERMINAL')
     berth_max_length = models.DecimalField(max_digits=8, decimal_places=2, default=300.00, help_text="Max vessel length in meters")
     berth_max_draft = models.DecimalField(max_digits=6, decimal_places=2, default=14.50, help_text="Max draft in meters")
-    berth_capacity_teu = models.IntegerField(default=10000, help_text="Capacity rating in TEU")
     berth_status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='AVAILABLE')
     berth_is_active = models.BooleanField(default=True)
     berth_created_at = models.DateTimeField(auto_now_add=True)
