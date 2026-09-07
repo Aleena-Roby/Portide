@@ -172,10 +172,15 @@ class RegistrationRequestDetailSerializer(serializers.ModelSerializer):
             'registration_request_applicant_name',
             'registration_request_license_file',
             'registration_request_id_file',
+            'registration_request_previous_license_file',
+            'registration_request_previous_id_file',
             'registration_request_terms_accepted',
             'registration_request_status',
+            'registration_request_action_required_docs',
+            'registration_request_admin_remarks',
             'registration_request_rejection_reason',
             'registration_request_submitted_at',
+            'registration_request_resubmitted_at',
             'registration_request_reviewed_at',
             'user_id',
             'reviewer_name'
@@ -185,6 +190,26 @@ class RegistrationRequestDetailSerializer(serializers.ModelSerializer):
         if obj.user_id:
             return obj.user_id.user_full_name
         return None
+
+
+class RegistrationResubmissionSerializer(serializers.Serializer):
+    registration_request_id = serializers.IntegerField(required=True)
+    request_license_file = serializers.FileField(required=False, allow_null=True)
+    request_id_file = serializers.FileField(required=False, allow_null=True)
+    business_license_file = serializers.FileField(required=False, allow_null=True)
+    identity_proof_file = serializers.FileField(required=False, allow_null=True)
+    applicant_notes = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    def validate(self, attrs):
+        if 'business_license_file' in attrs and not attrs.get('request_license_file'):
+            attrs['request_license_file'] = attrs.get('business_license_file')
+        if 'identity_proof_file' in attrs and not attrs.get('request_id_file'):
+            attrs['request_id_file'] = attrs.get('identity_proof_file')
+        license_file = attrs.get('request_license_file')
+        id_file = attrs.get('request_id_file')
+        if not license_file and not id_file:
+            raise serializers.ValidationError("At least one corrected document (Company Licence or Representative ID) must be provided for resubmission.")
+        return attrs
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
