@@ -13,6 +13,7 @@ class Login(models.Model):
 
     STATUS_CHOICES = (
         ('PENDING', 'Pending Approval'),
+        ('ACTION_REQUIRED', 'Action Required'),
         ('ACTIVE', 'Active'),
         ('REJECTED', 'Rejected'),
         ('SUSPENDED', 'Suspended'),
@@ -39,8 +40,10 @@ class Login(models.Model):
 class ShippingCompany(models.Model):
     COMPANY_STATUS_CHOICES = (
         ('PENDING', 'Pending Approval'),
+        ('ACTION_REQUIRED', 'Action Required'),
         ('ACTIVE', 'Active'),
         ('SUSPENDED', 'Suspended'),
+        ('REJECTED', 'Rejected'),
     )
 
     shipping_company_id = models.BigAutoField(primary_key=True)
@@ -168,9 +171,11 @@ class User(models.Model):
 
 class RegistrationRequest(models.Model):
     STATUS_CHOICES = (
-        ('PENDING', 'Pending Approval'),
+        ('PENDING', 'Pending Review'),
+        ('ACTION_REQUIRED', 'Action Required'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
+        ('SUSPENDED', 'Suspended'),
     )
 
     registration_request_id = models.BigAutoField(primary_key=True)
@@ -184,10 +189,15 @@ class RegistrationRequest(models.Model):
     registration_request_applicant_name = models.CharField(max_length=150)
     registration_request_license_file = models.FileField(upload_to='registration_docs/licenses/', null=True, blank=True)
     registration_request_id_file = models.FileField(upload_to='registration_docs/ids/', null=True, blank=True)
+    registration_request_previous_license_file = models.FileField(upload_to='registration_docs/licenses/previous/', null=True, blank=True)
+    registration_request_previous_id_file = models.FileField(upload_to='registration_docs/ids/previous/', null=True, blank=True)
     registration_request_terms_accepted = models.BooleanField(default=True)
     registration_request_status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING')
-    registration_request_rejection_reason = models.TextField(null=True, blank=True)
+    registration_request_action_required_docs = models.CharField(max_length=255, null=True, blank=True, help_text="Comma-separated or identifier of required documents")
+    registration_request_admin_remarks = models.TextField(null=True, blank=True, help_text="Administrator instructions when Action Required")
+    registration_request_rejection_reason = models.TextField(null=True, blank=True, help_text="Administrator final rejection reason")
     registration_request_submitted_at = models.DateTimeField(auto_now_add=True)
+    registration_request_resubmitted_at = models.DateTimeField(null=True, blank=True)
     registration_request_reviewed_at = models.DateTimeField(null=True, blank=True)
     user_id = models.ForeignKey(
         User,
