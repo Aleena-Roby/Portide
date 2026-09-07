@@ -60,6 +60,7 @@ export const RegisterPage: React.FC = () => {
   const idInputRef = React.useRef<HTMLInputElement>(null);
 
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submittedRequestId, setSubmittedRequestId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isPhoneValid, setIsPhoneValid] = useState(false);
 
@@ -160,6 +161,11 @@ export const RegisterPage: React.FC = () => {
           status: 'pending'
         });
 
+        const regId = result.data?.registration_request_id;
+        if (regId) {
+          setSubmittedRequestId(regId);
+        }
+
         setIsSubmitted(true);
         addToast('info', 'Registration Request Submitted', 'Forwarded to the Port Administrator for verification.');
       } else {
@@ -225,6 +231,20 @@ export const RegisterPage: React.FC = () => {
               </p>
             </div>
 
+            {submittedRequestId && (
+              <div className="max-w-md mx-auto p-4 bg-amber-500/10 border border-[#D49A24]/40 rounded-xl text-center shadow-xs">
+                <div className="text-[10px] font-black uppercase tracking-wider text-[#D49A24]">
+                  Assigned Application Tracking Reference
+                </div>
+                <div className="text-2xl font-black font-mono text-[#0b192c] mt-1">
+                  REG-2026-{String(submittedRequestId).padStart(3, '0')}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">
+                  Keep this Reference ID handy. You can check your review status or submit additional documents anytime.
+                </div>
+              </div>
+            )}
+
             <div className="max-w-md mx-auto p-4 rounded-xl bg-slate-50 border border-slate-200 text-left space-y-2 shadow-inner">
               <div className="text-[10px] font-bold uppercase tracking-wider text-[#D49A24]">Application Reference Summary</div>
               
@@ -262,13 +282,22 @@ export const RegisterPage: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-              Once approved, an email notification will be sent to <span className="text-[#D49A24] font-semibold">{formData.email}</span>.
+              Once reviewed, an email notification will be sent to <span className="text-[#D49A24] font-semibold">{formData.email}</span>.
             </p>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              {submittedRequestId && (
+                <button
+                  onClick={() => navigate(`/registration-status?id=${submittedRequestId}`)}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#D49A24] hover:bg-[#b8831b] text-white font-bold text-xs uppercase tracking-wider shadow-md transition-all border border-[#D49A24] cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>Check Registration Status</span>
+                </button>
+              )}
               <button
                 onClick={() => navigate('/login')}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#D49A24] hover:bg-[#b8831b] text-white font-bold text-xs uppercase tracking-wider shadow-md transition-all border border-[#D49A24] cursor-pointer"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider transition-all border border-slate-300 cursor-pointer"
               >
                 Return to Login
               </button>

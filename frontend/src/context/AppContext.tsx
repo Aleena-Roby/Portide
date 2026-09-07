@@ -58,7 +58,13 @@ interface AppContextType {
   // Centralized Session State & Methods
   isAuthenticated: boolean;
   isAuthLoading: boolean;
-  loginUser: (emailInput: string, passwordInput: string) => Promise<{ success: boolean; message?: string; role?: string }>;
+  loginUser: (emailInput: string, passwordInput: string) => Promise<{ 
+    success: boolean; 
+    message?: string; 
+    role?: string;
+    registration_status?: string;
+    registration_request_id?: number | string;
+  }>;
   logoutUser: (silent?: boolean) => Promise<void>;
   checkAuthSession: () => Promise<void>;
 
@@ -218,7 +224,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToast('success', 'Login Successful', `Welcome back, ${authData.full_name}`);
         return { success: true, role: userRole };
       } else {
-        return { success: false, message: result.message || 'Invalid email or password.' };
+        return { 
+          success: false, 
+          message: result.message || 'Invalid email or password.',
+          registration_status: result.registration_status,
+          registration_request_id: result.registration_request_id
+        };
       }
     } catch {
       return { success: false, message: 'Unable to connect to backend server. Please verify Django is running.' };

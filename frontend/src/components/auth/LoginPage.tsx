@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { PortideLogo } from '../common/PortideLogo';
-import { Eye, EyeOff, Lock, Mail, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowLeft, ShieldCheck, AlertTriangle, Clock } from 'lucide-react';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 import { getDefaultDashboardRoute } from './ProtectedRoute';
 
@@ -16,6 +16,8 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [blockedRegistrationStatus, setBlockedRegistrationStatus] = useState<string | null>(null);
+  const [blockedRegistrationRequestId, setBlockedRegistrationRequestId] = useState<number | string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
@@ -31,6 +33,8 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    setBlockedRegistrationStatus(null);
+    setBlockedRegistrationRequestId(null);
 
     if (!email.includes('@')) {
       setErrorMessage('Please enter a valid email address.');
@@ -49,8 +53,14 @@ export const LoginPage: React.FC = () => {
       const fromPath = (location.state as any)?.from?.pathname;
       const targetRoute = fromPath || getDefaultDashboardRoute(result.role || activeRole);
       navigate(targetRoute, { replace: true });
-    } else if (result.message) {
-      setErrorMessage(result.message);
+    } else {
+      if (result.registration_status) {
+        setBlockedRegistrationStatus(result.registration_status);
+        setBlockedRegistrationRequestId(result.registration_request_id || null);
+      }
+      if (result.message) {
+        setErrorMessage(result.message);
+      }
     }
   };
 
@@ -137,12 +147,58 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {errorMessage && (
+            {blockedRegistrationStatus ? (
+              <div className={`p-4 rounded-xl border space-y-2.5 animate-fade-in ${
+                blockedRegistrationStatus === 'ACTION_REQUIRED'
+                  ? 'bg-orange-50 border-orange-200 text-orange-900'
+                  : blockedRegistrationStatus === 'PENDING'
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}>
+                <div className="flex items-start gap-2.5">
+                  {blockedRegistrationStatus === 'ACTION_REQUIRED' ? (
+                    <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+                  ) : blockedRegistrationStatus === 'PENDING' ? (
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="text-xs leading-relaxed flex-1">
+                    <span className="font-bold block">
+                      {blockedRegistrationStatus === 'ACTION_REQUIRED'
+                        ? 'Additional Documentation Required'
+                        : blockedRegistrationStatus === 'PENDING'
+                        ? 'Registration Under Review'
+                        : 'Registration Not Approved'}
+                    </span>
+                    <span className="text-[11px] opacity-90 mt-0.5 block">{errorMessage}</span>
+                  </div>
+                </div>
+
+                <div className="pt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/registration-status?${blockedRegistrationRequestId ? `id=${blockedRegistrationRequestId}` : `email=${encodeURIComponent(email)}`}`)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs transition-all cursor-pointer ${
+                      blockedRegistrationStatus === 'ACTION_REQUIRED'
+                        ? 'bg-orange-600 hover:bg-orange-700'
+                        : blockedRegistrationStatus === 'PENDING'
+                        ? 'bg-amber-600 hover:bg-amber-700'
+                        : 'bg-rose-600 hover:bg-rose-700'
+                    }`}
+                  >
+                    {blockedRegistrationStatus === 'ACTION_REQUIRED'
+                      ? 'Upload Requested Documents'
+                      : 'Check Registration Status'}
+                  </button>
+                </div>
+              </div>
+            ) : errorMessage ? (
               <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 text-xs flex items-center gap-2 animate-fade-in">
                 <Lock className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{errorMessage}</span>
               </div>
-            )}
+            ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-5">
 
@@ -230,15 +286,26 @@ export const LoginPage: React.FC = () => {
 
             </form>
 
-            {/* Bottom Register Prompt */}
-            <div className="text-center text-xs text-slate-600 pt-4 border-t border-slate-200/80">
-              Don't have an account?{' '}
-              <button
-                onClick={() => navigate('/register')}
-                className="font-bold text-[#D49A24] hover:text-[#b8831b] hover:underline transition-colors ml-1 cursor-pointer"
-              >
-                Register
-              </button>
+            {/* Bottom Links */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600 pt-4 border-t border-slate-200/80">
+              <div>
+                Don't have an account?{' '}
+                <button
+                  onClick={() => navigate('/register')}
+                  className="font-bold text-[#D49A24] hover:text-[#b8831b] hover:underline transition-colors ml-1 cursor-pointer"
+                >
+                  Register
+                </button>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/registration-status')}
+                  className="font-semibold text-slate-500 hover:text-[#D49A24] hover:underline transition-colors cursor-pointer"
+                >
+                  Check Registration Status
+                </button>
+              </div>
             </div>
 
           </div>

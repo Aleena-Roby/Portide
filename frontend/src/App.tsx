@@ -7,6 +7,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
+import { RegistrationStatusPage } from './components/auth/RegistrationStatusPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
@@ -122,6 +123,9 @@ const AppRoutes: React.FC = () => {
   if (viewParam === 'forgot-password') {
     return <ForgotPasswordPage />;
   }
+  if (viewParam === 'registration-status') {
+    return <RegistrationStatusPage />;
+  }
 
   return (
     <Routes>
@@ -129,6 +133,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/registration-status" element={<RegistrationStatusPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
