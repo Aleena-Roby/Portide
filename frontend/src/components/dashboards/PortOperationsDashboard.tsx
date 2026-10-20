@@ -4,6 +4,7 @@ import { Modal } from '../common/Modal';
 import { BackendVessel, BackendVesselArrivalRequest, BackendBerth, BackendVesselSchedule } from '../../types';
 import { BerthAvailabilityView } from './BerthAvailabilityView';
 import { cleanBerthDisplayName } from '../../utils/berthUtils';
+import { API_BASE_URL } from '../../services/api';
 import { 
   Anchor, 
   Ship, 
@@ -96,10 +97,10 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
       };
 
       const [requestsRes, vesselsRes, berthsRes, schedulesRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/arrival-requests/', { headers }),
-        fetch('http://127.0.0.1:8000/api/vessels/', { headers }),
-        fetch('http://127.0.0.1:8000/api/berths/', { headers }),
-        fetch('http://127.0.0.1:8000/api/schedules/', { headers })
+        fetch(`${API_BASE_URL}/api/arrival-requests/`, { headers }),
+        fetch(`${API_BASE_URL}/api/vessels/`, { headers }),
+        fetch(`${API_BASE_URL}/api/berths/`, { headers }),
+        fetch(`${API_BASE_URL}/api/schedules/`, { headers })
       ]);
 
       const requestsJson = await requestsRes.json();
@@ -183,7 +184,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
     setScheduleError('');
     setScheduleLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/schedules/', {
+      const response = await fetch(`${API_BASE_URL}/api/schedules/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -233,7 +234,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
     setStatusUpdateLoading(true);
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/schedules/${selectedStatusSchedule.vessel_schedule_id}/status/`, {
+      const response = await fetch(`${API_BASE_URL}/api/schedules/${selectedStatusSchedule.vessel_schedule_id}/status/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -359,7 +360,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
 
     setActionLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/arrival-requests/${approvingRequest.vessel_arrival_request_id}/approve/`, {
+      const response = await fetch(`${API_BASE_URL}/api/arrival-requests/${approvingRequest.vessel_arrival_request_id}/approve/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -417,7 +418,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
 
     setActionLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/arrival-requests/${rejectingRequest.vessel_arrival_request_id}/reject/`, {
+      const response = await fetch(`${API_BASE_URL}/api/arrival-requests/${rejectingRequest.vessel_arrival_request_id}/reject/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

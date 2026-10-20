@@ -60,6 +60,12 @@ MIDDLEWARE = [
     'authentication.middleware.MandatoryPasswordChangeMiddleware',
 ]
 
+try:
+    import whitenoise  # noqa: F401
+    MIDDLEWARE.insert(2, 'whitenoise.middleware.WhiteNoiseMiddleware')
+except ImportError:
+    pass
+
 # CORS Settings for React Integration (port 3000 -> port 8000)
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -92,38 +98,74 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database
-DB_HOST = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost'
-DB_PORT = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432'
-DB_NAME = os.getenv('POSTGRES_DB') or os.getenv('DB_NAME') or 'portide_db'
-DB_USER = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or 'portide_user'
-DB_PASSWORD = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD')
+DATABASE_URL = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL')
 
-def _is_postgres_available():
-    try:
-        port = int(DB_PORT)
-        with socket.create_connection((DB_HOST, port), timeout=2):
-            return True
-    except (socket.error, socket.timeout, ValueError):
-        return False
+if DATABASE_URL:
+    import urllib.parse
+    clean_url = DATABASE_URL
+    if clean_url.startswith('postgres://'):
+        clean_url = clean_url.replace('postgres://', 'postgresql://', 1)
 
-if _is_postgres_available():
+    parsed = urllib.parse.urlparse(clean_url)
+    db_name = parsed.path.lstrip('/')
+    query_params = urllib.parse.parse_qs(parsed.query)
+    ssl_mode = query_params.get('sslmode', ['require'])[0]
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': DB_NAME,
-            'USER': DB_USER,
-            'PASSWORD': DB_PASSWORD,
-            'HOST': DB_HOST,
-            'PORT': DB_PORT,
+            'NAME': db_name or 'postgres',
+            'USER': urllib.parse.unquote(parsed.username or ''),
+            'PASSWORD': urllib.parse.unquote(parsed.password or ''),
+            'HOST': parsed.hostname,
+            'PORT': parsed.port or 5432,
+            'OPTIONS': {
+                'sslmode': ssl_mode,
+            },
+            'CONN_MAX_AGE': 60,
         }
     }
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+    DB_HOST = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or 'localhost'
+    DB_PORT = os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or '5432'
+    DB_NAME = os.getenv('POSTGRES_DB') or os.getenv('DB_NAME') or 'portide_db'
+    DB_USER = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or 'portide_user'
+    DB_PASSWORD = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD')
+    DB_SSLMODE = os.getenv('DB_SSLMODE')
+
+    def _is_postgres_available():
+        try:
+            port = int(DB_PORT)
+            with socket.create_connection((DB_HOST, port), timeout=2):
+                return True
+        except (socket.error, socket.timeout, ValueError):
+            return False
+
+    if _is_postgres_available() or os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST'):
+        db_options = {}
+        if DB_SSLMODE:
+            db_options['sslmode'] = DB_SSLMODE
+        elif 'supabase' in DB_HOST.lower():
+            db_options['sslmode'] = 'require'
+
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': DB_NAME,
+                'USER': DB_USER,
+                'PASSWORD': DB_PASSWORD,
+                'HOST': DB_HOST,
+                'PORT': DB_PORT,
+                'OPTIONS': db_options,
+            }
         }
-    }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 
 
 # Password validation
@@ -154,7 +196,8 @@ USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media files
 MEDIA_URL = '/media/'

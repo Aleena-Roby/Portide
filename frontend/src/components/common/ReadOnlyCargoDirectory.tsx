@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from './Modal';
+import { API_BASE_URL } from '../../services/api';
 import { BackendCargo } from '../../types';
 import { 
   Boxes, 
@@ -57,7 +58,7 @@ export const ReadOnlyCargoDirectory: React.FC<ReadOnlyCargoDirectoryProps> = ({
         'X-User-Id': currentUser?.id || ''
       };
 
-      const response = await fetch('http://127.0.0.1:8000/api/cargo/', { headers });
+      const response = await fetch(`${API_BASE_URL}/api/cargo/`, { headers });
       const json = await response.json();
 
       if (response.ok && json.status === 'success') {

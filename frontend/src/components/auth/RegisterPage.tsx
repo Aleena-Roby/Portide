@@ -5,6 +5,7 @@ import { PortideLogo } from '../common/PortideLogo';
 import { checkPasswordRequirements } from '../../utils/passwordValidation';
 import { PasswordRequirementChecklist } from '../common/PasswordRequirementChecklist';
 import { InternationalPhoneInput } from '../common/InternationalPhoneInput';
+import { API_BASE_URL } from '../../services/api';
 import { 
   SUPPORTED_COUNTRIES, 
   SUPPORTED_COUNTRY_NAMES, 
@@ -143,7 +144,7 @@ export const RegisterPage: React.FC = () => {
         bodyFormData.append('request_id_file', idFileObj);
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/auth/registration/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/registration/`, {
         method: 'POST',
         body: bodyFormData,
       });

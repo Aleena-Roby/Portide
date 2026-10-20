@@ -8,3 +8,5 @@ asgiref==3.12.1
 sqlparse==0.5.5
 tzdata==2026.3
 qrcode>=8.0
+gunicorn>=21.2.0
+whitenoise>=6.6.0

@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { checkPasswordRequirements } from '../../utils/passwordValidation';
 import { PasswordRequirementChecklist } from '../common/PasswordRequirementChecklist';
+import { API_BASE_URL } from '../../services/api';
 
 interface ForgotPasswordModalProps {
   isOpen: boolean;
@@ -44,7 +45,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/password-reset/request/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/password-reset/request/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +95,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/password-reset/confirm/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/password-reset/confirm/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -4,6 +4,7 @@ import { Modal } from '../../common/Modal';
 import { checkPasswordRequirements } from '../../../utils/passwordValidation';
 import { InternationalPhoneInput } from '../../common/InternationalPhoneInput';
 import { PasswordRequirementChecklist } from '../../common/PasswordRequirementChecklist';
+import { API_BASE_URL } from '../../../services/api';
 
 import { 
   Users, 
@@ -107,7 +108,7 @@ export const AdminUserManagement: React.FC = () => {
 
     setEditLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/users/${userToEdit.user_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userToEdit.user_id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +142,7 @@ export const AdminUserManagement: React.FC = () => {
     if (!userToDelete) return;
     setDeleteLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/users/${userToDelete.user_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userToDelete.user_id}/`, {
         method: 'DELETE',
         headers: {
           'X-User-Role': 'port_administrator'
@@ -171,7 +172,7 @@ export const AdminUserManagement: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/admin/users/', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/`, {
         headers: {
           'X-User-Role': 'port_administrator'
         }
@@ -231,7 +232,7 @@ export const AdminUserManagement: React.FC = () => {
   const fetchNextEmployeeId = async (targetRole: string) => {
     setFetchingNextId(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/users/next-employee-id/?role=${targetRole}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/next-employee-id/?role=${targetRole}`, {
         headers: {
           'X-User-Role': 'port_administrator'
         }
@@ -287,7 +288,7 @@ export const AdminUserManagement: React.FC = () => {
 
     setCreateLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/admin/users/staff/', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/staff/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

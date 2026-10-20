@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BackendBerth } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
+import { API_BASE_URL } from '../../services/api';
 import { 
   Anchor, 
   Search, 
@@ -124,7 +125,7 @@ export const BerthAvailabilityView: React.FC<BerthAvailabilityViewProps> = ({
     if (!maintenanceModalBerth) return;
     setMaintenanceLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/berths/${maintenanceModalBerth.berth_id}/status/`, {
+      const response = await fetch(`${API_BASE_URL}/api/berths/${maintenanceModalBerth.berth_id}/status/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

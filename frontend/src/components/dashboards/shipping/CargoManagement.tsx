@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { Modal } from '../../common/Modal';
 import { BackendCargo, BackendVesselArrivalRequest, BackendPort } from '../../../types';
+import { API_BASE_URL } from '../../../services/api';
 import { 
   Boxes, 
   Plus, 
@@ -118,7 +119,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
         'X-User-Role': 'shipping_company',
         'X-User-Id': currentUser?.id || ''
       };
-      const response = await fetch('http://127.0.0.1:8000/api/arrival-requests/?eligible_for_cargo=true', { headers });
+      const response = await fetch(`${API_BASE_URL}/api/arrival-requests/?eligible_for_cargo=true`, { headers });
       const json = await response.json();
       if (response.ok && json.status === 'success') {
         setFreshArrivalRequests(json.data || []);
@@ -163,7 +164,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
         'X-User-Id': currentUser?.id || ''
       };
 
-      const response = await fetch('http://127.0.0.1:8000/api/cargo/', { headers });
+      const response = await fetch(`${API_BASE_URL}/api/cargo/`, { headers });
       const json = await response.json();
 
       if (response.ok && json.status === 'success') {
@@ -181,7 +182,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
   const fetchPorts = async () => {
     setPortsLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/ports/');
+      const response = await fetch(`${API_BASE_URL}/api/ports/`);
       const json = await response.json();
       if (response.ok && json.status === 'success') {
         setPorts(json.data || []);
@@ -361,11 +362,11 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
         cargo_destination_port_id: cargoDestinationPortId
       };
 
-      let url = 'http://127.0.0.1:8000/api/cargo/';
+      let url = `${API_BASE_URL}/api/cargo/`;
       let method = 'POST';
 
       if (editingCargo) {
-        url = `http://127.0.0.1:8000/api/cargo/${editingCargo.cargo_id}/`;
+        url = `${API_BASE_URL}/api/cargo/${editingCargo.cargo_id}/`;
         method = 'PATCH';
       }
 

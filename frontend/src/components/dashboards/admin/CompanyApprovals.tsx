@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../context/AppContext';
 import { Modal } from '../../common/Modal';
+import { API_BASE_URL } from '../../../services/api';
 import { 
   Building2, 
   Search, 
@@ -90,7 +91,7 @@ export const CompanyApprovals: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/admin/registration-requests/');
+      const response = await fetch(`${API_BASE_URL}/api/admin/registration-requests/`);
       const result = await response.json();
 
       if (response.ok && result.status === 'success') {
@@ -120,7 +121,7 @@ export const CompanyApprovals: React.FC = () => {
     setRemarksError('');
     const remarksToSave = remarksOverride !== undefined ? remarksOverride : reviewRemarks;
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/registration-requests/${req.registration_request_id}/approve/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/registration-requests/${req.registration_request_id}/approve/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -168,7 +169,7 @@ export const CompanyApprovals: React.FC = () => {
 
     setActionLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/registration-requests/${rejectingRequest.registration_request_id}/reject/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/registration-requests/${rejectingRequest.registration_request_id}/reject/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,7 +215,7 @@ export const CompanyApprovals: React.FC = () => {
 
     setActionLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/registration-requests/${actionRequiredRequest.registration_request_id}/action-required/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/registration-requests/${actionRequiredRequest.registration_request_id}/action-required/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -307,7 +308,7 @@ export const CompanyApprovals: React.FC = () => {
 
   const getFileUrl = (filePath: string | null) => {
     if (!filePath) return '';
-    return filePath.startsWith('http') ? filePath : `http://127.0.0.1:8000${filePath}`;
+    return filePath.startsWith('http') ? filePath : `${API_BASE_URL}${filePath.startsWith('/') ? filePath : '/' + filePath}`;
   };
 
   return (

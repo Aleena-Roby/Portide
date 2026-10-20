@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Modal } from '../common/Modal';
 import { checkPasswordRequirements } from '../../utils/passwordValidation';
 import { PasswordRequirementChecklist } from '../common/PasswordRequirementChecklist';
+import { API_BASE_URL } from '../../services/api';
 import { 
   User, 
   Mail, 
@@ -61,7 +62,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
     setIsSubmitting(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/auth/change-password/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/change-password/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

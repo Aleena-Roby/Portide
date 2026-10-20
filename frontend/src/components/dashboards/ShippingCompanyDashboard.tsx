@@ -6,6 +6,7 @@ import { BackendVessel, BackendVesselArrivalRequest, BackendBerth, BerthAvailabi
 import { GraphicalBerthSelection } from './shipping/GraphicalBerthSelection';
 import { CargoManagement } from './shipping/CargoManagement';
 import { cleanBerthDisplayName } from '../../utils/berthUtils';
+import { API_BASE_URL } from '../../services/api';
 import { 
   Ship, 
   FileCheck, 
@@ -73,7 +74,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     if (!vesselToDelete) return;
     setVesselDeleteLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/vessels/${vesselToDelete.vessel_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/vessels/${vesselToDelete.vessel_id}/`, {
         method: 'DELETE',
         headers: {
           'X-User-Email': currentUser?.email || '',
@@ -106,7 +107,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     if (!requestToDelete) return;
     setRequestDeleteLoading(true);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/arrival-requests/${requestToDelete.vessel_arrival_request_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/arrival-requests/${requestToDelete.vessel_arrival_request_id}/`, {
         method: 'DELETE',
         headers: {
           'X-User-Email': currentUser?.email || '',
@@ -194,8 +195,8 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       };
 
       const [vesselsRes, requestsRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/vessels/', { headers }),
-        fetch('http://127.0.0.1:8000/api/arrival-requests/', { headers })
+        fetch(`${API_BASE_URL}/api/vessels/`, { headers }),
+        fetch(`${API_BASE_URL}/api/arrival-requests/`, { headers })
       ]);
 
       const [vesselsJson, requestsJson] = await Promise.all([
@@ -343,8 +344,8 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     setVesselSubmitLoading(true);
     try {
       const url = editingVessel 
-        ? `http://127.0.0.1:8000/api/vessels/${editingVessel.vessel_id}/`
-        : 'http://127.0.0.1:8000/api/vessels/';
+        ? `${API_BASE_URL}/api/vessels/${editingVessel.vessel_id}/`
+        : `${API_BASE_URL}/api/vessels/`;
       
       const method = editingVessel ? 'PATCH' : 'POST';
 
@@ -454,7 +455,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
 
     setRequestSubmitLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/arrival-requests/', {
+      const response = await fetch(`${API_BASE_URL}/api/arrival-requests/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

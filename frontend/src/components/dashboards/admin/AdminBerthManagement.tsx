@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BackendBerth } from '../../../types';
 import { useApp } from '../../../context/AppContext';
 import { Modal } from '../../common/Modal';
+import { API_BASE_URL } from '../../../services/api';
 import { 
   Anchor, 
   Search, 
@@ -64,7 +65,7 @@ export const AdminBerthManagement: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/admin/berths/', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/berths/`, {
         headers: {
           'X-User-Email': currentUser?.email || '',
           'X-User-Role': 'port_administrator',
@@ -140,8 +141,8 @@ export const AdminBerthManagement: React.FC = () => {
 
     try {
       const url = editingBerth
-        ? `http://127.0.0.1:8000/api/admin/berths/${editingBerth.berth_id}/`
-        : 'http://127.0.0.1:8000/api/admin/berths/';
+        ? `${API_BASE_URL}/api/admin/berths/${editingBerth.berth_id}/`
+        : `${API_BASE_URL}/api/admin/berths/`;
 
       const method = editingBerth ? 'PATCH' : 'POST';
 
@@ -190,7 +191,7 @@ export const AdminBerthManagement: React.FC = () => {
     const newActiveState = !toggleBerth.berth_is_active;
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/berths/${toggleBerth.berth_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/berths/${toggleBerth.berth_id}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +231,7 @@ export const AdminBerthManagement: React.FC = () => {
     setDeleteError('');
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/berths/${deleteBerth.berth_id}/`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/berths/${deleteBerth.berth_id}/`, {
         method: 'DELETE',
         headers: {
           'X-User-Email': currentUser?.email || '',

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BackendVessel, BerthAvailabilityEvaluation } from '../../../types';
 import { useApp } from '../../../context/AppContext';
 import { cleanBerthDisplayName } from '../../../utils/berthUtils';
+import { API_BASE_URL } from '../../../services/api';
 import { 
   Anchor, 
   Check, 
@@ -68,7 +69,7 @@ export const GraphicalBerthSelection: React.FC<GraphicalBerthSelectionProps> = (
         departure_at: isoDeparture
       });
 
-      const response = await fetch(`http://127.0.0.1:8000/api/berths/check-availability/?${query.toString()}`, {
+      const response = await fetch(`${API_BASE_URL}/api/berths/check-availability/?${query.toString()}`, {
         headers: {
           'X-User-Email': currentUser?.email || '',
           'X-User-Role': 'shipping_company',

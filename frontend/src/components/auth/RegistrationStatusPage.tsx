@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PortideLogo } from '../common/PortideLogo';
 import { useApp } from '../../context/AppContext';
+import { API_BASE_URL } from '../../services/api';
 import {
   Clock,
   CheckCircle2,
@@ -89,7 +90,7 @@ export const RegistrationStatusPage: React.FC = () => {
       const isEmail = trimmed.includes('@');
       const paramName = isEmail ? 'email' : 'request_id';
       
-      const response = await fetch(`http://127.0.0.1:8000/api/auth/registration-status/?${paramName}=${encodeURIComponent(trimmed)}`);
+      const response = await fetch(`${API_BASE_URL}/api/auth/registration-status/?${paramName}=${encodeURIComponent(trimmed)}`);
       const result = await response.json();
 
       if (response.ok && result.status === 'success') {
@@ -148,7 +149,7 @@ export const RegistrationStatusPage: React.FC = () => {
         formData.append('applicant_notes', applicantNotes.trim());
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/auth/registration-resubmit/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/registration-resubmit/`, {
         method: 'POST',
         body: formData,
       });
@@ -193,7 +194,7 @@ export const RegistrationStatusPage: React.FC = () => {
   const getFileUrl = (path: string | null) => {
     if (!path) return '#';
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    return `http://127.0.0.1:8000${path.startsWith('/') ? path : '/' + path}`;
+    return `${API_BASE_URL}${path.startsWith('/') ? path : '/' + path}`;
   };
 
   // Determine if specific documents were flagged by admin

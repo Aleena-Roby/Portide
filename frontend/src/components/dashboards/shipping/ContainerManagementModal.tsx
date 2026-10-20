@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../common/Modal';
-import { apiFetch } from '../../../services/api';
+import { apiFetch, API_BASE_URL } from '../../../services/api';
 import { useApp } from '../../../context/AppContext';
 import { 
   BackendCargo, 
@@ -124,7 +124,7 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
         'X-User-Id': currentUser?.id || ''
       };
 
-      const res = await fetch(`http://127.0.0.1:8000/api/cargo/${cargo.cargo_id}/containers/`, { headers });
+      const res = await fetch(`${API_BASE_URL}/api/cargo/${cargo.cargo_id}/containers/`, { headers });
       const json = await res.json();
 
       if (res.ok && json.status === 'success') {
@@ -151,7 +151,7 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
         'X-User-Id': currentUser?.id || ''
       };
 
-      const res = await fetch(`http://127.0.0.1:8000/api/containers/${container.container_id}/status/`, {
+      const res = await fetch(`${API_BASE_URL}/api/containers/${container.container_id}/status/`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ status: targetStatus })
@@ -260,13 +260,13 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
 
       let response: Response;
       if (editingContainer) {
-        response = await fetch(`http://127.0.0.1:8000/api/containers/${editingContainer.container_id}/`, {
+        response = await fetch(`${API_BASE_URL}/api/containers/${editingContainer.container_id}/`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify(payload)
         });
       } else {
-        response = await fetch('http://127.0.0.1:8000/api/containers/', {
+        response = await fetch(`${API_BASE_URL}/api/containers/`, {
           method: 'POST',
           headers,
           body: JSON.stringify(payload)
