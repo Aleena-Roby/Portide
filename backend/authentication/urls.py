@@ -13,9 +13,11 @@ from authentication.views import (
     ForgotPasswordAPIView,
     ResetPasswordAPIView,
     AdminCreateStaffAPIView,
+    AdminNextEmployeeIdAPIView,
     AdminListUsersAPIView,
     AdminUserDetailAPIView,
     ChangePasswordAPIView,
+    FirstLoginChangePasswordAPIView,
     VesselListCreateAPIView,
     VesselDetailAPIView,
     ArrivalRequestListCreateAPIView,
@@ -30,7 +32,87 @@ from authentication.views import (
     VesselScheduleListCreateAPIView,
     VesselScheduleUpdateStatusAPIView,
     PortSettingsAPIView,
-    AuditLogListAPIView
+    AuditLogListAPIView,
+    CargoListCreateAPIView,
+    CargoDetailAPIView,
+    PortListAPIView,
+    ContainerListCreateAPIView,
+    PublicContainerTrackingAPIView,
+    ContainerDetailAPIView,
+    ContainerStatusTransitionAPIView,
+    CargoContainersSummaryAPIView,
+    CustomsContainersListAPIView,
+    CustomsContainerDetailAPIView,
+    CustomsStartInspectionAPIView,
+    CustomsSubmitInspectionAPIView,
+    CustomsDocumentUploadAPIView,
+    CustomsDocumentListAPIView,
+    CustomsDocumentReviewAPIView,
+    CustomsDecisionHistoryAPIView,
+    CustomsDocumentDownloadAPIView,
+    CustomsDocumentDeleteAPIView,
+    CustomsDocumentReplaceAPIView,
+    GateContainersListAPIView,
+    GateContainerDetailAPIView,
+    ContainerReleaseAPIView,
+    GateTruckListCreateAPIView,
+    GateDriverListCreateAPIView,
+    GateListAPIView,
+    GatePassListAPIView,
+    GatePassDetailAPIView,
+    GatePassGenerateAPIView,
+    GatePassVerifyAPIView,
+    GatePassReleaseAPIView,
+    GatePassCancelAPIView,
+    GatePassResendEmailAPIView,
+    DeliveryContainerListAPIView,
+    DeliveryContainerDetailAPIView,
+    DeliveryConfirmDepartureAPIView,
+    DeliveryUpdateStatusAPIView,
+    DeliveryConfirmDeliveryAPIView,
+    DeliveryReportExceptionAPIView,
+    YardListCreateAPIView,
+    YardDetailAPIView,
+    YardToggleStatusAPIView,
+    YardBlockListCreateAPIView,
+    YardBlockDetailAPIView,
+    YardBlockToggleStatusAPIView,
+    YardSlotListCreateAPIView,
+    YardSlotDetailAPIView,
+    YardSlotToggleStatusAPIView,
+    YardAllocationPendingListAPIView,
+    YardAllocationAvailableSlotsAPIView,
+    YardAllocationListCreateAPIView,
+    YardAllocationDetailAPIView,
+    YardAllocationReleaseAPIView,
+    ContainerRelocationAPIView,
+    YardOperationsContainersAPIView,
+    YardOperationsContainerLocationAPIView,
+    YardMovementHistoryListAPIView,
+    YardUtilizationSummaryAPIView,
+    CraneListCreateAPIView,
+    CraneDetailAPIView,
+    CraneAllocationListCreateAPIView,
+    CraneAllocationDetailAPIView,
+    CraneAllocationStartAPIView,
+    CraneAllocationCompleteAPIView,
+    CraneAllocationCancelAPIView,
+    CraneOperationsSummaryAPIView,
+    EligibleVesselSchedulesAPIView,
+    UnloadingExecuteAPIView,
+    UnloadingEligibleVesselsAPIView,
+    UnloadingActiveCranesAPIView,
+    UnloadingManifestContainersAPIView,
+    UnloadingHistoryAPIView,
+    PreArrivalCustomsSubmitAPIView,
+    PreArrivalCustomsListAPIView,
+    PreArrivalCustomsDetailAPIView,
+    PreArrivalCustomsReviewAPIView,
+    DeliveryOrderListCreateAPIView,
+    DirectTransferEligibleContainersAPIView,
+    DirectTransferExecuteAPIView,
+    DirectTransferListAPIView,
+    DirectTransferDetailAPIView,
 )
 
 urlpatterns = [
@@ -44,6 +126,10 @@ urlpatterns = [
     path('registration-resubmit/', ShippingCompanyResubmitAPIView.as_view(), name='registration_resubmit'),
     path('registration-resubmit', ShippingCompanyResubmitAPIView.as_view(), name='registration_resubmit_noslash'),
     path('change-password/', ChangePasswordAPIView.as_view(), name='change_password'),
+    path('first-login-change-password/', FirstLoginChangePasswordAPIView.as_view(), name='first_login_change_password'),
+    path('first-login-change-password', FirstLoginChangePasswordAPIView.as_view(), name='first_login_change_password_noslash'),
+    path('first-login-password-change/', FirstLoginChangePasswordAPIView.as_view(), name='first_login_password_change'),
+    path('first-login-password-change', FirstLoginChangePasswordAPIView.as_view(), name='first_login_password_change_noslash'),
 
     # Vessel Management Endpoints
     path('vessels/', VesselListCreateAPIView.as_view(), name='vessel_list_create'),
@@ -60,6 +146,90 @@ urlpatterns = [
     path('arrival-requests/<int:pk>/approve', ArrivalRequestApproveAPIView.as_view(), name='arrival_request_approve_noslash'),
     path('arrival-requests/<int:pk>/reject/', ArrivalRequestRejectAPIView.as_view(), name='arrival_request_reject'),
     path('arrival-requests/<int:pk>/reject', ArrivalRequestRejectAPIView.as_view(), name='arrival_request_reject_noslash'),
+    
+    # Cargo Management Endpoints
+    path('cargo/', CargoListCreateAPIView.as_view(), name='cargo_list_create'),
+    path('cargo', CargoListCreateAPIView.as_view(), name='cargo_list_create_noslash'),
+    path('cargo/<int:pk>/', CargoDetailAPIView.as_view(), name='cargo_detail'),
+    path('cargo/<int:pk>', CargoDetailAPIView.as_view(), name='cargo_detail_noslash'),
+    path('arrival-requests/<int:pk>/cargo/', CargoListCreateAPIView.as_view(), name='arrival_request_cargo_list'),
+    path('arrival-requests/<int:pk>/cargo', CargoListCreateAPIView.as_view(), name='arrival_request_cargo_list_noslash'),
+    
+    # Master Port Directory Endpoints
+    path('ports/', PortListAPIView.as_view(), name='port_list'),
+    path('ports', PortListAPIView.as_view(), name='port_list_noslash'),
+
+    # Container Management & Tracking Endpoints
+    path('containers/track/', PublicContainerTrackingAPIView.as_view(), name='public_container_tracking'),
+    path('containers/track', PublicContainerTrackingAPIView.as_view(), name='public_container_tracking_noslash'),
+    path('containers/', ContainerListCreateAPIView.as_view(), name='container_list_create'),
+    path('containers', ContainerListCreateAPIView.as_view(), name='container_list_create_noslash'),
+    path('containers/<int:pk>/', ContainerDetailAPIView.as_view(), name='container_detail'),
+    path('containers/<int:pk>', ContainerDetailAPIView.as_view(), name='container_detail_noslash'),
+    path('containers/<int:pk>/status/', ContainerStatusTransitionAPIView.as_view(), name='container_status_transition'),
+    path('containers/<int:pk>/status', ContainerStatusTransitionAPIView.as_view(), name='container_status_transition_noslash'),
+    path('containers/<int:pk>/release/', ContainerReleaseAPIView.as_view(), name='container_release'),
+    path('containers/<int:pk>/release', ContainerReleaseAPIView.as_view(), name='container_release_noslash'),
+    path('cargo/<int:cargo_id>/containers/', CargoContainersSummaryAPIView.as_view(), name='cargo_containers_summary'),
+    path('cargo/<int:cargo_id>/containers', CargoContainersSummaryAPIView.as_view(), name='cargo_containers_summary_noslash'),
+
+    # Gate & Truck Operations Endpoints
+    path('gate/containers/', GateContainersListAPIView.as_view(), name='gate_containers_list'),
+    path('gate/containers', GateContainersListAPIView.as_view(), name='gate_containers_list_noslash'),
+    path('gate/containers/<int:pk>/', GateContainerDetailAPIView.as_view(), name='gate_container_detail'),
+    path('gate/containers/<int:pk>', GateContainerDetailAPIView.as_view(), name='gate_container_detail_noslash'),
+    path('gate/containers/<int:pk>/release/', ContainerReleaseAPIView.as_view(), name='gate_container_release'),
+    path('gate/containers/<int:pk>/release', ContainerReleaseAPIView.as_view(), name='gate_container_release_noslash'),
+
+    # Digital Gate Pass & QR Verification Endpoints
+    path('gate/trucks/', GateTruckListCreateAPIView.as_view(), name='gate_trucks_list_create'),
+    path('gate/trucks', GateTruckListCreateAPIView.as_view(), name='gate_trucks_list_create_noslash'),
+    path('gate/drivers/', GateDriverListCreateAPIView.as_view(), name='gate_drivers_list_create'),
+    path('gate/drivers', GateDriverListCreateAPIView.as_view(), name='gate_drivers_list_create_noslash'),
+    path('gate/gates/', GateListAPIView.as_view(), name='gate_gates_list'),
+    path('gate/gates', GateListAPIView.as_view(), name='gate_gates_list_noslash'),
+    path('gate/passes/', GatePassListAPIView.as_view(), name='gate_passes_list'),
+    path('gate/passes', GatePassListAPIView.as_view(), name='gate_passes_list_noslash'),
+    path('gate/passes/<int:pk>/', GatePassDetailAPIView.as_view(), name='gate_pass_detail'),
+    path('gate/passes/<int:pk>', GatePassDetailAPIView.as_view(), name='gate_pass_detail_noslash'),
+    path('gate/passes/generate/', GatePassGenerateAPIView.as_view(), name='gate_pass_generate'),
+    path('gate/passes/generate', GatePassGenerateAPIView.as_view(), name='gate_pass_generate_noslash'),
+    path('gate/passes/verify/', GatePassVerifyAPIView.as_view(), name='gate_pass_verify'),
+    path('gate/passes/verify', GatePassVerifyAPIView.as_view(), name='gate_pass_verify_noslash'),
+    path('gate/passes/<int:pk>/release/', GatePassReleaseAPIView.as_view(), name='gate_pass_release'),
+    path('gate/passes/<int:pk>/release', GatePassReleaseAPIView.as_view(), name='gate_pass_release_noslash'),
+    path('gate/passes/<int:pk>/cancel/', GatePassCancelAPIView.as_view(), name='gate_pass_cancel'),
+    path('gate/passes/<int:pk>/cancel', GatePassCancelAPIView.as_view(), name='gate_pass_cancel_noslash'),
+    path('gate/passes/<int:pk>/resend-email/', GatePassResendEmailAPIView.as_view(), name='gate_pass_resend_email'),
+    path('gate/passes/<int:pk>/resend-email', GatePassResendEmailAPIView.as_view(), name='gate_pass_resend_email_noslash'),
+
+    # Customs Officer Inspection & Clearance Endpoints
+    path('customs/containers/', CustomsContainersListAPIView.as_view(), name='customs_containers_list'),
+    path('customs/containers', CustomsContainersListAPIView.as_view(), name='customs_containers_list_noslash'),
+    path('customs/containers/<int:pk>/', CustomsContainerDetailAPIView.as_view(), name='customs_container_detail'),
+    path('customs/containers/<int:pk>', CustomsContainerDetailAPIView.as_view(), name='customs_container_detail_noslash'),
+    path('customs/containers/<int:pk>/start-inspection/', CustomsStartInspectionAPIView.as_view(), name='customs_start_inspection'),
+    path('customs/containers/<int:pk>/start-inspection', CustomsStartInspectionAPIView.as_view(), name='customs_start_inspection_noslash'),
+    path('customs/containers/<int:pk>/submit-inspection/', CustomsSubmitInspectionAPIView.as_view(), name='customs_submit_inspection'),
+    path('customs/containers/<int:pk>/submit-inspection', CustomsSubmitInspectionAPIView.as_view(), name='customs_submit_inspection_noslash'),
+
+    # Customs Supporting Documents (Normal Post-Arrival & Pre-Arrival Workflow)
+    path('customs/documents/upload/', CustomsDocumentUploadAPIView.as_view(), name='customs_document_upload'),
+    path('customs/documents/upload', CustomsDocumentUploadAPIView.as_view(), name='customs_document_upload_noslash'),
+    path('customs/containers/<int:container_id>/documents/upload/', CustomsDocumentUploadAPIView.as_view(), name='customs_container_documents_upload_explicit'),
+    path('customs/containers/<int:container_id>/documents/upload', CustomsDocumentUploadAPIView.as_view(), name='customs_container_documents_upload_explicit_noslash'),
+    path('customs/containers/<int:container_id>/documents/', CustomsDocumentUploadAPIView.as_view(), name='customs_container_documents_upload'),
+    path('customs/containers/<int:container_id>/documents', CustomsDocumentUploadAPIView.as_view(), name='customs_container_documents_upload_noslash'),
+    path('customs/containers/<int:container_id>/documents/list/', CustomsDocumentListAPIView.as_view(), name='customs_container_documents_list'),
+    path('customs/containers/<int:container_id>/documents/list', CustomsDocumentListAPIView.as_view(), name='customs_container_documents_list_noslash'),
+    path('customs/documents/<int:pk>/review/', CustomsDocumentReviewAPIView.as_view(), name='customs_document_review'),
+    path('customs/documents/<int:pk>/review', CustomsDocumentReviewAPIView.as_view(), name='customs_document_review_noslash'),
+    path('customs/documents/<int:pk>/download/', CustomsDocumentDownloadAPIView.as_view(), name='customs_document_download'),
+    path('customs/documents/<int:pk>/download', CustomsDocumentDownloadAPIView.as_view(), name='customs_document_download_noslash'),
+    path('customs/documents/<int:pk>/delete/', CustomsDocumentDeleteAPIView.as_view(), name='customs_document_delete'),
+    path('customs/documents/<int:pk>/delete', CustomsDocumentDeleteAPIView.as_view(), name='customs_document_delete_noslash'),
+    path('customs/documents/<int:pk>/replace/', CustomsDocumentReplaceAPIView.as_view(), name='customs_document_replace'),
+    path('customs/documents/<int:pk>/replace', CustomsDocumentReplaceAPIView.as_view(), name='customs_document_replace_noslash'),
     
     # Berth & Scheduling Endpoints
     path('berths/check-availability/', BerthAvailabilityCheckAPIView.as_view(), name='berth_check_availability'),
@@ -88,6 +258,8 @@ urlpatterns = [
     path('admin/registration-requests/<int:pk>/action-required', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_registration_requests_action_required_noslash'),
     
     # Admin Staff Account Management & User Listing
+    path('admin/users/next-employee-id/', AdminNextEmployeeIdAPIView.as_view(), name='admin_next_employee_id'),
+    path('admin/users/next-employee-id', AdminNextEmployeeIdAPIView.as_view(), name='admin_next_employee_id_noslash'),
     path('admin/users/staff/', AdminCreateStaffAPIView.as_view(), name='admin_create_staff'),
     path('admin/users/staff', AdminCreateStaffAPIView.as_view(), name='admin_create_staff_noslash'),
     path('admin/users/', AdminListUsersAPIView.as_view(), name='admin_list_users'),
@@ -116,6 +288,240 @@ urlpatterns = [
     path('audit-logs', AuditLogListAPIView.as_view(), name='audit_logs_list_noslash'),
     path('admin/audit-logs/', AuditLogListAPIView.as_view(), name='admin_audit_logs_list'),
     path('admin/audit-logs', AuditLogListAPIView.as_view(), name='admin_audit_logs_list_noslash'),
+
+    # Container Delivery Tracking Endpoints
+    path('delivery/containers/', DeliveryContainerListAPIView.as_view(), name='delivery_container_list'),
+    path('delivery/containers', DeliveryContainerListAPIView.as_view(), name='delivery_container_list_noslash'),
+    path('delivery/containers/<int:pk>/', DeliveryContainerDetailAPIView.as_view(), name='delivery_container_detail'),
+    path('delivery/containers/<int:pk>', DeliveryContainerDetailAPIView.as_view(), name='delivery_container_detail_noslash'),
+    path('delivery/containers/<int:pk>/confirm-departure/', DeliveryConfirmDepartureAPIView.as_view(), name='delivery_confirm_departure'),
+    path('delivery/containers/<int:pk>/confirm-departure', DeliveryConfirmDepartureAPIView.as_view(), name='delivery_confirm_departure_noslash'),
+    path('delivery/containers/<int:pk>/update-status/', DeliveryUpdateStatusAPIView.as_view(), name='delivery_update_status'),
+    path('delivery/containers/<int:pk>/update-status', DeliveryUpdateStatusAPIView.as_view(), name='delivery_update_status_noslash'),
+    path('delivery/containers/<int:pk>/confirm-delivery/', DeliveryConfirmDeliveryAPIView.as_view(), name='delivery_confirm_delivery'),
+    path('delivery/containers/<int:pk>/confirm-delivery', DeliveryConfirmDeliveryAPIView.as_view(), name='delivery_confirm_delivery_noslash'),
+    path('delivery/containers/<int:pk>/report-exception/', DeliveryReportExceptionAPIView.as_view(), name='delivery_report_exception'),
+    path('delivery/containers/<int:pk>/report-exception', DeliveryReportExceptionAPIView.as_view(), name='delivery_report_exception_noslash'),
+
+    # Phase T1 — Yard Master Management Endpoints
+    # Yards
+    path('terminal/yards/', YardListCreateAPIView.as_view(), name='terminal_yard_list_create'),
+    path('terminal/yards', YardListCreateAPIView.as_view(), name='terminal_yard_list_create_noslash'),
+    path('terminal/yards/<int:pk>/', YardDetailAPIView.as_view(), name='terminal_yard_detail'),
+    path('terminal/yards/<int:pk>', YardDetailAPIView.as_view(), name='terminal_yard_detail_noslash'),
+    path('terminal/yards/<int:pk>/toggle-status/', YardToggleStatusAPIView.as_view(), name='terminal_yard_toggle_status'),
+    path('terminal/yards/<int:pk>/toggle-status', YardToggleStatusAPIView.as_view(), name='terminal_yard_toggle_status_noslash'),
+
+    # Direct yard aliases
+    path('yards/', YardListCreateAPIView.as_view(), name='yard_list_create'),
+    path('yards', YardListCreateAPIView.as_view(), name='yard_list_create_noslash'),
+    path('yards/<int:pk>/', YardDetailAPIView.as_view(), name='yard_detail'),
+    path('yards/<int:pk>', YardDetailAPIView.as_view(), name='yard_detail_noslash'),
+    path('yards/<int:pk>/toggle-status/', YardToggleStatusAPIView.as_view(), name='yard_toggle_status'),
+    path('yards/<int:pk>/toggle-status', YardToggleStatusAPIView.as_view(), name='yard_toggle_status_noslash'),
+
+    # Yard Blocks
+    path('terminal/yards/<int:yard_id>/blocks/', YardBlockListCreateAPIView.as_view(), name='terminal_yard_blocks_list_create'),
+    path('terminal/yards/<int:yard_id>/blocks', YardBlockListCreateAPIView.as_view(), name='terminal_yard_blocks_list_create_noslash'),
+    path('terminal/blocks/', YardBlockListCreateAPIView.as_view(), name='terminal_blocks_list_create'),
+    path('terminal/blocks', YardBlockListCreateAPIView.as_view(), name='terminal_blocks_list_create_noslash'),
+    path('terminal/blocks/<int:pk>/', YardBlockDetailAPIView.as_view(), name='terminal_block_detail'),
+    path('terminal/blocks/<int:pk>', YardBlockDetailAPIView.as_view(), name='terminal_block_detail_noslash'),
+    path('terminal/blocks/<int:pk>/toggle-status/', YardBlockToggleStatusAPIView.as_view(), name='terminal_block_toggle_status'),
+    path('terminal/blocks/<int:pk>/toggle-status', YardBlockToggleStatusAPIView.as_view(), name='terminal_block_toggle_status_noslash'),
+
+    # Yard Slots
+    path('terminal/blocks/<int:block_id>/slots/', YardSlotListCreateAPIView.as_view(), name='terminal_block_slots_list_create'),
+    path('terminal/blocks/<int:block_id>/slots', YardSlotListCreateAPIView.as_view(), name='terminal_block_slots_list_create_noslash'),
+    path('terminal/slots/', YardSlotListCreateAPIView.as_view(), name='terminal_slots_list_create'),
+    path('terminal/slots', YardSlotListCreateAPIView.as_view(), name='terminal_slots_list_create_noslash'),
+    path('terminal/slots/<int:pk>/', YardSlotDetailAPIView.as_view(), name='terminal_slot_detail'),
+    path('terminal/slots/<int:pk>', YardSlotDetailAPIView.as_view(), name='terminal_slot_detail_noslash'),
+    path('terminal/slots/<int:pk>/toggle-status/', YardSlotToggleStatusAPIView.as_view(), name='terminal_slot_toggle_status'),
+    path('terminal/slots/<int:pk>/toggle-status', YardSlotToggleStatusAPIView.as_view(), name='terminal_slot_toggle_status_noslash'),
+
+    # Phase T2 — Container Yard Allocation Endpoints
+    # Pending Containers
+    path('terminal/yard-allocations/pending/', YardAllocationPendingListAPIView.as_view(), name='terminal_yard_allocations_pending'),
+    path('terminal/yard-allocations/pending', YardAllocationPendingListAPIView.as_view(), name='terminal_yard_allocations_pending_noslash'),
+    path('yard-allocations/pending/', YardAllocationPendingListAPIView.as_view(), name='yard_allocations_pending'),
+    path('yard-allocations/pending', YardAllocationPendingListAPIView.as_view(), name='yard_allocations_pending_noslash'),
+
+    # Available Slots
+    path('terminal/yard-allocations/available-slots/', YardAllocationAvailableSlotsAPIView.as_view(), name='terminal_yard_allocations_available_slots'),
+    path('terminal/yard-allocations/available-slots', YardAllocationAvailableSlotsAPIView.as_view(), name='terminal_yard_allocations_available_slots_noslash'),
+    path('yard-allocations/available-slots/', YardAllocationAvailableSlotsAPIView.as_view(), name='yard_allocations_available_slots'),
+    path('yard-allocations/available-slots', YardAllocationAvailableSlotsAPIView.as_view(), name='yard_allocations_available_slots_noslash'),
+
+    # Allocations List & Create
+    path('terminal/yard-allocations/', YardAllocationListCreateAPIView.as_view(), name='terminal_yard_allocations_list_create'),
+    path('terminal/yard-allocations', YardAllocationListCreateAPIView.as_view(), name='terminal_yard_allocations_list_create_noslash'),
+    path('yard-allocations/', YardAllocationListCreateAPIView.as_view(), name='yard_allocations_list_create'),
+    path('yard-allocations', YardAllocationListCreateAPIView.as_view(), name='yard_allocations_list_create_noslash'),
+
+    # Allocation Detail
+    path('terminal/yard-allocations/<int:pk>/', YardAllocationDetailAPIView.as_view(), name='terminal_yard_allocation_detail'),
+    path('terminal/yard-allocations/<int:pk>', YardAllocationDetailAPIView.as_view(), name='terminal_yard_allocation_detail_noslash'),
+    path('yard-allocations/<int:pk>/', YardAllocationDetailAPIView.as_view(), name='yard_allocation_detail'),
+    path('yard-allocations/<int:pk>', YardAllocationDetailAPIView.as_view(), name='yard_allocation_detail_noslash'),
+
+    # Allocation Release
+    path('terminal/yard-allocations/<int:pk>/release/', YardAllocationReleaseAPIView.as_view(), name='terminal_yard_allocation_release'),
+    path('terminal/yard-allocations/<int:pk>/release', YardAllocationReleaseAPIView.as_view(), name='terminal_yard_allocation_release_noslash'),
+    path('yard-allocations/<int:pk>/release/', YardAllocationReleaseAPIView.as_view(), name='yard_allocation_release'),
+    path('yard-allocations/<int:pk>/release', YardAllocationReleaseAPIView.as_view(), name='yard_allocation_release_noslash'),
+
+    # Phase T3 — Yard Operations Management Endpoints
+    # Relocation
+    path('terminal/yard-operations/relocate/', ContainerRelocationAPIView.as_view(), name='terminal_yard_operations_relocate'),
+    path('terminal/yard-operations/relocate', ContainerRelocationAPIView.as_view(), name='terminal_yard_operations_relocate_noslash'),
+    path('yard-operations/relocate/', ContainerRelocationAPIView.as_view(), name='yard_operations_relocate'),
+    path('yard-operations/relocate', ContainerRelocationAPIView.as_view(), name='yard_operations_relocate_noslash'),
+
+    # Containers in Yard / Storage Status
+    path('terminal/yard-operations/containers/', YardOperationsContainersAPIView.as_view(), name='terminal_yard_operations_containers'),
+    path('terminal/yard-operations/containers', YardOperationsContainersAPIView.as_view(), name='terminal_yard_operations_containers_noslash'),
+    path('yard-operations/containers/', YardOperationsContainersAPIView.as_view(), name='yard_operations_containers'),
+    path('yard-operations/containers', YardOperationsContainersAPIView.as_view(), name='yard_operations_containers_noslash'),
+
+    # Container Location Details
+    path('terminal/yard-operations/containers/<int:pk>/location/', YardOperationsContainerLocationAPIView.as_view(), name='terminal_yard_operations_container_location'),
+    path('terminal/yard-operations/containers/<int:pk>/location', YardOperationsContainerLocationAPIView.as_view(), name='terminal_yard_operations_container_location_noslash'),
+    path('yard-operations/containers/<int:pk>/location/', YardOperationsContainerLocationAPIView.as_view(), name='yard_operations_container_location'),
+    path('yard-operations/containers/<int:pk>/location', YardOperationsContainerLocationAPIView.as_view(), name='yard_operations_container_location_noslash'),
+
+    # Movement History
+    path('terminal/yard-operations/movements/', YardMovementHistoryListAPIView.as_view(), name='terminal_yard_operations_movements'),
+    path('terminal/yard-operations/movements', YardMovementHistoryListAPIView.as_view(), name='terminal_yard_operations_movements_noslash'),
+    path('yard-operations/movements/', YardMovementHistoryListAPIView.as_view(), name='yard_operations_movements'),
+    path('yard-operations/movements', YardMovementHistoryListAPIView.as_view(), name='yard_operations_movements_noslash'),
+
+    # Yard & Block Utilization
+    path('terminal/yard-operations/utilization/', YardUtilizationSummaryAPIView.as_view(), name='terminal_yard_operations_utilization'),
+    path('terminal/yard-operations/utilization', YardUtilizationSummaryAPIView.as_view(), name='terminal_yard_operations_utilization_noslash'),
+    path('yard-operations/utilization/', YardUtilizationSummaryAPIView.as_view(), name='yard_operations_utilization'),
+    path('yard-operations/utilization', YardUtilizationSummaryAPIView.as_view(), name='yard_operations_utilization_noslash'),
+
+    # Phase T4 — Crane Management & Allocation Endpoints
+    # Crane Master
+    path('terminal/cranes/', CraneListCreateAPIView.as_view(), name='terminal_cranes_list_create'),
+    path('terminal/cranes', CraneListCreateAPIView.as_view(), name='terminal_cranes_list_create_noslash'),
+    path('cranes/', CraneListCreateAPIView.as_view(), name='cranes_list_create'),
+    path('cranes', CraneListCreateAPIView.as_view(), name='cranes_list_create_noslash'),
+    path('terminal/cranes/<int:pk>/', CraneDetailAPIView.as_view(), name='terminal_crane_detail'),
+    path('terminal/cranes/<int:pk>', CraneDetailAPIView.as_view(), name='terminal_crane_detail_noslash'),
+    path('cranes/<int:pk>/', CraneDetailAPIView.as_view(), name='crane_detail'),
+    path('cranes/<int:pk>', CraneDetailAPIView.as_view(), name='crane_detail_noslash'),
+
+    # Crane Allocations & Assignments
+    path('terminal/crane-allocations/eligible-schedules/', EligibleVesselSchedulesAPIView.as_view(), name='terminal_crane_eligible_schedules'),
+    path('terminal/crane-allocations/eligible-schedules', EligibleVesselSchedulesAPIView.as_view(), name='terminal_crane_eligible_schedules_noslash'),
+    path('crane-allocations/eligible-schedules/', EligibleVesselSchedulesAPIView.as_view(), name='crane_eligible_schedules'),
+    path('crane-allocations/eligible-schedules', EligibleVesselSchedulesAPIView.as_view(), name='crane_eligible_schedules_noslash'),
+
+    path('terminal/crane-allocations/', CraneAllocationListCreateAPIView.as_view(), name='terminal_crane_allocations_list_create'),
+    path('terminal/crane-allocations', CraneAllocationListCreateAPIView.as_view(), name='terminal_crane_allocations_list_create_noslash'),
+    path('crane-allocations/', CraneAllocationListCreateAPIView.as_view(), name='crane_allocations_list_create'),
+    path('crane-allocations', CraneAllocationListCreateAPIView.as_view(), name='crane_allocations_list_create_noslash'),
+
+    path('terminal/crane-allocations/<int:pk>/', CraneAllocationDetailAPIView.as_view(), name='terminal_crane_allocation_detail'),
+    path('terminal/crane-allocations/<int:pk>', CraneAllocationDetailAPIView.as_view(), name='terminal_crane_allocation_detail_noslash'),
+    path('crane-allocations/<int:pk>/', CraneAllocationDetailAPIView.as_view(), name='crane_allocation_detail'),
+    path('crane-allocations/<int:pk>', CraneAllocationDetailAPIView.as_view(), name='crane_allocation_detail_noslash'),
+
+    # Allocation Lifecycle Transitions
+    path('terminal/crane-allocations/<int:pk>/start/', CraneAllocationStartAPIView.as_view(), name='terminal_crane_allocation_start'),
+    path('terminal/crane-allocations/<int:pk>/start', CraneAllocationStartAPIView.as_view(), name='terminal_crane_allocation_start_noslash'),
+    path('crane-allocations/<int:pk>/start/', CraneAllocationStartAPIView.as_view(), name='crane_allocation_start'),
+    path('crane-allocations/<int:pk>/start', CraneAllocationStartAPIView.as_view(), name='crane_allocation_start_noslash'),
+
+    path('terminal/crane-allocations/<int:pk>/complete/', CraneAllocationCompleteAPIView.as_view(), name='terminal_crane_allocation_complete'),
+    path('terminal/crane-allocations/<int:pk>/complete', CraneAllocationCompleteAPIView.as_view(), name='terminal_crane_allocation_complete_noslash'),
+    path('crane-allocations/<int:pk>/complete/', CraneAllocationCompleteAPIView.as_view(), name='crane_allocation_complete'),
+    path('crane-allocations/<int:pk>/complete', CraneAllocationCompleteAPIView.as_view(), name='crane_allocation_complete_noslash'),
+
+    path('terminal/crane-allocations/<int:pk>/cancel/', CraneAllocationCancelAPIView.as_view(), name='terminal_crane_allocation_cancel'),
+    path('terminal/crane-allocations/<int:pk>/cancel', CraneAllocationCancelAPIView.as_view(), name='terminal_crane_allocation_cancel_noslash'),
+    path('crane-allocations/<int:pk>/cancel/', CraneAllocationCancelAPIView.as_view(), name='crane_allocation_cancel'),
+    path('crane-allocations/<int:pk>/cancel', CraneAllocationCancelAPIView.as_view(), name='crane_allocation_cancel_noslash'),
+
+    # Crane Operations Summary & KPIs
+    path('terminal/crane-operations/summary/', CraneOperationsSummaryAPIView.as_view(), name='terminal_crane_operations_summary'),
+    path('terminal/crane-operations/summary', CraneOperationsSummaryAPIView.as_view(), name='terminal_crane_operations_summary_noslash'),
+    path('crane-operations/summary/', CraneOperationsSummaryAPIView.as_view(), name='crane_operations_summary'),
+    path('crane-operations/summary', CraneOperationsSummaryAPIView.as_view(), name='crane_operations_summary_noslash'),
+
+    # Phase T4 / Unloading Operations Integration Endpoints
+    path('terminal/unloading/discharge/', UnloadingExecuteAPIView.as_view(), name='terminal_unloading_discharge'),
+    path('terminal/unloading/discharge', UnloadingExecuteAPIView.as_view(), name='terminal_unloading_discharge_noslash'),
+    path('unloading/discharge/', UnloadingExecuteAPIView.as_view(), name='unloading_discharge'),
+    path('unloading/discharge', UnloadingExecuteAPIView.as_view(), name='unloading_discharge_noslash'),
+
+    path('terminal/unloading/eligible-vessels/', UnloadingEligibleVesselsAPIView.as_view(), name='terminal_unloading_eligible_vessels'),
+    path('terminal/unloading/eligible-vessels', UnloadingEligibleVesselsAPIView.as_view(), name='terminal_unloading_eligible_vessels_noslash'),
+    path('unloading/eligible-vessels/', UnloadingEligibleVesselsAPIView.as_view(), name='unloading_eligible_vessels'),
+    path('unloading/eligible-vessels', UnloadingEligibleVesselsAPIView.as_view(), name='unloading_eligible_vessels_noslash'),
+
+    path('terminal/unloading/active-cranes/', UnloadingActiveCranesAPIView.as_view(), name='terminal_unloading_active_cranes'),
+    path('terminal/unloading/active-cranes', UnloadingActiveCranesAPIView.as_view(), name='terminal_unloading_active_cranes_noslash'),
+    path('unloading/active-cranes/', UnloadingActiveCranesAPIView.as_view(), name='unloading_active_cranes'),
+    path('unloading/active-cranes', UnloadingActiveCranesAPIView.as_view(), name='unloading_active_cranes_noslash'),
+
+    path('terminal/unloading/manifest-containers/', UnloadingManifestContainersAPIView.as_view(), name='terminal_unloading_manifest_containers'),
+    path('terminal/unloading/manifest-containers', UnloadingManifestContainersAPIView.as_view(), name='terminal_unloading_manifest_containers_noslash'),
+    path('unloading/manifest-containers/', UnloadingManifestContainersAPIView.as_view(), name='unloading_manifest_containers'),
+    path('unloading/manifest-containers', UnloadingManifestContainersAPIView.as_view(), name='unloading_manifest_containers_noslash'),
+
+    path('terminal/unloading/history/', UnloadingHistoryAPIView.as_view(), name='terminal_unloading_history'),
+    path('terminal/unloading/history', UnloadingHistoryAPIView.as_view(), name='terminal_unloading_history_noslash'),
+    path('unloading/history/', UnloadingHistoryAPIView.as_view(), name='unloading_history'),
+    path('unloading/history', UnloadingHistoryAPIView.as_view(), name='unloading_history_noslash'),
+
+    # Phase T5 / Pre-Arrival Customs Clearance Endpoints
+    path('customs/pre-arrival/submit/', PreArrivalCustomsSubmitAPIView.as_view(), name='customs_pre_arrival_submit'),
+    path('customs/pre-arrival/submit', PreArrivalCustomsSubmitAPIView.as_view(), name='customs_pre_arrival_submit_noslash'),
+    path('customs/pre-arrival/declarations/', PreArrivalCustomsListAPIView.as_view(), name='customs_pre_arrival_list'),
+    path('customs/pre-arrival/declarations', PreArrivalCustomsListAPIView.as_view(), name='customs_pre_arrival_list_noslash'),
+    path('customs/pre-arrival/', PreArrivalCustomsListAPIView.as_view(), name='customs_pre_arrival_list_alias'),
+    path('customs/pre-arrival', PreArrivalCustomsListAPIView.as_view(), name='customs_pre_arrival_list_alias_noslash'),
+    path('customs/pre-arrival/declarations/<int:pk>/', PreArrivalCustomsDetailAPIView.as_view(), name='customs_pre_arrival_detail'),
+    path('customs/pre-arrival/declarations/<int:pk>', PreArrivalCustomsDetailAPIView.as_view(), name='customs_pre_arrival_detail_noslash'),
+    path('customs/pre-arrival/declarations/<int:pk>/review/', PreArrivalCustomsReviewAPIView.as_view(), name='customs_pre_arrival_review'),
+    path('customs/pre-arrival/declarations/<int:pk>/review', PreArrivalCustomsReviewAPIView.as_view(), name='customs_pre_arrival_review_noslash'),
+    path('customs/pre-arrival/<int:pk>/review/', PreArrivalCustomsReviewAPIView.as_view(), name='customs_pre_arrival_review_alias'),
+    path('customs/pre-arrival/<int:pk>/review', PreArrivalCustomsReviewAPIView.as_view(), name='customs_pre_arrival_review_alias_noslash'),
+    path('customs/pre-arrival/<int:pk>/', PreArrivalCustomsDetailAPIView.as_view(), name='customs_pre_arrival_detail_alias'),
+    path('customs/pre-arrival/<int:pk>', PreArrivalCustomsDetailAPIView.as_view(), name='customs_pre_arrival_detail_alias_noslash'),
+    path('customs/history/', CustomsDecisionHistoryAPIView.as_view(), name='customs_decision_history'),
+    path('customs/history', CustomsDecisionHistoryAPIView.as_view(), name='customs_decision_history_noslash'),
+
+    # Delivery Orders Endpoints
+    path('delivery-orders/', DeliveryOrderListCreateAPIView.as_view(), name='delivery_orders_list_create'),
+    path('delivery-orders', DeliveryOrderListCreateAPIView.as_view(), name='delivery_orders_list_create_noslash'),
+
+    # Direct Ship-to-Truck Transfer Endpoints
+    path('terminal/direct-transfer/eligible-containers/', DirectTransferEligibleContainersAPIView.as_view(), name='terminal_direct_transfer_eligible_containers'),
+    path('terminal/direct-transfer/eligible-containers', DirectTransferEligibleContainersAPIView.as_view(), name='terminal_direct_transfer_eligible_containers_noslash'),
+    path('direct-transfer/eligible-containers/', DirectTransferEligibleContainersAPIView.as_view(), name='direct_transfer_eligible_containers'),
+    path('direct-transfer/eligible-containers', DirectTransferEligibleContainersAPIView.as_view(), name='direct_transfer_eligible_containers_noslash'),
+
+    path('terminal/direct-transfer/execute/', DirectTransferExecuteAPIView.as_view(), name='terminal_direct_transfer_execute'),
+    path('terminal/direct-transfer/execute', DirectTransferExecuteAPIView.as_view(), name='terminal_direct_transfer_execute_noslash'),
+    path('direct-transfer/execute/', DirectTransferExecuteAPIView.as_view(), name='direct_transfer_execute'),
+    path('direct-transfer/execute', DirectTransferExecuteAPIView.as_view(), name='direct_transfer_execute_noslash'),
+
+    path('terminal/direct-transfer/history/', DirectTransferListAPIView.as_view(), name='terminal_direct_transfer_history'),
+    path('terminal/direct-transfer/history', DirectTransferListAPIView.as_view(), name='terminal_direct_transfer_history_noslash'),
+    path('direct-transfer/history/', DirectTransferListAPIView.as_view(), name='direct_transfer_history'),
+    path('direct-transfer/history', DirectTransferListAPIView.as_view(), name='direct_transfer_history_noslash'),
+
+    path('terminal/direct-transfer/<int:pk>/', DirectTransferDetailAPIView.as_view(), name='terminal_direct_transfer_detail'),
+    path('terminal/direct-transfer/<int:pk>', DirectTransferDetailAPIView.as_view(), name='terminal_direct_transfer_detail_noslash'),
+    path('direct-transfer/<int:pk>/', DirectTransferDetailAPIView.as_view(), name='direct_transfer_detail'),
+    path('direct-transfer/<int:pk>', DirectTransferDetailAPIView.as_view(), name='direct_transfer_detail_noslash'),
 ]
+
+
+
 
 

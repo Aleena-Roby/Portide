@@ -3,6 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { getStoredSession } from '../../services/api';
 
+import { MandatoryPasswordChangeModal } from './MandatoryPasswordChangeModal';
+
 export const getDefaultDashboardRoute = (role?: string): string => {
   switch (role) {
     case 'admin':
@@ -32,7 +34,7 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
-  const { isAuthenticated, isAuthLoading, activeRole } = useApp();
+  const { isAuthenticated, isAuthLoading, activeRole, mustChangePassword } = useApp();
   const location = useLocation();
   const storedSession = getStoredSession();
 
@@ -67,7 +69,17 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 2. Role Authorization Check
+  // 2. Mandatory First-Login Password Change Check
+  const isMustChange = Boolean(mustChangePassword || storedSession?.mustChangePassword);
+  if (isMustChange) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center relative">
+        <MandatoryPasswordChangeModal />
+      </div>
+    );
+  }
+
+  // 3. Role Authorization Check
   if (allowedRoles && allowedRoles.length > 0) {
     const isRoleAllowed = allowedRoles.some(
       r => r.toLowerCase() === (activeRole || '').toLowerCase()

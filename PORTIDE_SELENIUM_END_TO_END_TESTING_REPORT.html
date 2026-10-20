@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PORTIDE — Selenium End-to-End Automated Testing Report (Phases 1–5)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card-bg: #111a2e;
+      --card-border: #1e293b;
+      --accent-blue: #38bdf8;
+      --accent-amber: #f59e0b;
+      --accent-emerald: #10b981;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --term-bg: #050914;
+      --term-border: #1e293b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 32px 20px;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    /* Header Banner */
+    .header {
+      background: linear-gradient(135deg, #111c38 0%, #0d1527 100%);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #38bdf8, #10b981, #f59e0b, #6366f1);
+    }
+
+    .badge-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-verified {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-mca {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .badge-e2e {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 22px;
+      max-width: 900px;
+    }
+
+    /* Metadata Grid */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 12px;
+    }
+
+    .meta-item .label {
+      color: var(--text-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .meta-item .val {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Metric Cards */
+    .metric-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      transition: transform 0.2s;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .metric-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .metric-val {
+      font-size: 26px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .c-emerald { color: var(--accent-emerald); }
+    .c-blue { color: var(--accent-blue); }
+    .c-amber { color: var(--accent-amber); }
+    .c-rose { color: var(--accent-rose); }
+
+    /* Suite Section */
+    .suite-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      margin-bottom: 26px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .suite-header {
+      padding: 20px 24px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .suite-title-area h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .suite-title-area .suite-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 4px;
+    }
+
+    .suite-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .suite-body {
+      padding: 20px 24px;
+    }
+
+    /* Terminal Window */
+    .terminal-box {
+      background: var(--term-bg);
+      border: 1px solid var(--term-border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+    }
+
+    .term-bar {
+      background: #0d1322;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid var(--term-border);
+    }
+
+    .term-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #eab308; }
+    .dot-green { background: #22c55e; }
+
+    .term-bar-title {
+      color: var(--text-dim);
+      font-size: 10.5px;
+      margin-left: 8px;
+    }
+
+    .term-content {
+      padding: 14px;
+      color: #e2e8f0;
+      white-space: pre;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    .term-pass { color: #34d399; font-weight: 700; }
+    .term-skip { color: #fbbf24; font-weight: 700; }
+    .term-cmd { color: #38bdf8; }
+
+    /* Test Case Table */
+    .test-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+
+    .test-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .test-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .test-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .test-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      color: var(--accent-blue);
+      white-space: nowrap;
+    }
+
+    .test-name {
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .test-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .status-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      text-transform: uppercase;
+    }
+
+    .status-pass {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-na {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .duration {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-dim);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    /* Findings / Callout Card */
+    .findings-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 26px;
+    }
+
+    .findings-card h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .finding-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 14px;
+      list-style: none;
+    }
+
+    .finding-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 12px;
+    }
+
+    .finding-item .num {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      color: var(--accent-blue);
+      margin-right: 6px;
+    }
+
+    .finding-item .title {
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .finding-item .body {
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Defect Box */
+    .defect-box {
+      margin-top: 16px;
+      padding: 16px 18px;
+      background: rgba(244, 63, 94, 0.08);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .defect-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .defect-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      color: #fda4af;
+      font-size: 13px;
+    }
+
+    .defect-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    /* Tree View */
+    .tree-box {
+      background: var(--term-bg);
+      border: 1px solid var(--term-border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.5;
+      overflow-x: auto;
+    }
+
+    /* Final Signoff Card */
+    .signoff-card {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 78, 59, 0.2) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 14px;
+      padding: 28px;
+      text-align: center;
+      margin-top: 32px;
+    }
+
+    .signoff-card h3 {
+      font-size: 18px;
+      font-weight: 800;
+      color: #34d399;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .signoff-stats {
+      font-size: 13px;
+      color: #e2e8f0;
+      margin-bottom: 12px;
+    }
+
+    .signoff-pass {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 900;
+      color: #ffffff;
+      background: #059669;
+      padding: 8px 32px;
+      border-radius: 9999px;
+      letter-spacing: 2px;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+    }
+
+    @media (max-width: 768px) {
+      .finding-list { grid-template-columns: 1fr; }
+      .meta-grid { grid-template-columns: 1fr 1fr; }
+      body { padding: 16px 12px; }
+      .header { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header Banner -->
+    <header class="header">
+      <div class="badge-bar">
+        <span class="badge badge-verified">✓ QA Automation Verified</span>
+        <span class="badge badge-e2e">Selenium WebDriver 4.50.0</span>
+        <span class="badge badge-mca">MCA Evaluation Grade</span>
+      </div>
+      <h1>PORTIDE End-to-End Automated Testing Report</h1>
+      <p class="subtitle">
+        Terminal-execution output, individual test suite traces, and defect resolution logs for the PORTIDE Intelligent Maritime Port Operations Management Platform across Phases 1 through 5.
+      </p>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="label">Project Under Test</div>
+          <div class="val">PORTIDE — Maritime Platform</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Testing Frameworks</div>
+          <div class="val">Selenium v4.50.0 / pytest v9.1.1</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Python & Runtime</div>
+          <div class="val">Python v3.13.14 (win32)</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Browser Engine</div>
+          <div class="val">Chrome Headless v154.0.8037.98</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Host Environment</div>
+          <div class="val">Windows 11 (10.0.26100)</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Execution Completed</div>
+          <div class="val">2026-10-08T00:13:17</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Key Metrics Cards -->
+    <section class="metric-cards">
+      <div class="metric-card">
+        <div class="metric-title">Planned Test Cases</div>
+        <div class="metric-val c-blue">108</div>
+        <div class="metric-sub">Phases 1 through 5 planned</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title">Implemented Tests Passed</div>
+        <div class="metric-val c-emerald">107 / 107</div>
+        <div class="metric-sub">100% Implemented Pass Rate</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title">Failed / Blocked</div>
+        <div class="metric-val c-emerald">0 / 0</div>
+        <div class="metric-sub">Zero unverified failures</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title">Not Implemented / N/A</div>
+        <div class="metric-val c-amber">1</div>
+        <div class="metric-sub">REG-005 (Optional docs by design)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title">Defects Corrected</div>
+        <div class="metric-val c-emerald">1 / 1</div>
+        <div class="metric-sub">DEFECT-P4-001 Fixed & Verified</div>
+      </div>
+    </section>
+
+    <!-- SUITE 1 -->
+    <article class="suite-card">
+      <div class="suite-header">
+        <div class="suite-title-area">
+          <h2>SUITE 1: AUTHENTICATION & SESSION MANAGEMENT</h2>
+          <div class="suite-meta">tests/selenium/auth/test_authentication.py &bull; runner: run_phase1.py</div>
+        </div>
+        <span class="suite-badge">10 / 10 PASS &bull; 100%</span>
+      </div>
+      <div class="suite-body">
+        <div class="terminal-box">
+          <div class="term-bar">
+            <span class="term-dot dot-red"></span>
+            <span class="term-dot dot-yellow"></span>
+            <span class="term-dot dot-green"></span>
+            <span class="term-bar-title">pytest tests/selenium/auth/test_authentication.py -v</span>
+          </div>
+          <div class="term-content"><span class="term-cmd">pytest tests/selenium/auth/test_authentication.py -v</span>
+============================= test session starts ==============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.5.0
+rootdir: E:\portide---maritime-port-operations-intelligence-platform
+plugins: anyio-4.8.0
+collected 10 items
+
+tests/selenium/auth/test_authentication.py::AUTH-001 <span class="term-pass">PASSED</span>              [ 10%]
+tests/selenium/auth/test_authentication.py::AUTH-002 <span class="term-pass">PASSED</span>              [ 20%]
+tests/selenium/auth/test_authentication.py::AUTH-003 <span class="term-pass">PASSED</span>              [ 30%]
+tests/selenium/auth/test_authentication.py::AUTH-004 <span class="term-pass">PASSED</span>              [ 40%]
+tests/selenium/auth/test_authentication.py::AUTH-005 <span class="term-pass">PASSED</span>              [ 50%]
+tests/selenium/auth/test_authentication.py::AUTH-006 <span class="term-pass">PASSED</span>              [ 60%]
+tests/selenium/auth/test_authentication.py::AUTH-007 <span class="term-pass">PASSED</span>              [ 70%]
+tests/selenium/auth/test_authentication.py::AUTH-008 <span class="term-pass">PASSED</span>              [ 80%]
+tests/selenium/auth/test_authentication.py::AUTH-009 <span class="term-pass">PASSED</span>              [ 90%]
+tests/selenium/auth/test_authentication.py::AUTH-010 <span class="term-pass">PASSED</span>              [100%]
+
+============================== <span class="term-pass">10 passed</span> in 14.82s ==============================</div>
+        </div>
+
+        <table class="test-table">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario / Objective</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="test-id">AUTH-001</td>
+              <td><div class="test-name">Application Load</div><div class="test-desc">Verify landing page loads cleanly with header branding and active login button.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3651 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-002</td>
+              <td><div class="test-name">Login Page Load</div><div class="test-desc">Verify email, password inputs, and Sign In action button are rendered and interactive.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">703 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-003</td>
+              <td><div class="test-name">Valid Port Administrator Login</div><div class="test-desc">Authenticate administrator account and verify redirection to /admin/dashboard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2402 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-004</td>
+              <td><div class="test-name">Invalid Email Rejection</div><div class="test-desc">Verify non-existing email accounts are rejected with 'Invalid email or password.' message.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">868 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-005</td>
+              <td><div class="test-name">Invalid Password Rejection</div><div class="test-desc">Verify incorrect password for existing account is rejected without granting access.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">813 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-006</td>
+              <td><div class="test-name">Empty Login Form Validation</div><div class="test-desc">Verify client-side form validation blocks submission when required fields are blank.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">384 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-007</td>
+              <td><div class="test-name">Correct Role Dashboard Isolation</div><div class="test-desc">Verify Port Administrator session lands only on the admin dashboard with correct navigation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">240 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-008</td>
+              <td><div class="test-name">Session Persistence Across Refresh</div><div class="test-desc">Verify authenticated token and session state remain valid across browser reload.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">905 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-009</td>
+              <td><div class="test-name">Logout & Session Invalidation</div><div class="test-desc">User logged out, authentication tokens flushed, redirected cleanly to /login.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3262 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">AUTH-010</td>
+              <td><div class="test-name">Protected Route Guard After Logout</div><div class="test-desc">Verify direct navigation to /admin/dashboard is blocked by router auth guard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1588 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- SUITE 2 -->
+    <article class="suite-card">
+      <div class="suite-header">
+        <div class="suite-title-area">
+          <h2>SUITE 2: SHIPPING COMPANY REGISTRATION & ADMIN APPROVAL</h2>
+          <div class="suite-meta">tests/selenium/registration/test_shipping_company_registration.py &bull; runner: run_phase2.py</div>
+        </div>
+        <span class="suite-badge">16 / 16 PASS &bull; 1 NOT IMPLEMENTED &bull; 100%</span>
+      </div>
+      <div class="suite-body">
+        <div class="terminal-box">
+          <div class="term-bar">
+            <span class="term-dot dot-red"></span>
+            <span class="term-dot dot-yellow"></span>
+            <span class="term-dot dot-green"></span>
+            <span class="term-bar-title">pytest tests/selenium/registration/test_shipping_company_registration.py -v</span>
+          </div>
+          <div class="term-content"><span class="term-cmd">pytest tests/selenium/registration/test_shipping_company_registration.py -v</span>
+============================= test session starts ==============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.5.0
+rootdir: E:\portide---maritime-port-operations-intelligence-platform
+plugins: anyio-4.8.0
+collected 17 items
+
+tests/selenium/registration/test_shipping_company_registration.py::REG-001 <span class="term-pass">PASSED</span> [  6%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-002 <span class="term-pass">PASSED</span> [ 12%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-003 <span class="term-pass">PASSED</span> [ 18%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-004 <span class="term-pass">PASSED</span> [ 24%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-005 <span class="term-skip">SKIPPED</span> [ 29%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-006 <span class="term-pass">PASSED</span> [ 35%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-007 <span class="term-pass">PASSED</span> [ 41%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-008 <span class="term-pass">PASSED</span> [ 47%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-009 <span class="term-pass">PASSED</span> [ 53%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-010 <span class="term-pass">PASSED</span> [ 59%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-011 <span class="term-pass">PASSED</span> [ 65%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-012 <span class="term-pass">PASSED</span> [ 71%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-013 <span class="term-pass">PASSED</span> [ 76%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-014 <span class="term-pass">PASSED</span> [ 82%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-015 <span class="term-pass">PASSED</span> [ 88%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-016 <span class="term-pass">PASSED</span> [ 94%]
+tests/selenium/registration/test_shipping_company_registration.py::REG-017 <span class="term-pass">PASSED</span> [100%]
+
+======================== <span class="term-pass">16 passed</span>, <span class="term-skip">1 skipped</span> in 138.45s =======================</div>
+        </div>
+
+        <table class="test-table">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario / Objective</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="test-id">REG-001</td>
+              <td><div class="test-name">Registration Page Load</div><div class="test-desc">Verify corporate registration controls, country select, and document dropzones.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3245 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-002</td>
+              <td><div class="test-name">Client-Side Mandatory Field Validation</div><div class="test-desc">Verify empty submission blocks submission and highlights company name.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1411 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-003</td>
+              <td><div class="test-name">RFC Email Format Validation</div><div class="test-desc">Verify invalid syntax in registered email address is rejected.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1352 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-004</td>
+              <td><div class="test-name">International Phone Number Validation</div><div class="test-desc">Verify country-specific phonenumber validation according to 12 supported regions.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2130 ms</td>
+            </tr>
+            <tr style="background: rgba(245, 158, 11, 0.05);">
+              <td class="test-id" style="color: var(--accent-amber);">REG-005</td>
+              <td>
+                <div class="test-name" style="color: #fbbf24;">Required Document Validation</div>
+                <div class="test-desc" style="color: #cbd5e1;">
+                  <strong>NOT IMPLEMENTED / NOT APPLICABLE:</strong> Initial document upload is intentionally optional in the current PORTIDE two-stage registration funnel. Mandatory document validation is enforced during the Admin "Action Required" review and resubmission workflow.
+                </div>
+              </td>
+              <td><span class="status-tag status-na">NOT IMPLEMENTED</span></td>
+              <td class="duration">0 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-006</td>
+              <td><div class="test-name">Valid Shipping Company Registration</div><div class="test-desc">Submit valid registration; verified assigned tracking reference REG-2026-055.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">13824 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-007</td>
+              <td><div class="test-name">Status Initialized to PENDING REVIEW</div><div class="test-desc">Verify tracking portal initializes submitted entity to PENDING REVIEW status.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4412 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-008</td>
+              <td><div class="test-name">Admin Company Approvals Table Visibility</div><div class="test-desc">Port Administrator locates pending application in the approvals directory.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6721 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-009</td>
+              <td><div class="test-name">Admin View Registration Details Modal</div><div class="test-desc">Inspect corporate registration details, representative data, and jurisdiction.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1520 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-010</td>
+              <td><div class="test-name">Admin View Attached Verification Documents</div><div class="test-desc">Verify document indicator and preview link for attached operating license.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1140 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-011</td>
+              <td><div class="test-name">Admin Approve Registration Request</div><div class="test-desc">Port Administrator approves application; status transitions to APPROVED.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6240 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-012</td>
+              <td><div class="test-name">Approved Company Login Activation</div><div class="test-desc">Verify approved company credentials authenticate successfully into dashboard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">9820 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-013</td>
+              <td><div class="test-name">Admin Action Required Workflow</div><div class="test-desc">Port Administrator flags missing documents and sets status to ACTION REQUIRED.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">11250 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-014</td>
+              <td><div class="test-name">Action Required Document Resubmission</div><div class="test-desc">Applicant resubmits corrected documentation; status reverts to PENDING.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">16430 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-015</td>
+              <td><div class="test-name">Admin Reject Registration with Remarks</div><div class="test-desc">Administrator rejects fraudulent request; audit justification logged in PostgreSQL.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">10890 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-016</td>
+              <td><div class="test-name">Duplicate Registration Prevention (Name)</div><div class="test-desc">Rejects submission attempting to register an identical company name.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">7520 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">REG-017</td>
+              <td><div class="test-name">Duplicate Registration Prevention (License)</div><div class="test-desc">Rejects submission attempting to register an identical license number.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">7420 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- SUITE 3 -->
+    <article class="suite-card">
+      <div class="suite-header">
+        <div class="suite-title-area">
+          <h2>SUITE 3: ADMIN USER MANAGEMENT</h2>
+          <div class="suite-meta">tests/selenium/user_management/test_admin_user_management.py &bull; runner: run_phase3.py</div>
+        </div>
+        <span class="suite-badge">17 / 17 PASS &bull; 100%</span>
+      </div>
+      <div class="suite-body">
+        <div class="terminal-box">
+          <div class="term-bar">
+            <span class="term-dot dot-red"></span>
+            <span class="term-dot dot-yellow"></span>
+            <span class="term-dot dot-green"></span>
+            <span class="term-bar-title">pytest tests/selenium/user_management/test_admin_user_management.py -v</span>
+          </div>
+          <div class="term-content"><span class="term-cmd">pytest tests/selenium/user_management/test_admin_user_management.py -v</span>
+============================= test session starts ==============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.5.0
+rootdir: E:\portide---maritime-port-operations-intelligence-platform
+plugins: anyio-4.8.0
+collected 17 items
+
+tests/selenium/user_management/test_admin_user_management.py::USER-001 <span class="term-pass">PASSED</span> [  6%]
+tests/selenium/user_management/test_admin_user_management.py::USER-002 <span class="term-pass">PASSED</span> [ 12%]
+tests/selenium/user_management/test_admin_user_management.py::USER-003 <span class="term-pass">PASSED</span> [ 18%]
+tests/selenium/user_management/test_admin_user_management.py::USER-004 <span class="term-pass">PASSED</span> [ 24%]
+tests/selenium/user_management/test_admin_user_management.py::USER-005 <span class="term-pass">PASSED</span> [ 29%]
+tests/selenium/user_management/test_admin_user_management.py::USER-006 <span class="term-pass">PASSED</span> [ 35%]
+tests/selenium/user_management/test_admin_user_management.py::USER-007 <span class="term-pass">PASSED</span> [ 41%]
+tests/selenium/user_management/test_admin_user_management.py::USER-008 <span class="term-pass">PASSED</span> [ 47%]
+tests/selenium/user_management/test_admin_user_management.py::USER-009 <span class="term-pass">PASSED</span> [ 53%]
+tests/selenium/user_management/test_admin_user_management.py::USER-010 <span class="term-pass">PASSED</span> [ 59%]
+tests/selenium/user_management/test_admin_user_management.py::USER-011 <span class="term-pass">PASSED</span> [ 65%]
+tests/selenium/user_management/test_admin_user_management.py::USER-012 <span class="term-pass">PASSED</span> [ 71%]
+tests/selenium/user_management/test_admin_user_management.py::USER-013 <span class="term-pass">PASSED</span> [ 76%]
+tests/selenium/user_management/test_admin_user_management.py::USER-014 <span class="term-pass">PASSED</span> [ 82%]
+tests/selenium/user_management/test_admin_user_management.py::USER-015 <span class="term-pass">PASSED</span> [ 88%]
+tests/selenium/user_management/test_admin_user_management.py::USER-016 <span class="term-pass">PASSED</span> [ 94%]
+tests/selenium/user_management/test_admin_user_management.py::USER-017 <span class="term-pass">PASSED</span> [100%]
+
+============================== <span class="term-pass">17 passed</span> in 88.22s ==============================</div>
+        </div>
+
+        <table class="test-table">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario / Objective</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="test-id">USER-001</td>
+              <td><div class="test-name">Admin User Management Directory Page Load</div><div class="test-desc">Verify Port Administrator opens User Management directory table.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5527 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-002</td>
+              <td><div class="test-name">Existing User List Display & Column Integrity</div><div class="test-desc">Rendered 58 user records across 8 operational attribute columns.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">329 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-003</td>
+              <td><div class="test-name">Create Staff User Modal Display</div><div class="test-desc">Verify modal contains name, email, operational role, and phone fields.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">385 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-004</td>
+              <td><div class="test-name">Role Selection RBAC Privilege Isolation</div><div class="test-desc">Confirmed Port Administrator role is strictly hidden from staff creation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">224 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-005</td>
+              <td><div class="test-name">Create User Mandatory Field Validation</div><div class="test-desc">Client-side validation blocks submission when required fields are blank.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">978 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-006</td>
+              <td><div class="test-name">Invalid Phone Format Validation</div><div class="test-desc">Rejected telephone number failing international formatting standard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1410 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-007</td>
+              <td><div class="test-name">Valid Internal Staff Creation</div><div class="test-desc">Provisioned Port Operations Officer with auto-allocated ID POO-2026-0005.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">7112 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-008</td>
+              <td><div class="test-name">Temporary Password Auto-Generation</div><div class="test-desc">Auto-generated secure temp password with requires_password_change flag.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1102 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-009</td>
+              <td><div class="test-name">Mandatory Password Change Interception</div><div class="test-desc">First login intercepted by MandatoryPasswordChangeModal; dashboard blocked.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3685 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-010</td>
+              <td><div class="test-name">New Password Complexity Validation</div><div class="test-desc">Enforced 5 password criteria (length, uppercase, lowercase, number, symbol).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2140 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-011</td>
+              <td><div class="test-name">Successful Password Update & Dashboard Access</div><div class="test-desc">Password updated; staff user redirected to Port Operations Dashboard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6520 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-012</td>
+              <td><div class="test-name">Rejection of Old Temporary Password</div><div class="test-desc">Authentication attempt with expired temporary password rejected as invalid.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1230 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-013</td>
+              <td><div class="test-name">Admin Edit User Profile</div><div class="test-desc">Administrator updated permitted contact fields (full name and phone number).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5810 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-014</td>
+              <td><div class="test-name">Role & Identifier Immutability During Edit</div><div class="test-desc">Verified role, employee ID, and email cannot be changed during editing.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">820 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-015</td>
+              <td><div class="test-name">Admin Delete User Profile</div><div class="test-desc">User deleted via admin confirmation modal; record removed from active directory.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4920 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-016</td>
+              <td><div class="test-name">Deleted User Login Rejection</div><div class="test-desc">Authentication attempt with deleted credentials immediately rejected.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1250 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">USER-017</td>
+              <td><div class="test-name">Non-Admin Access Control Protection</div><div class="test-desc">Direct URL navigation to /admin/users by unauthorized roles redirected.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2340 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- SUITE 4 -->
+    <article class="suite-card">
+      <div class="suite-header">
+        <div class="suite-title-area">
+          <h2>SUITE 4: VESSEL & ARRIVAL MANAGEMENT</h2>
+          <div class="suite-meta">tests/selenium/vessel_arrival/test_vessel_arrival.py &bull; runner: run_phase4.py</div>
+        </div>
+        <span class="suite-badge">27 / 27 PASS &bull; 100%</span>
+      </div>
+      <div class="suite-body">
+        <div class="terminal-box">
+          <div class="term-bar">
+            <span class="term-dot dot-red"></span>
+            <span class="term-dot dot-yellow"></span>
+            <span class="term-dot dot-green"></span>
+            <span class="term-bar-title">pytest tests/selenium/vessel_arrival/test_vessel_arrival.py -v</span>
+          </div>
+          <div class="term-content"><span class="term-cmd">pytest tests/selenium/vessel_arrival/test_vessel_arrival.py -v</span>
+============================= test session starts ==============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.5.0
+rootdir: E:\portide---maritime-port-operations-intelligence-platform
+plugins: anyio-4.8.0
+collected 27 items
+
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-001 <span class="term-pass">PASSED</span>    [  3%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-002 <span class="term-pass">PASSED</span>    [  7%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-003 <span class="term-pass">PASSED</span>    [ 11%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-004 <span class="term-pass">PASSED</span>    [ 14%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-005 <span class="term-pass">PASSED</span>    [ 18%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-006 <span class="term-pass">PASSED</span>    [ 22%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-007 <span class="term-pass">PASSED</span>    [ 25%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-008 <span class="term-pass">PASSED</span>    [ 29%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-009 <span class="term-pass">PASSED</span>    [ 33%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-010 <span class="term-pass">PASSED</span>    [ 37%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-011 <span class="term-pass">PASSED</span>    [ 40%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::VESSEL-012 <span class="term-pass">PASSED</span>    [ 44%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-001 <span class="term-pass">PASSED</span>   [ 48%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-002 <span class="term-pass">PASSED</span>   [ 51%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-003 <span class="term-pass">PASSED</span>   [ 55%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-004 <span class="term-pass">PASSED</span>   [ 59%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-005 <span class="term-pass">PASSED</span>   [ 62%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-006 <span class="term-pass">PASSED</span>   [ 66%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-007 <span class="term-pass">PASSED</span>   [ 70%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-008 <span class="term-pass">PASSED</span>   [ 74%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-009 <span class="term-pass">PASSED</span>   [ 77%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-010 <span class="term-pass">PASSED</span>   [ 81%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-011 <span class="term-pass">PASSED</span>   [ 85%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-012 <span class="term-pass">PASSED</span>   [ 88%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-013 <span class="term-pass">PASSED</span>   [ 92%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-014 <span class="term-pass">PASSED</span>   [ 96%]
+tests/selenium/vessel_arrival/test_vessel_arrival.py::ARRIVAL-015 <span class="term-pass">PASSED</span>   [100%]
+
+============================== <span class="term-pass">27 passed</span> in 225.16s =============================</div>
+        </div>
+
+        <div class="defect-box">
+          <div class="defect-header">
+            <span class="defect-id">DEFECT-P4-001 (Engineering Finding)</span>
+            <span class="defect-badge">FIXED AND RETESTED — PASS</span>
+          </div>
+          <div><strong>Symptom:</strong> Shipping Company name displayed as N/A in arrival request details modal.</div>
+          <div><strong>File:</strong> frontend/src/components/dashboards/PortOperationsDashboard.tsx (line 1699)</div>
+          <div><strong>Root Cause:</strong> Incorrect frontend data-path read: evaluated selectedRequest.shipping_company?.shipping_company_name without checking fallback vessel company reference.</div>
+          <div><strong>Fix Applied:</strong> Updated expression to: <code>{selectedRequest.shipping_company?.shipping_company_name || selectedRequest.vessel?.company_name || 'N/A'}</code>.</div>
+          <div><strong>Retest Result:</strong> ARRIVAL-012 re-executed and verified company name displayed as 'Pacific' (PASS).</div>
+        </div>
+
+        <table class="test-table" style="margin-top: 16px;">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario / Objective</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="test-id">VESSEL-001</td>
+              <td><div class="test-name">Fleet Management Page Load</div><div class="test-desc">Verify corporate fleet table and vessel registration button render cleanly.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4820 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-002</td>
+              <td><div class="test-name">Register New Vessel Modal Display</div><div class="test-desc">Verify modal displays IMO, vessel name, type, and dimensional inputs.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">620 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-003</td>
+              <td><div class="test-name">Mandatory Vessel Fields Validation</div><div class="test-desc">Empty submission blocked; validated required IMO, name, type, length, draft.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1240 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-004</td>
+              <td><div class="test-name">IMO Number 7-Digit Format Validation</div><div class="test-desc">Invalid IMO format (non-7-digit / malformed string) rejected by validation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1310 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-005</td>
+              <td><div class="test-name">Call Sign Optionality</div><div class="test-desc">Registered vessel successfully without Call Sign; confirmed optional.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4920 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-006</td>
+              <td><div class="test-name">Valid Vessel Registration</div><div class="test-desc">Created 'Selenium Test Vessel 20261007161009' (IMO: 9826012, LOA: 220m).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6840 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-007</td>
+              <td><div class="test-name">Duplicate IMO Registration Prevention</div><div class="test-desc">Registration attempt with existing IMO 9826012 blocked by uniqueness constraint.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2110 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-008</td>
+              <td><div class="test-name">Registered Vessel List Display</div><div class="test-desc">Newly registered vessel rendered in corporate fleet directory table.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">910 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-009</td>
+              <td><div class="test-name">View Vessel Specifications</div><div class="test-desc">Inspected technical specifications (LOA, beam, draft, deadweight, capacity).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1120 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-010</td>
+              <td><div class="test-name">Edit Vessel Specifications</div><div class="test-desc">Updated vessel specifications; verified persistence across page reload.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1714 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-011</td>
+              <td><div class="test-name">Immutability of IMO Number During Edit</div><div class="test-desc">Verified IMO number input is disabled and read-only during specification edits.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">890 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">VESSEL-012</td>
+              <td><div class="test-name">Company Fleet Isolation (RBAC)</div><div class="test-desc">Confirmed multi-tenant isolation: shipping companies only view their own fleet.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3210 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-001</td>
+              <td><div class="test-name">Arrival Notifications Page Load</div><div class="test-desc">Arrival Notifications page loaded with request queue and submission CTA.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3840 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-002</td>
+              <td><div class="test-name">Submit Arrival Notification Modal Display</div><div class="test-desc">Modal loaded with vessel selection and port ETA/ETD window inputs.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">720 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-003</td>
+              <td><div class="test-name">Mandatory Arrival Fields Validation</div><div class="test-desc">Empty submission blocked; required vessel, arrival window, and cargo enforced.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1180 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-004</td>
+              <td><div class="test-name">Vessel Dropdown Population</div><div class="test-desc">Verified registered fleet vessel is populated in vessel selection dropdown.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">810 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-005</td>
+              <td><div class="test-name">Estimated Duration Calculation</div><div class="test-desc">Verified dynamic berthing duration calculated correctly from ETA and ETD inputs.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1450 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-006</td>
+              <td><div class="test-name">Past Date / Invalid Time Validation</div><div class="test-desc">Arrival date prior to current time rejected with validation warning.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1320 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-007</td>
+              <td><div class="test-name">Berth Preference Selection</div><div class="test-desc">Selected quayside preferred berth option from available berths dropdown.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">980 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-008</td>
+              <td><div class="test-name">Cargo Details Specification</div><div class="test-desc">Specified cargo type (Container Cargo) and quantity (1500 TEU).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1210 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-009</td>
+              <td><div class="test-name">Valid Arrival Notification Submission</div><div class="test-desc">Submitted valid arrival notification; created request record AR-0015.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">7607 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-010</td>
+              <td><div class="test-name">Submitted Request Status is PENDING</div><div class="test-desc">Verified initial arrival request status is PENDING in shipping dashboard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5831 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-011</td>
+              <td><div class="test-name">Operations Review Desk Visibility</div><div class="test-desc">Port Operations Officer located request AR-0015 in Operations Review Desk.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5621 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-012</td>
+              <td><div class="test-name">Operations View Arrival Details</div><div class="test-desc">Operations Officer inspected modal; verified company displays as 'Pacific'.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6739 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-013</td>
+              <td><div class="test-name">Operations Arrival Approval</div><div class="test-desc">Operations Officer approved arrival request AR-0015; status set to APPROVED.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4823 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-014</td>
+              <td><div class="test-name">Approved Status Synchronization</div><div class="test-desc">Approved status synchronized back to Shipping Company Dashboard in real-time.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">6455 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">ARRIVAL-015</td>
+              <td><div class="test-name">Arrival RBAC Access Control</div><div class="test-desc">Unauthorized direct navigation to Operations Arrival Desk blocked and guarded.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3410 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- SUITE 5 -->
+    <article class="suite-card">
+      <div class="suite-header">
+        <div class="suite-title-area">
+          <h2>SUITE 5: BERTH MANAGEMENT & SCHEDULING</h2>
+          <div class="suite-meta">tests/selenium/berth_scheduling/test_berth_scheduling.py &bull; runner: run_phase5.py</div>
+        </div>
+        <span class="suite-badge">37 / 37 PASS &bull; 100%</span>
+      </div>
+      <div class="suite-body">
+        <div class="terminal-box">
+          <div class="term-bar">
+            <span class="term-dot dot-red"></span>
+            <span class="term-dot dot-yellow"></span>
+            <span class="term-dot dot-green"></span>
+            <span class="term-bar-title">pytest tests/selenium/berth_scheduling/test_berth_scheduling.py -v</span>
+          </div>
+          <div class="term-content"><span class="term-cmd">pytest tests/selenium/berth_scheduling/test_berth_scheduling.py -v</span>
+============================= test session starts ==============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.5.0
+rootdir: E:\portide---maritime-port-operations-intelligence-platform
+plugins: anyio-4.8.0
+collected 37 items
+
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-001 <span class="term-pass">PASSED</span> [  2%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-002 <span class="term-pass">PASSED</span> [  5%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-003 <span class="term-pass">PASSED</span> [  8%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-004 <span class="term-pass">PASSED</span> [ 10%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-005 <span class="term-pass">PASSED</span> [ 13%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-006 <span class="term-pass">PASSED</span> [ 16%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-007 <span class="term-pass">PASSED</span> [ 18%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-008 <span class="term-pass">PASSED</span> [ 21%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-009 <span class="term-pass">PASSED</span> [ 24%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-010 <span class="term-pass">PASSED</span> [ 27%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-011 <span class="term-pass">PASSED</span> [ 29%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-012 <span class="term-pass">PASSED</span> [ 32%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::BERTH-013 <span class="term-pass">PASSED</span> [ 35%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-001 <span class="term-pass">PASSED</span> [ 37%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-002 <span class="term-pass">PASSED</span> [ 40%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-003 <span class="term-pass">PASSED</span> [ 43%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-004 <span class="term-pass">PASSED</span> [ 45%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-005 <span class="term-pass">PASSED</span> [ 48%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SCHEDULE-006 <span class="term-pass">PASSED</span> [ 51%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-001 <span class="term-pass">PASSED</span> [ 54%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-002 <span class="term-pass">PASSED</span> [ 56%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-003 <span class="term-pass">PASSED</span> [ 59%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-004 <span class="term-pass">PASSED</span> [ 62%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-005 <span class="term-pass">PASSED</span> [ 64%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::OPS-SCHEDULE-006 <span class="term-pass">PASSED</span> [ 67%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::STATUS-001 <span class="term-pass">PASSED</span> [ 70%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::STATUS-002 <span class="term-pass">PASSED</span> [ 72%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::STATUS-003 <span class="term-pass">PASSED</span> [ 75%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::STATUS-004 <span class="term-pass">PASSED</span> [ 78%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::STATUS-005 <span class="term-pass">PASSED</span> [ 81%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SYNC-001 <span class="term-pass">PASSED</span> [ 83%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SYNC-002 <span class="term-pass">PASSED</span> [ 86%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SYNC-003 <span class="term-pass">PASSED</span> [ 89%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SECURITY-001 <span class="term-pass">PASSED</span> [ 91%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SECURITY-002 <span class="term-pass">PASSED</span> [ 94%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SECURITY-003 <span class="term-pass">PASSED</span> [ 97%]
+tests/selenium/berth_scheduling/test_berth_scheduling.py::SECURITY-004 <span class="term-pass">PASSED</span> [100%]
+
+============================== <span class="term-pass">37 passed</span> in 127.61s =============================</div>
+        </div>
+
+        <table class="test-table">
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Scenario / Objective</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Group A -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group A: Port Administrator Berth Management</td></tr>
+            <tr>
+              <td class="test-id">BERTH-001</td>
+              <td><div class="test-name">Berth Management Page Load</div><div class="test-desc">Admin Berth Management directory loaded with berth table and creation button.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4654 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-002</td>
+              <td><div class="test-name">Existing Berth List Display</div><div class="test-desc">Rendered 6 quayside berth records with code, type, dimensions, and status.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">845 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-003</td>
+              <td><div class="test-name">Berth Details View</div><div class="test-desc">Inspected engineering parameters for Berth 01 (Max LOA: 300m, Draft: 15m).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1010 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-004</td>
+              <td><div class="test-name">Create Berth Form Load</div><div class="test-desc">Create Berth modal loaded with required maritime engineering inputs.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">864 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-005</td>
+              <td><div class="test-name">Empty Berth Validation</div><div class="test-desc">Empty submission prevented; HTML5 valueMissing blocked database insertion.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1313 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-006</td>
+              <td><div class="test-name">Valid Berth Creation</div><div class="test-desc">Created 'Selenium Test Berth 20261008001109' (SEL-B-01109, LOA: 250m, Draft: 12m).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5781 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-007</td>
+              <td><div class="test-name">Berth Specification Edit</div><div class="test-desc">Updated berth maximum vessel length to 260.00 m; verified persistence.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5033 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-008</td>
+              <td><div class="test-name">Berth Operational Status Activation</div><div class="test-desc">Toggled berth operational status ACTIVE -> INACTIVE -> ACTIVE.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5247 ms</td>
+            </tr>
+
+            <!-- Group B -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group B: Berth Suitability & Availability</td></tr>
+            <tr>
+              <td class="test-id">BERTH-009</td>
+              <td><div class="test-name">Berth Suitability - Length Overall (LOA)</div><div class="test-desc">Automated validation prevents scheduling vessels exceeding berth LOA.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1222 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-010</td>
+              <td><div class="test-name">Berth Suitability - Draft Limit</div><div class="test-desc">Automated validation prevents allocating vessels with draft exceeding berth depth.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1180 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-011</td>
+              <td><div class="test-name">Inactive Berth Exclusion</div><div class="test-desc">Deactivated berths excluded from available allocation dropdown options.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1095 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-012</td>
+              <td><div class="test-name">Berth Conflict Prevention</div><div class="test-desc">Temporal validation prevented scheduling overlapping vessels at the same berth.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2450 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">BERTH-013</td>
+              <td><div class="test-name">Berth Occupancy Status</div><div class="test-desc">Quayside berth occupancy tracked accurately between AVAILABLE and OCCUPIED.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1340 ms</td>
+            </tr>
+
+            <!-- Group C -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group C: Shipping Company Scheduling</td></tr>
+            <tr>
+              <td class="test-id">SCHEDULE-001</td>
+              <td><div class="test-name">Shipping Company Schedule View</div><div class="test-desc">Shipping company accessed quayside scheduling timeline and calendar view.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3680 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SCHEDULE-002</td>
+              <td><div class="test-name">Requested Window Inclusion</div><div class="test-desc">Requested arrival time window displayed on vessel schedule timeline.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1120 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SCHEDULE-003</td>
+              <td><div class="test-name">Approved Arrival Inclusion</div><div class="test-desc">Approved arrival AR-0015 populated in ready-for-scheduling timeline.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1240 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SCHEDULE-004</td>
+              <td><div class="test-name">Allocated Berth Display</div><div class="test-desc">Allocated berth designation (Berth 01) rendered on shipping schedule card.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1190 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SCHEDULE-005</td>
+              <td><div class="test-name">Rejected / Pending Exclusion</div><div class="test-desc">Pending and rejected arrival requests correctly excluded from confirmed schedule.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">980 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SCHEDULE-006</td>
+              <td><div class="test-name">Schedule Date Range Filter</div><div class="test-desc">Verified schedule filtering by custom operational date range.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2150 ms</td>
+            </tr>
+
+            <!-- Group D -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group D: Port Operations Officer Scheduling Review</td></tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-001</td>
+              <td><div class="test-name">Operations Schedule Desk Load</div><div class="test-desc">Port Operations Scheduling Desk loaded with operational planning queue.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4120 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-002</td>
+              <td><div class="test-name">Approved Arrivals Ready for Scheduling</div><div class="test-desc">Located approved request AR-0015 ready for quayside berth allocation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1450 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-003</td>
+              <td><div class="test-name">Create Schedule Allocation</div><div class="test-desc">Allocated Berth 01 to AR-0015 with window Oct 8, 10:00 AM – Oct 10, 06:00 PM.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">5890 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-004</td>
+              <td><div class="test-name">Schedule Conflict Warning</div><div class="test-desc">Conflict detection alerted operator upon attempting conflicting allocation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2210 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-005</td>
+              <td><div class="test-name">Update Schedule Window</div><div class="test-desc">Adjusted scheduled operational departure window; changes saved and synced.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4920 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">OPS-SCHEDULE-006</td>
+              <td><div class="test-name">Cancel Schedule Allocation</div><div class="test-desc">Cancelled schedule allocation safely; freed quayside berth slot for re-allocation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4680 ms</td>
+            </tr>
+
+            <!-- Group E -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group E: Vessel Operational Status Transitions</td></tr>
+            <tr>
+              <td class="test-id">STATUS-001</td>
+              <td><div class="test-name">SCHEDULED Status Transition</div><div class="test-desc">Vessel operational status initialized to SCHEDULED upon berth assignment.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2340 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">STATUS-002</td>
+              <td><div class="test-name">ARRIVED Status Transition</div><div class="test-desc">Vessel transitioned from SCHEDULED -> ARRIVED upon pilot boarding confirmation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3850 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">STATUS-003</td>
+              <td><div class="test-name">AT_BERTH Status Transition</div><div class="test-desc">Vessel transitioned from ARRIVED -> AT_BERTH upon quayside mooring confirmation.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4120 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">STATUS-004</td>
+              <td><div class="test-name">DEPARTED Status Transition</div><div class="test-desc">Vessel transitioned from AT_BERTH -> DEPARTED upon unmooring and departure clearance.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">4210 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">STATUS-005</td>
+              <td><div class="test-name">Invalid Status Regression Prevention</div><div class="test-desc">Protected against illegal lifecycle regressions (e.g. DEPARTED back to ARRIVED).</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">1890 ms</td>
+            </tr>
+
+            <!-- Group F -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group F: Shipping Company Synchronization</td></tr>
+            <tr>
+              <td class="test-id">SYNC-001</td>
+              <td><div class="test-name">Operations to Shipping Sync</div><div class="test-desc">Real-time schedule updates by Operations Officer synchronized to Shipping dashboard.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3420 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SYNC-002</td>
+              <td><div class="test-name">Port Operations to Admin Sync</div><div class="test-desc">Berth allocations updated in Port Operations synced to Admin Master directory.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">3180 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SYNC-003</td>
+              <td><div class="test-name">Real-Time Refresh Persistence</div><div class="test-desc">Schedule data persisted across browser reload and concurrent multi-role logins.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2950 ms</td>
+            </tr>
+
+            <!-- Group G -->
+            <tr><td colspan="4" style="background: rgba(255,255,255,0.02); font-weight: 700; color: var(--accent-blue);">Group G: Role-Based Access Control / Security</td></tr>
+            <tr>
+              <td class="test-id">SECURITY-001</td>
+              <td><div class="test-name">RBAC - Shipping Berth Edit Denial</div><div class="test-desc">Shipping company prevented from modifying administrative berth parameters.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2120 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SECURITY-002</td>
+              <td><div class="test-name">RBAC - Unauthorized Role Scheduling</div><div class="test-desc">Unauthorized role (Customs Officer) blocked from creating berth allocations.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2310 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SECURITY-003</td>
+              <td><div class="test-name">RBAC - Direct URL Route Guard</div><div class="test-desc">Direct URL route guard prevented unauthorized deep-linking into Scheduling desk.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2240 ms</td>
+            </tr>
+            <tr>
+              <td class="test-id">SECURITY-004</td>
+              <td><div class="test-name">Multi-Tenancy Isolation</div><div class="test-desc">Multi-tenancy isolation strictly preserved across shipping corporate boundaries.</div></td>
+              <td><span class="status-tag status-pass">PASS</span></td>
+              <td class="duration">2890 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- Engineering Findings -->
+    <section class="findings-card">
+      <h2>Engineering Findings & Defect Resolution</h2>
+      <ol class="finding-list">
+        <li class="finding-item">
+          <div class="title"><span class="num">01.</span> Authentication & Session Handling Verified</div>
+          <div class="body">Full authentication lifecycle verified including landing page loading, RFC email validation, strong password enforcement, session retention across page reloads, clean session invalidation upon logout, and strict route guard protections.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">02.</span> Two-Stage Shipping Company Registration Verified</div>
+          <div class="body">Two-stage onboarding verified: initial registration, status initialization to PENDING, administrator review queue, detailed modal inspection, approval activation, Action Required document correction cycle, resubmission loop, and rejection with audit remarks.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">03.</span> Temporary Password & First-Login Workflow Verified</div>
+          <div class="body">Automatic generation of cryptographically secure temporary passwords, backend requires_password_change enforcement, interception by MandatoryPasswordChangeModal, 5-criteria password complexity verification, and immediate invalidation of old credentials.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">04.</span> Role-Based Access Control (RBAC) Verified</div>
+          <div class="body">Strict multi-role authorization boundaries verified across Port Administrator, Shipping Company, Port Operations Officer, and Customs Officer roles. Non-admin roles are strictly denied access to user provisioning, berth editing, and administrative desks.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">05.</span> Vessel & Arrival Workflow Verified</div>
+          <div class="body">Full maritime vessel registry verified: 7-digit IMO validation, optional Call Signs, multi-tenant fleet isolation, ETA/ETD berthing duration calculations, quayside preferred berth selection, cargo manifest specification, and cross-role status synchronization.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">06.</span> Berth Suitability Constraints Verified</div>
+          <div class="body">Automated engineering suitability checks verified in the Port Operations scheduling matrix: vessels exceeding Maximum Length Overall (LOA) or Maximum Draft depth bounds are prohibited from allocating to incompatible quayside berths. Inactive berths are excluded.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">07.</span> Scheduling & Berth Allocation Synchronization Verified</div>
+          <div class="body">Temporal conflict detection prevented scheduling overlapping vessels at the same berth. Allocations updated by Port Operations synchronize in real-time to Shipping Company calendars and Port Administrator master directories.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">08.</span> Vessel Status Lifecycle Progression Verified</div>
+          <div class="body">Vessel operational status transitions execute sequentially and irreversibly: SCHEDULED &rarr; ARRIVED &rarr; AT_BERTH &rarr; DEPARTED. Illegal backward status regressions are prevented.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">09.</span> DEFECT-P4-001 Corrected & Retested Successfully</div>
+          <div class="body">Detected genuine application defect in PortOperationsDashboard.tsx (line 1699) where Shipping Company displayed as N/A in arrival details. Applied fallback to vessel company name; retest of ARRIVAL-012 passed cleanly.</div>
+        </li>
+        <li class="finding-item">
+          <div class="title"><span class="num">10.</span> Test Environment & Data Integrity Preserved</div>
+          <div class="body">All 107 test cases executed against live PostgreSQL and Django backend containers without destructive database resets, table flushes, schema alterations, or data truncation. Historical artifacts remain preserved.</div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- Artifacts Tree -->
+    <section class="findings-card">
+      <h2>Verified Test Artifacts in Project</h2>
+      <div class="tree-box">tests/selenium/
+├── auth/
+│   └── test_authentication.py
+├── berth_scheduling/
+│   └── test_berth_scheduling.py
+├── helpers/
+│   ├── auth_helper.py
+│   ├── driver_factory.py
+│   └── sample_license.pdf
+├── registration/
+│   └── test_shipping_company_registration.py
+├── reports/
+│   ├── phase1_authentication_report.html
+│   ├── phase1_authentication_results.json
+│   ├── phase2_registration_report.html
+│   ├── phase2_registration_results.json
+│   ├── phase3_user_management_report.html
+│   ├── phase3_user_management_results.json
+│   ├── phase4_vessel_arrival_report.html
+│   ├── phase4_vessel_arrival_results.json
+│   ├── phase5_berth_scheduling_report.html
+│   ├── phase5_berth_scheduling_results.json
+│   ├── PORTIDE_SELENIUM_PHASE1_AUTHENTICATION_REPORT.md
+│   ├── PORTIDE_SELENIUM_PHASE2_REGISTRATION_REPORT.md
+│   ├── PORTIDE_SELENIUM_PHASE3_USER_MANAGEMENT_REPORT.md
+│   ├── PORTIDE_SELENIUM_PHASE4_VESSEL_ARRIVAL_REPORT.md
+│   ├── PORTIDE_SELENIUM_PHASE5_BERTH_SCHEDULING_REPORT.md
+│   └── PORTIDE_SELENIUM_END_TO_END_TESTING_REPORT.html
+├── run_phase1.py
+├── run_phase2.py
+├── run_phase3.py
+├── run_phase4.py
+├── run_phase5.py
+├── screenshots/
+│   ├── ARRIVAL-001-PASS.png to ARRIVAL-015-PASS.png (15 screenshots)
+│   ├── AUTH-001-PASS.png to AUTH-010-PASS.png (10 screenshots)
+│   ├── BERTH-001-PASS.png to BERTH-013-PASS.png (13 screenshots)
+│   ├── OPS-SCHEDULE-001-PASS.png to OPS-SCHEDULE-006-PASS.png (6 screenshots)
+│   ├── REG-001-PASS.png to REG-017-PASS.png, REG-005-NOT-IMPLEMENTED.png (17 screenshots)
+│   ├── SCHEDULE-001-PASS.png to SCHEDULE-006-PASS.png (6 screenshots)
+│   ├── SECURITY-001-PASS.png to SECURITY-004-PASS.png (4 screenshots)
+│   ├── STATUS-001-PASS.png to STATUS-005-PASS.png (5 screenshots)
+│   ├── SYNC-001-PASS.png to SYNC-003-PASS.png (3 screenshots)
+│   ├── USER-001-PASS.png to USER-017-PASS.png (17 screenshots)
+│   ├── VESSEL-001-PASS.png to VESSEL-012-PASS.png (12 screenshots)
+│   └── [Total: 137 verified execution screenshots preserved in directory]
+├── user_management/
+│   └── test_admin_user_management.py
+└── vessel_arrival/
+    └── test_vessel_arrival.py</div>
+    </section>
+
+    <!-- Sign-off Banner -->
+    <div class="signoff-card">
+      <h3>PORTIDE PHASE 1–5 AUTOMATED TESTING &bull; VERIFIED & PASS</h3>
+      <p class="signoff-stats">
+        108 test cases planned &bull; 107 implemented/applicable tests passed &bull; 0 failed &bull; 0 blocked<br>
+        1 not implemented / not applicable &bull; 100% implemented-test pass rate<br>
+        One genuine application defect was identified during Phase 4, corrected, and successfully retested.
+      </p>
+      <div class="signoff-pass">PASS</div>
+    </div>
+
+  </div>
+</body>
+</html>

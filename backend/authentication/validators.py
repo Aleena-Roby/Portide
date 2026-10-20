@@ -1,4 +1,6 @@
 import re
+import secrets
+import string
 from rest_framework import serializers
 import phonenumbers
 from phonenumbers.phonenumberutil import NumberParseException, is_valid_number, is_possible_number, region_code_for_number
@@ -24,6 +26,50 @@ def validate_strong_password(value):
     if not re.search(r'[^A-Za-z0-9]', password):
         raise serializers.ValidationError("Password must contain at least one special character (e.g. !@#$%^&*).")
     return password
+
+
+def generate_temporary_password(length=14) -> str:
+    """
+    Generates a cryptographically secure random temporary password.
+    Guaranteed to satisfy validate_strong_password:
+    - Minimum 8 characters (default 14)
+    - At least one uppercase letter (A-Z)
+    - At least one lowercase letter (a-z)
+    - At least one numeric digit (0-9)
+    - At least one special character
+    """
+    if length < 10:
+        length = 14
+
+    special_chars = "!@#$%^&*()_+-="
+    all_chars = string.ascii_letters + string.digits + special_chars
+
+    rng = secrets.SystemRandom()
+
+    while True:
+        # Guarantee characters from each required category
+        password_chars = [
+            secrets.choice(string.ascii_uppercase),
+            secrets.choice(string.ascii_uppercase),
+            secrets.choice(string.ascii_lowercase),
+            secrets.choice(string.ascii_lowercase),
+            secrets.choice(string.digits),
+            secrets.choice(string.digits),
+            secrets.choice(special_chars),
+            secrets.choice(special_chars),
+        ]
+        # Fill the remaining characters from the full pool
+        for _ in range(length - len(password_chars)):
+            password_chars.append(secrets.choice(all_chars))
+
+        rng.shuffle(password_chars)
+        candidate = "".join(password_chars)
+
+        try:
+            validate_strong_password(candidate)
+            return candidate
+        except serializers.ValidationError:
+            continue
 
 
 # Single source of truth for the 12 supported countries in PORTIDE backend
@@ -127,3 +173,58 @@ def validate_international_phone_number(value, default_region='SG', required=Fal
         return phonenumbers.format_number(parsed_num, phonenumbers.PhoneNumberFormat.E164)
     except NumberParseException:
         raise serializers.ValidationError("Please enter a valid phone number for the selected country.")
+
+
+def generate_unique_employee_id(role: str) -> str:
+    """
+    Generates a guaranteed unique, non-repeating employee identification code.
+    Format: <ROLE_PREFIX>-<YEAR>-<4_DIGIT_SEQUENCE>
+    e.g. CUS-2026-0001, POO-2026-0001, TLO-2026-0001, GTO-2026-0001
+    Guaranteed unique against all existing records in PostgreSQL tbl_user.
+    """
+    from datetime import datetime
+    from authentication.models import User
+
+    role_str = (role or '').strip().lower()
+    prefix_map = {
+        'port_operations_officer': 'POO',
+        'customs_officer': 'CUS',
+        'terminal_logistics_operator': 'TLO',
+        'gate_truck_officer': 'GTO',
+        'gate_officer': 'GTO',
+        'port_administrator': 'ADM',
+        'admin': 'ADM',
+    }
+    prefix = prefix_map.get(role_str, 'EMP')
+    year = datetime.now().year
+    base_pattern = f"{prefix}-{year}-"
+
+    # Fetch all existing IDs starting with this prefix and year
+    existing_ids = User.objects.filter(
+        user_employee_id__istartswith=base_pattern
+    ).values_list('user_employee_id', flat=True)
+
+    max_num = 0
+    for emp_id in existing_ids:
+        if not emp_id:
+            continue
+        suffix = emp_id[len(base_pattern):]
+        match = re.match(r'^(\d+)', suffix)
+        if match:
+            try:
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+
+    next_num = max_num + 1
+    candidate_id = f"{prefix}-{year}-{next_num:04d}"
+
+    # Loop to be 100% sure in case of any concurrent additions
+    while User.objects.filter(user_employee_id__iexact=candidate_id).exists():
+        next_num += 1
+        candidate_id = f"{prefix}-{year}-{next_num:04d}"
+
+    return candidate_id
+

@@ -58,10 +58,13 @@ interface AppContextType {
   // Centralized Session State & Methods
   isAuthenticated: boolean;
   isAuthLoading: boolean;
+  mustChangePassword: boolean;
+  setMustChangePassword: (mustChange: boolean) => void;
   loginUser: (emailInput: string, passwordInput: string) => Promise<{ 
     success: boolean; 
     message?: string; 
     role?: string;
+    must_change_password?: boolean;
     registration_status?: string;
     registration_request_id?: number | string;
   }>;
@@ -69,7 +72,7 @@ interface AppContextType {
   checkAuthSession: () => Promise<void>;
 
   // Actions
-  addToast: (type: ToastAlert['type'], title: string, message: string) => void;
+  addToast: (type: ToastAlert['type'] | string, title?: string, message?: string) => void;
   removeToast: (id: string) => void;
   registerVessel: (vessel: Omit<Vessel, 'id'>) => void;
   assignBerth: (vesselId: string, berthId: string) => void;
@@ -94,6 +97,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     id: '',
     name: '',
     email: '',
+    phone: '',
     role: 'port_administrator',
     organisation: '',
     status: 'pending',
@@ -113,6 +117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false);
 
   // Check auth session on app mount
   const checkAuthSession = async () => {
@@ -121,6 +126,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     if (!storedSession) {
       setIsAuthenticated(false);
+      setMustChangePassword(false);
       setIsAuthLoading(false);
       return;
     }
@@ -131,6 +137,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       if (res.ok && data.status === 'success') {
         const u = data.data;
+        const isMustChange = !!u.must_change_password;
         const portUser: PortUser = {
           id: String(u.login_id),
           name: u.full_name,
@@ -139,26 +146,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           organisation: u.company_name || 'PORTIDE Port Authority',
           phone: '+1-555-0100',
           status: 'active',
-          createdAt: new Date().toISOString().substring(0, 10)
+          createdAt: new Date().toISOString().substring(0, 10),
+          mustChangePassword: isMustChange
         };
         setCurrentUser(portUser);
         setActiveRole(u.role as UserRole);
         setIsAuthenticated(true);
+        setMustChangePassword(isMustChange);
         setStoredSession({
           id: portUser.id,
           name: portUser.name,
           email: portUser.email,
           role: portUser.role,
           organisation: portUser.organisation,
-          status: portUser.status
+          status: portUser.status,
+          mustChangePassword: isMustChange
         });
       } else {
         clearStoredSession();
         setIsAuthenticated(false);
+        setMustChangePassword(false);
       }
     } catch {
       // Offline fallback: restore valid stored session if available
       try {
+        const isMustChange = !!storedSession.mustChangePassword;
         const portUser: PortUser = {
           id: storedSession.id,
           name: storedSession.name,
@@ -167,14 +179,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           organisation: storedSession.organisation || 'PORTIDE Port Authority',
           phone: '+1-555-0100',
           status: 'active',
-          createdAt: new Date().toISOString().substring(0, 10)
+          createdAt: new Date().toISOString().substring(0, 10),
+          mustChangePassword: isMustChange
         };
         setCurrentUser(portUser);
         setActiveRole(storedSession.role as UserRole);
         setIsAuthenticated(true);
+        setMustChangePassword(isMustChange);
       } catch {
         clearStoredSession();
         setIsAuthenticated(false);
+        setMustChangePassword(false);
       }
     } finally {
       setIsAuthLoading(false);
@@ -189,7 +204,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     checkAuthSession();
   }, []);
 
-  const loginUser = async (emailInput: string, passwordInput: string): Promise<{ success: boolean; message?: string; role?: string }> => {
+  const loginUser = async (emailInput: string, passwordInput: string): Promise<{ 
+    success: boolean; 
+    message?: string; 
+    role?: string;
+    must_change_password?: boolean;
+    registration_status?: string;
+    registration_request_id?: number | string;
+  }> => {
     try {
       const response = await apiFetch('/api/auth/login/', {
         method: 'POST',
@@ -200,6 +222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (response.ok && result.status === 'success') {
         const authData = result.data;
         const userRole = authData.role as UserRole;
+        const isMustChange = !!authData.must_change_password;
         const portUser: PortUser = {
           id: String(authData.login_id),
           name: authData.full_name,
@@ -208,21 +231,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           organisation: authData.company_name || 'PORTIDE Port Authority',
           phone: '+1-555-0100',
           status: 'active',
-          createdAt: new Date().toISOString().substring(0, 10)
+          createdAt: new Date().toISOString().substring(0, 10),
+          mustChangePassword: isMustChange
         };
         setCurrentUser(portUser);
         setActiveRole(userRole);
         setIsAuthenticated(true);
+        setMustChangePassword(isMustChange);
         setStoredSession({
           id: portUser.id,
           name: portUser.name,
           email: portUser.email,
           role: portUser.role,
           organisation: portUser.organisation,
-          status: portUser.status
+          status: portUser.status,
+          mustChangePassword: isMustChange
         });
         addToast('success', 'Login Successful', `Welcome back, ${authData.full_name}`);
-        return { success: true, role: userRole };
+        return { success: true, role: userRole, must_change_password: isMustChange };
       } else {
         return { 
           success: false, 
@@ -240,10 +266,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Clear session state synchronously first to prevent any race condition
     clearStoredSession();
     setIsAuthenticated(false);
+    setMustChangePassword(false);
     setCurrentUser({
       id: '',
       name: '',
       email: '',
+      phone: '',
       role: 'port_administrator',
       organisation: '',
       status: 'pending',
@@ -265,9 +293,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleDarkMode = () => setIsDarkMode(prev => !prev);
 
-  const addToast = (type: ToastAlert['type'], title: string, message: string) => {
+  const addToast = (type: ToastAlert['type'] | string, title?: string, message?: string) => {
+    let resolvedType: ToastAlert['type'] = 'info';
+    let resolvedTitle = '';
+    let resolvedMessage = '';
+
+    if (message !== undefined) {
+      // 3 arguments: (type, title, message)
+      resolvedType = (['success', 'warning', 'error', 'info'].includes(type) ? type : 'info') as ToastAlert['type'];
+      resolvedTitle = title || '';
+      resolvedMessage = message;
+    } else if (title !== undefined) {
+      // 2 arguments: (message, type) or (type, message)
+      if (['success', 'warning', 'error', 'info'].includes(title)) {
+        resolvedType = title as ToastAlert['type'];
+        resolvedTitle = resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1);
+        resolvedMessage = type;
+      } else if (['success', 'warning', 'error', 'info'].includes(type)) {
+        resolvedType = type as ToastAlert['type'];
+        resolvedTitle = resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1);
+        resolvedMessage = title;
+      } else {
+        resolvedType = 'info';
+        resolvedTitle = type;
+        resolvedMessage = title;
+      }
+    } else {
+      // 1 argument: (message)
+      resolvedType = 'info';
+      resolvedTitle = 'Notification';
+      resolvedMessage = type;
+    }
+
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    setToasts(prev => [...prev, { id, type, title, message }]);
+    setToasts(prev => [...prev, { id, type: resolvedType, title: resolvedTitle, message: resolvedMessage }]);
 
     setTimeout(() => {
       removeToast(id);
@@ -486,6 +545,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setGlobalSearchQuery,
       isAuthenticated,
       isAuthLoading,
+      mustChangePassword,
+      setMustChangePassword,
       loginUser,
       logoutUser,
       checkAuthSession,

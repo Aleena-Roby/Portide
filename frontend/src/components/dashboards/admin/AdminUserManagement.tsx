@@ -59,14 +59,10 @@ export const AdminUserManagement: React.FC = () => {
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
-  const [employeeId, setEmployeeId] = useState<string>('');
-  const [department, setDepartment] = useState<string>('Port Operations');
+  const [createPhoneValid, setCreatePhoneValid] = useState<boolean>(true);
+  const [employeeId, setEmployeeId] = useState<string>('POO-2026-001');
   const [role, setRole] = useState<string>('port_operations_officer');
-  const [initialPassword, setInitialPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-
-  const [showInitialPassword, setShowInitialPassword] = useState<boolean>(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+  const [department, setDepartment] = useState<string>('Port Operations');
 
   // Selected User Modal for Viewing Profile Details
   const [selectedUser, setSelectedUser] = useState<BackendUser | null>(null);
@@ -74,8 +70,6 @@ export const AdminUserManagement: React.FC = () => {
   // User Deletion Modal State
   const [userToDelete, setUserToDelete] = useState<BackendUser | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
-
-  const [createPhoneValid, setCreatePhoneValid] = useState<boolean>(true);
 
   // Edit Staff User Modal State
   const [userToEdit, setUserToEdit] = useState<BackendUser | null>(null);
@@ -200,62 +194,94 @@ export const AdminUserManagement: React.FC = () => {
     fetchUsers();
   }, []);
 
+  const [fetchingNextId, setFetchingNextId] = useState<boolean>(false);
+
+  // Compute next available unique Employee ID based on database records
+  const computeFallbackEmployeeId = (targetRole: string) => {
+    const prefixMap: Record<string, string> = {
+      port_operations_officer: 'POO',
+      customs_officer: 'CUS',
+      terminal_logistics_operator: 'TLO',
+      gate_truck_officer: 'GTO',
+    };
+    const prefix = prefixMap[targetRole] || 'EMP';
+    const year = new Date().getFullYear();
+    const pattern = `${prefix}-${year}-`;
+
+    let maxNum = 0;
+    dbUsers.forEach(u => {
+      if (u.user_employee_id && u.user_employee_id.toUpperCase().startsWith(pattern)) {
+        const rawSuffix = u.user_employee_id.substring(pattern.length);
+        const match = rawSuffix.match(/^(\d+)/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > maxNum) {
+            maxNum = parsed;
+          }
+        }
+      }
+    });
+
+    const nextNum = maxNum + 1;
+    const formatted = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
+    setEmployeeId(formatted);
+  };
+
+  // Fetch guaranteed unique Employee ID directly from backend registry API
+  const fetchNextEmployeeId = async (targetRole: string) => {
+    setFetchingNextId(true);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/admin/users/next-employee-id/?role=${targetRole}`, {
+        headers: {
+          'X-User-Role': 'port_administrator'
+        }
+      });
+      const data = await response.json();
+      if (response.ok && data.employee_id) {
+        setEmployeeId(data.employee_id);
+      } else {
+        computeFallbackEmployeeId(targetRole);
+      }
+    } catch {
+      computeFallbackEmployeeId(targetRole);
+    } finally {
+      setFetchingNextId(false);
+    }
+  };
+
   // Update default employee ID prefix and department when role changes in form
   const handleRoleChange = (selectedRole: string) => {
     setRole(selectedRole);
     switch (selectedRole) {
       case 'port_operations_officer':
         setDepartment('Port Operations');
-        if (!employeeId || employeeId.startsWith('CUS-') || employeeId.startsWith('TLO-') || employeeId.startsWith('GTO-')) {
-          setEmployeeId('POO-2026-00' + (dbUsers.length + 1));
-        }
         break;
       case 'customs_officer':
         setDepartment('Customs');
-        if (!employeeId || employeeId.startsWith('POO-') || employeeId.startsWith('TLO-') || employeeId.startsWith('GTO-')) {
-          setEmployeeId('CUS-2026-00' + (dbUsers.length + 1));
-        }
         break;
       case 'terminal_logistics_operator':
         setDepartment('Terminal & Logistics');
-        if (!employeeId || employeeId.startsWith('POO-') || employeeId.startsWith('CUS-') || employeeId.startsWith('GTO-')) {
-          setEmployeeId('TLO-2026-00' + (dbUsers.length + 1));
-        }
         break;
       case 'gate_truck_officer':
         setDepartment('Gate Operations');
-        if (!employeeId || employeeId.startsWith('POO-') || employeeId.startsWith('CUS-') || employeeId.startsWith('TLO-')) {
-          setEmployeeId('GTO-2026-00' + (dbUsers.length + 1));
-        }
         break;
       default:
         break;
     }
+    fetchNextEmployeeId(selectedRole);
   };
 
   const handleCreateStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
-    if (!fullName || !email || !employeeId || !department || !initialPassword) {
+    if (!fullName || !email || !employeeId || !department) {
       setFormError('Please fill in all required fields.');
       return;
     }
 
     if (phone && !createPhoneValid) {
       setFormError('Please enter a valid phone number for the selected country.');
-      return;
-    }
-
-
-    const reqs = checkPasswordRequirements(initialPassword);
-    if (!reqs.isValid) {
-      setFormError('Initial password does not satisfy all 5 security requirements.');
-      return;
-    }
-
-    if (initialPassword !== confirmPassword) {
-      setFormError('Passwords do not match.');
       return;
     }
 
@@ -273,9 +299,7 @@ export const AdminUserManagement: React.FC = () => {
           user_phone: phone.trim(),
           user_employee_id: employeeId.trim(),
           user_department: department.trim(),
-          user_role: role,
-          password: initialPassword,
-          confirm_password: confirmPassword
+          user_role: role
         })
       });
 
@@ -283,15 +307,18 @@ export const AdminUserManagement: React.FC = () => {
       setCreateLoading(false);
 
       if (response.ok && result.status === 'success') {
-        addToast('success', 'Staff Account Created', `Internal staff account for ${fullName} created successfully.`);
+        const userEmail = email.trim().toLowerCase();
+        if (result.email_sent === false) {
+          addToast('warning', 'Staff Account Created', 'Staff account created successfully, but the notification email could not be sent.');
+        } else {
+          addToast('success', 'Staff Account Created', `Staff account created successfully. Temporary login credentials have been sent to ${userEmail}.`);
+        }
         
         // Reset Form
         setFullName('');
         setEmail('');
         setPhone('');
         setEmployeeId('');
-        setInitialPassword('');
-        setConfirmPassword('');
         setIsCreateStaffOpen(false);
 
         fetchUsers();
@@ -411,9 +438,7 @@ export const AdminUserManagement: React.FC = () => {
             onClick={() => {
               setIsCreateStaffOpen(true);
               setFormError('');
-              if (!employeeId) {
-                setEmployeeId('POO-2026-00' + (dbUsers.length + 1));
-              }
+              fetchNextEmployeeId(role || 'port_operations_officer');
             }}
             className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831b] transition-all flex items-center gap-2 cursor-pointer shadow-md"
           >
@@ -501,14 +526,17 @@ export const AdminUserManagement: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
                 {filteredUsers.map((user) => (
-                  <tr key={user.user_id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr 
+                    key={user.user_id} 
+                    onClick={() => setSelectedUser(user)}
+                    className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                    title="Click row to view user details"
+                  >
                     
                     {/* User Info */}
                     <td className="p-4">
                       <div 
-                        onClick={() => setSelectedUser(user)}
-                        className="flex items-center gap-2.5 font-bold text-slate-900 dark:text-white cursor-pointer hover:text-[#D49A24] dark:hover:text-[#D49A24] transition-colors group"
-                        title="Click to view user profile details"
+                        className="flex items-center gap-2.5 font-bold text-slate-900 dark:text-white group-hover:text-[#D49A24] dark:group-hover:text-[#D49A24] transition-colors"
                       >
                         <div className="w-8 h-8 rounded-lg bg-[#D49A24]/10 border border-[#D49A24]/30 text-[#D49A24] font-black flex items-center justify-center text-xs shrink-0 group-hover:scale-105 transition-transform">
                           {user.user_full_name?.charAt(0) || 'U'}
@@ -560,7 +588,7 @@ export const AdminUserManagement: React.FC = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className="p-4 text-right space-x-1.5">
+                    <td className="p-4 text-right space-x-1.5" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={(e) => { e.stopPropagation(); setSelectedUser(user); }}
                         className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
@@ -641,17 +669,37 @@ export const AdminUserManagement: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Employee ID *
-              </label>
-              <input
-                type="text"
-                required
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                placeholder="e.g. POO-2026-001"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold text-[#D49A24] text-xs focus:outline-none focus:border-[#D49A24]"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Employee ID *
+                </label>
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md flex items-center gap-1 border border-emerald-500/20">
+                  <CheckCircle2 className="w-2.5 h-2.5" />
+                  Auto-Generated & Unique
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={employeeId}
+                  onChange={(e) => setEmployeeId(e.target.value)}
+                  placeholder="e.g. CUS-2026-0001"
+                  className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 font-mono font-bold text-[#D49A24] text-xs focus:outline-none focus:border-[#D49A24]"
+                />
+                <button
+                  type="button"
+                  onClick={() => fetchNextEmployeeId(role)}
+                  title="Refresh / Generate Next Unique ID"
+                  disabled={fetchingNextId}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#D49A24] transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${fetchingNextId ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                Guaranteed non-repeating identifier automatically allocated from the port registry.
+              </p>
             </div>
 
             <div>
@@ -697,60 +745,18 @@ export const AdminUserManagement: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Initial Password *
-              </label>
-              <div className="relative">
-                <input
-                  type={showInitialPassword ? 'text' : 'password'}
-                  required
-                  value={initialPassword}
-                  onChange={(e) => setInitialPassword(e.target.value)}
-                  placeholder="Assign initial password..."
-                  className="w-full pl-3 pr-9 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-medium focus:outline-none focus:border-[#D49A24]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowInitialPassword(!showInitialPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                >
-                  {showInitialPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Confirm Initial Password *
-              </label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm initial password..."
-                  className="w-full pl-3 pr-9 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-medium focus:outline-none focus:border-[#D49A24]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                >
-                  {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              {confirmPassword && initialPassword !== confirmPassword && (
-                <div className="text-[10px] font-bold text-rose-500 mt-1">
-                  Passwords do not match.
+            {/* Automatic Temporary Password Generation Informational Note */}
+            <div className="col-span-1 md:col-span-2 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2.5">
+              <Shield className="w-4 h-4 shrink-0 text-[#D49A24] mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-bold text-slate-800 dark:text-white">
+                  Automatic Temporary Password Generation
                 </div>
-              )}
-            </div>
-
-            {/* Dynamic Password Requirements Checklist */}
-            <div className="col-span-1 md:col-span-2">
-              <PasswordRequirementChecklist password={initialPassword} />
+                <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                  PORTIDE will automatically generate a secure temporary password.
+                  The temporary password will be sent to the user's registered email.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -921,44 +927,140 @@ export const AdminUserManagement: React.FC = () => {
       >
         {selectedUser && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Full Name</div>
-                <div className="font-bold text-slate-900 dark:text-white text-sm">{selectedUser.user_full_name}</div>
+            {/* Top User Card */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-[#D49A24]/10 border border-[#D49A24]/30 text-[#D49A24] font-black flex items-center justify-center text-lg shrink-0">
+                  {selectedUser.user_full_name?.charAt(0) || 'U'}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    {selectedUser.user_full_name}
+                  </h3>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
+                    <Mail className="w-3 h-3 text-slate-400" />
+                    <span>{selectedUser.email}</span>
+                  </div>
+                </div>
               </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Email Address</div>
-                <div className="font-bold text-slate-900 dark:text-white truncate">{selectedUser.email}</div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Employee ID</div>
-                <div className="font-mono font-bold text-[#D49A24] text-sm">{selectedUser.user_employee_id || 'N/A'}</div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Department</div>
-                <div className="font-bold text-slate-900 dark:text-white">{selectedUser.user_department || 'N/A'}</div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1 sm:col-span-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Role</div>
-                <div>{getRoleBadge(selectedUser.role)}</div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-1 sm:col-span-2">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account Status</div>
-                <div className="font-bold text-emerald-600 dark:text-emerald-400">{selectedUser.user_status}</div>
+              <div className="self-start sm:self-center">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                  selectedUser.user_status === 'ACTIVE'
+                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : selectedUser.user_status === 'PENDING'
+                    ? 'bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400'
+                    : 'bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${selectedUser.user_status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                  {selectedUser.user_status}
+                </span>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+            {/* Profile Information */}
+            <div className="space-y-2">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#D49A24] dark:text-[#D49A24] border-b border-slate-200 dark:border-slate-800 pb-1">
+                1. System Identity & Access
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Employee ID:</div>
+                  <div className="font-mono font-bold text-[#D49A24] text-xs mt-0.5">
+                    {selectedUser.user_employee_id || 'N/A'}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">System Role:</div>
+                  <div className="mt-1">
+                    {getRoleBadge(selectedUser.role)}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Internal ID:</div>
+                  <div className="font-mono font-bold text-slate-700 dark:text-slate-300 text-xs mt-0.5">
+                    USR-00{selectedUser.user_id}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact & Organizational Details */}
+            <div className="space-y-2">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 border-b border-slate-200 dark:border-slate-800 pb-1">
+                2. Organization & Contact Information
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Department:</div>
+                  <div className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedUser.user_department || 'General Operations'}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Designation / Title:</div>
+                  <div className="font-semibold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedUser.user_designation || 'Staff Member'}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Phone Contact:</div>
+                  <div className="font-mono font-semibold text-slate-900 dark:text-white text-xs mt-0.5">
+                    {selectedUser.user_phone || '—'}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Email Address:</div>
+                  <div className="font-medium text-slate-900 dark:text-white text-xs mt-0.5 truncate">
+                    {selectedUser.email}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Audit & Timeline */}
+            <div className="space-y-2">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-800 pb-1">
+                3. Timeline & Auditing
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Account Registered:</div>
+                  <div className="font-medium text-slate-700 dark:text-slate-300 text-xs mt-0.5">
+                    {formatDate(selectedUser.user_created_at)}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-slate-400 text-[10px] font-medium">Last Profile Update:</div>
+                  <div className="font-medium text-slate-700 dark:text-slate-300 text-xs mt-0.5">
+                    {formatDate(selectedUser.user_updated_at)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setSelectedUser(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors cursor-pointer"
               >
                 Close
+              </button>
+              <button
+                onClick={() => {
+                  const u = selectedUser;
+                  setSelectedUser(null);
+                  handleOpenEditModal(u);
+                }}
+                className="px-4 py-2 rounded-xl bg-[#D49A24] hover:bg-[#b88218] text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit User</span>
               </button>
             </div>
           </div>

@@ -36,7 +36,7 @@ export const LoginPage: React.FC = () => {
     setBlockedRegistrationStatus(null);
     setBlockedRegistrationRequestId(null);
 
-    if (!email.includes('@')) {
+    if (!email.includes('@') && email.trim().toLowerCase() !== 'admin') {
       setErrorMessage('Please enter a valid email address.');
       return;
     }
@@ -205,16 +205,16 @@ export const LoginPage: React.FC = () => {
               {/* Email Input */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Registered Email Address
+                  Email Address or Username
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-4 top-3.5" />
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="user@portide.com"
+                    placeholder="user@portide.com or admin"
                     className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-sm focus:outline-none focus:border-[#D49A24] focus:ring-2 focus:ring-[#D49A24]/20 transition-all placeholder:text-slate-400 font-medium"
                   />
                 </div>

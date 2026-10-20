@@ -9,6 +9,7 @@ import {
   Boxes, 
   Truck, 
   ChevronRight, 
+  ChevronDown,
   Radio, 
   FileCheck,
   Users,
@@ -17,8 +18,29 @@ import {
   LogOut,
   User,
   Anchor,
-  Clock
+  Clock,
+  QrCode,
+  ShieldCheck,
+  Warehouse,
+  MapPin,
+  MoveHorizontal,
+  ArrowDownToLine
 } from 'lucide-react';
+
+interface NavChildItem {
+  id: string;
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  path: string;
+}
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  path: string;
+  children?: NavChildItem[];
+}
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -73,13 +95,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { id: 'berths', label: 'Berth Management', icon: Anchor, path: `${basePath}/berths` },
           { id: 'company-approvals', label: 'Company Approvals', icon: FileCheck, path: `${basePath}/company-approvals` },
           { id: 'users', label: 'User & Registration', icon: Users, path: `${basePath}/users` },
+          { id: 'gate-passes', label: 'Gate Passes Monitor', icon: Truck, path: `${basePath}/gate-passes` },
           { id: 'audit', label: 'Security & Audit Logs', icon: Shield, path: `${basePath}/audit` }
         ];
       case 'shipping_company':
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
           { id: 'vessels', label: 'Vessel Management', icon: Ship, path: `${basePath}/vessels` },
-          { id: 'arrival-requests', label: 'Arrival Requests', icon: FileCheck, path: `${basePath}/arrival-requests` }
+          { id: 'arrival-requests', label: 'Arrival Requests', icon: FileCheck, path: `${basePath}/arrival-requests` },
+          { id: 'cargo', label: 'Cargo Registration', icon: Boxes, path: `${basePath}/cargo` }
         ];
       case 'operations_officer':
       case 'port_operations_officer':
@@ -92,20 +116,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ];
       case 'customs_officer':
         return [
-          { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
-          { id: 'clearance', label: 'Cargo Management', icon: Boxes, path: `${basePath}/clearance` }
+          { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard, path: `${basePath}/dashboard` },
+          { id: 'normal-review', label: 'Normal Customs Review', icon: ShieldCheck, path: `${basePath}/normal-review` },
+          { id: 'pre-arrival', label: 'Pre-Arrival Review', icon: FileCheck, path: `${basePath}/pre-arrival` },
+          { id: 'cargo-management', label: 'Cargo Manifest Oversight', icon: Boxes, path: `${basePath}/cargo-management` },
+          { id: 'decision-history', label: 'Customs Decision History', icon: Clock, path: `${basePath}/decision-history` }
         ];
       case 'terminal_operator':
       case 'terminal_logistics_operator':
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
-          { id: 'containers', label: 'Cargo Management', icon: Boxes, path: `${basePath}/containers` }
+          { id: 'unloading-operations', label: 'Unloading Operations', icon: ArrowDownToLine, path: `${basePath}/unloading-operations` },
+          { id: 'yard-master', label: 'Yard Master', icon: Warehouse, path: `${basePath}/yard-master` },
+          { id: 'yard-allocation', label: 'Yard Allocation', icon: MapPin, path: `${basePath}/yard-allocation` },
+          { id: 'yard-operations', label: 'Yard Operations', icon: MoveHorizontal, path: `${basePath}/yard-operations` },
+          { id: 'crane-management', label: 'Crane Management', icon: Anchor, path: `${basePath}/crane-management` },
+          { id: 'containers', label: 'Cargo Management', icon: Boxes, path: `${basePath}/containers` },
+          { id: 'delivery-tracking', label: 'Delivery Tracking', icon: Truck, path: `${basePath}/delivery-tracking` }
         ];
       case 'gate_officer':
       case 'gate_truck_officer':
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
-          { id: 'trucks', label: 'Gate Operations', icon: Truck, path: `${basePath}/trucks` }
+          { 
+            id: 'gate-operations', 
+            label: 'Gate Operations', 
+            icon: Truck, 
+            path: `${basePath}/gate-operations`,
+            children: [
+              { id: 'worklist', label: 'Container Release Worklist', icon: Boxes, path: `${basePath}/gate-operations` },
+              { id: 'gate-passes', label: 'Digital Gate Passes', icon: QrCode, path: `${basePath}/gate-passes` },
+              { id: 'release-desk', label: 'QR Verification & Release Desk', icon: ShieldCheck, path: `${basePath}/release-desk` }
+            ]
+          }
         ];
       default:
         return [
@@ -140,9 +183,116 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const roleIdentity = getRoleIdentity(activeRole);
   const navItems = getNavItems();
 
-  const handleNavClick = (item: { id: string; path: string }) => {
+  const [expandedMenus, setExpandedMenus] = React.useState<Record<string, boolean>>({});
+
+  const isChildActive = (child: NavChildItem) => {
+    if (child.id === 'worklist') {
+      return (
+        location.pathname === `${basePath}/gate-operations` || 
+        location.pathname === `${basePath}/gate-operations/` || 
+        location.pathname === `${basePath}/worklist` || 
+        location.pathname === `${basePath}/trucks` || 
+        location.pathname === '/gate-operations' ||
+        location.pathname.startsWith(`${basePath}/gate-operations/manifest`) ||
+        location.pathname.startsWith(`${basePath}/gate-operations/worklist`)
+      );
+    }
+    if (child.id === 'gate-passes') {
+      return (
+        location.pathname === `${basePath}/gate-passes` || 
+        location.pathname === `${basePath}/gate-passes/` || 
+        location.pathname.startsWith(`${basePath}/gate-operations/passes`) || 
+        location.pathname.startsWith(`${basePath}/gate-operations/directory`)
+      );
+    }
+    if (child.id === 'release-desk') {
+      return (
+        location.pathname === `${basePath}/release-desk` || 
+        location.pathname === `${basePath}/release-desk/` || 
+        location.pathname === `${basePath}/verify` || 
+        location.pathname === `${basePath}/verification` || 
+        location.pathname.startsWith(`${basePath}/gate-operations/verify`) || 
+        location.pathname.startsWith(`${basePath}/gate-operations/release-desk`)
+      );
+    }
+    return location.pathname === child.path;
+  };
+
+  const isItemActive = (item: NavItem) => {
+    if (item.children && item.children.length > 0) {
+      return (
+        item.children.some(child => isChildActive(child)) ||
+        location.pathname.startsWith(`${basePath}/gate-operations`) ||
+        location.pathname.startsWith(`${basePath}/gate-passes`) ||
+        location.pathname.startsWith(`${basePath}/release-desk`) ||
+        location.pathname.startsWith(`${basePath}/verify`) ||
+        location.pathname.startsWith(`${basePath}/verification`) ||
+        location.pathname.startsWith(`${basePath}/trucks`) ||
+        location.pathname === '/gate-operations'
+      );
+    }
+
+    return (
+      location.pathname === item.path || 
+      ((item.id === 'overview' || item.id === 'dashboard') && (
+        location.pathname === basePath || 
+        location.pathname === `${basePath}/` || 
+        location.pathname === `${basePath}/dashboard`
+      )) ||
+      (item.id === 'cargo-management' && (
+        location.pathname === `${basePath}/cargo-management` || 
+        location.pathname === `${basePath}/clearance`
+      ))
+    );
+  };
+
+  const isItemExpanded = (item: NavItem) => {
+    if (!item.children || item.children.length === 0) return false;
+    if (expandedMenus[item.id] !== undefined) {
+      return expandedMenus[item.id];
+    }
+    // Default to expanded whenever any child or parent is active
+    return isItemActive(item);
+  };
+
+  const toggleExpand = (itemId: string, currentlyExpanded: boolean) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [itemId]: !currentlyExpanded
+    }));
+  };
+
+  const handleNavClick = (item: NavItem) => {
+    if (item.children && item.children.length > 0) {
+      const expanded = isItemExpanded(item);
+      // If clicking parent when already on its root page, toggle expansion
+      const isAlreadyOnWorklist = 
+        location.pathname === item.path ||
+        location.pathname === `${basePath}/gate-operations` ||
+        location.pathname === '/gate-operations';
+
+      setActiveTab('gate-operations');
+      navigate(item.path);
+
+      if (isAlreadyOnWorklist) {
+        toggleExpand(item.id, expanded);
+      } else {
+        // Expand when navigating into parent from another top-level page
+        setExpandedMenus(prev => ({ ...prev, [item.id]: true }));
+      }
+      setIsSidebarOpen(false);
+      return;
+    }
+
     setActiveTab(item.id);
     navigate(item.path);
+    setIsSidebarOpen(false);
+  };
+
+  const handleChildNavClick = (child: NavChildItem, parentId: string) => {
+    setActiveTab(child.id);
+    navigate(child.path);
+    setExpandedMenus(prev => ({ ...prev, [parentId]: true }));
     setIsSidebarOpen(false);
   };
 
@@ -185,25 +335,84 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path || 
-                (item.id === 'overview' && (location.pathname === basePath || location.pathname === `${basePath}/`));
-              
+              const hasChildren = Boolean(item.children && item.children.length > 0);
+              const isActive = isItemActive(item);
+              const isExpanded = isItemExpanded(item);
+
               return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#e0f2fe] dark:bg-sky-500 text-sky-700 dark:text-white font-bold shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60 font-medium'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-sky-600 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`} />
-                    <span className="truncate">{item.label}</span>
+                <div key={item.id} className="space-y-1">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleNavClick(item)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-[#e0f2fe] dark:bg-sky-500 text-sky-700 dark:text-white font-bold shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-sky-600 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      
+                      {hasChildren ? (
+                        <div
+                          role="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpand(item.id, isExpanded);
+                          }}
+                          className={`p-1 -mr-1 rounded-lg transition-colors cursor-pointer ${
+                            isActive 
+                              ? 'hover:bg-sky-600/20 text-sky-700 dark:text-white' 
+                              : 'hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500'
+                          }`}
+                          title={isExpanded ? 'Collapse' : 'Expand'}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                      ) : (
+                        isActive && <ChevronRight className="w-3.5 h-3.5 text-sky-600 dark:text-white" />
+                      )}
+                    </button>
                   </div>
-                  {isActive && <ChevronRight className="w-3.5 h-3.5 text-sky-600 dark:text-white" />}
-                </button>
+
+                  {/* Nested Child Items */}
+                  {hasChildren && isExpanded && item.children && (
+                    <div className="pl-3 pr-1 py-1 space-y-1 ml-3 border-l-2 border-slate-200/80 dark:border-slate-800 transition-all">
+                      {item.children.map((child) => {
+                        const ChildIcon = child.icon;
+                        const isChildCurrent = isChildActive(child);
+
+                        return (
+                          <button
+                            key={child.id}
+                            onClick={() => handleChildNavClick(child, item.id)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                              isChildCurrent
+                                ? 'bg-[#e0f2fe] dark:bg-sky-500 text-sky-700 dark:text-white font-bold shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60 font-medium'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              {ChildIcon && (
+                                <ChildIcon className={`w-3.5 h-3.5 shrink-0 ${isChildCurrent ? 'text-sky-600 dark:text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+                              )}
+                              <span className="truncate">{child.label}</span>
+                            </div>
+                            {isChildCurrent && (
+                              <ChevronRight className="w-3.5 h-3.5 text-sky-600 dark:text-white shrink-0 ml-1" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

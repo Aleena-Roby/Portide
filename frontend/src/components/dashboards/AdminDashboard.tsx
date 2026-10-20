@@ -10,6 +10,8 @@ import { AdminUserManagement } from './admin/AdminUserManagement';
 import { CompanyApprovals } from './admin/CompanyApprovals';
 import { AdminAuditLogs } from './admin/AdminAuditLogs';
 import { AdminBerthManagement } from './admin/AdminBerthManagement';
+import { AdminGatePassMonitoring } from './admin/AdminGatePassMonitoring';
+import { Truck } from 'lucide-react';
 
 interface AdminDashboardProps {
   activeTab?: string;
@@ -37,6 +39,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'ove
       icon: Users
     },
     {
+      id: 'gate-passes',
+      title: 'Digital Gate Passes Monitor',
+      description: 'Real-time audit log of all port gate movement authorizations, transport trucks, assigned drivers, and barrier releases.',
+      icon: Truck
+    },
+    {
       id: 'audit',
       title: 'Security & Audit Logs',
       description: 'Review real-time system audit logs, user activity trails, and platform events.',
@@ -55,6 +63,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'ove
 
   if (activeTab === 'users') {
     return <AdminUserManagement />;
+  }
+
+  if (activeTab === 'gate-passes' || activeTab === 'gate_passes') {
+    return <AdminGatePassMonitoring />;
   }
 
   if (activeTab === 'audit') {

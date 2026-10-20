@@ -11,6 +11,7 @@ import { RegistrationStatusPage } from './components/auth/RegistrationStatusPage
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { getStoredSession } from './services/api';
 
 // Role Dashboards
@@ -27,8 +28,23 @@ const DashboardLayout: React.FC = () => {
   const location = useLocation();
 
   const pathParts = location.pathname.split('/').filter(Boolean);
-  const subPath = pathParts[1] || 'overview';
-  const activeTab = (subPath === 'dashboard' || !subPath) ? 'overview' : subPath;
+  let subPath = pathParts[1] || 'overview';
+  if (pathParts[1] === 'gate-operations' && pathParts[2]) {
+    if (pathParts[2] === 'passes' || pathParts[2] === 'directory') {
+      subPath = 'gate-passes';
+    } else if (pathParts[2] === 'verify' || pathParts[2] === 'verification' || pathParts[2] === 'release-desk') {
+      subPath = 'release-desk';
+    }
+  }
+  const activeTab = (subPath === 'dashboard' || !subPath) 
+    ? 'overview' 
+    : (subPath === 'trucks' 
+        ? 'gate-operations' 
+        : (subPath === 'clearance' 
+            ? 'cargo-management' 
+            : (subPath === 'inspections' 
+                ? 'normal-review' 
+                : (subPath === 'history' ? 'decision-history' : subPath))));
   const [activeTabState, setActiveTabState] = useState(activeTab);
 
   useEffect(() => {
@@ -46,13 +62,13 @@ const DashboardLayout: React.FC = () => {
       case 'port_operations_officer':
         return <PortOperationsDashboard activeTab={activeTabState} onNavigate={setActiveTabState} />;
       case 'customs_officer':
-        return <CustomsDashboard />;
+        return <CustomsDashboard activeTab={activeTabState} onNavigate={setActiveTabState} />;
       case 'terminal_operator':
       case 'terminal_logistics_operator':
-        return <TerminalDashboard />;
+        return <TerminalDashboard activeTab={activeTabState} onNavigate={setActiveTabState} />;
       case 'gate_officer':
       case 'gate_truck_officer':
-        return <GateDashboard />;
+        return <GateDashboard activeTab={activeTabState} onNavigate={setActiveTabState} />;
       default:
         return <AdminDashboard activeTab={activeTabState} onNavigate={setActiveTabState} />;
     }
@@ -85,7 +101,9 @@ const DashboardLayout: React.FC = () => {
         />
 
         <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-4 sm:space-y-6 overflow-x-hidden">
-          {renderRoleDashboard()}
+          <ErrorBoundary fallbackTitle="Dashboard Module Error" fallbackMessage="An issue occurred while loading this view. You can reload or navigate to another tab safely.">
+            {renderRoleDashboard()}
+          </ErrorBoundary>
         </main>
 
         <footer className="py-4 px-4 sm:px-6 text-center text-[11px] sm:text-xs text-slate-500 border-t border-slate-200 dark:border-slate-800">
@@ -169,6 +187,14 @@ const AppRoutes: React.FC = () => {
 
       {/* Protected Customs Officer Routes */}
       <Route
+        path="/customs/clearance"
+        element={
+          <ProtectedRoute allowedRoles={['customs_officer']}>
+            <Navigate to="/customs/cargo-management" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/customs/*"
         element={
           <ProtectedRoute allowedRoles={['customs_officer']}>
@@ -193,6 +219,32 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
             <DashboardLayout />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Direct /gate-operations access alias */}
+      <Route
+        path="/gate-operations"
+        element={
+          <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
+            <Navigate to="/gate/gate-operations" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gate-passes"
+        element={
+          <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
+            <Navigate to="/gate/gate-passes" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/release-desk"
+        element={
+          <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
+            <Navigate to="/gate/release-desk" replace />
           </ProtectedRoute>
         }
       />

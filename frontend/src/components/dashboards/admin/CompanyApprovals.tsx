@@ -248,7 +248,7 @@ export const CompanyApprovals: React.FC = () => {
   const filteredRequests = requests.filter(req => {
     const matchesStatus = statusFilter === 'ALL' || req.registration_request_status === statusFilter;
     const query = searchQuery.toLowerCase().trim();
-    const company = req.shipping_company || {};
+    const company = (req.shipping_company || {}) as any;
     const matchesSearch = !query || 
       (company.shipping_company_name && company.shipping_company_name.toLowerCase().includes(query)) ||
       (company.shipping_company_license_number && company.shipping_company_license_number.toLowerCase().includes(query)) ||
@@ -447,19 +447,19 @@ export const CompanyApprovals: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {filteredRequests.map((req) => {
-                  const company = req.shipping_company || {};
+                  const company = (req.shipping_company || {}) as any;
 
                   return (
                     <tr 
                       key={req.registration_request_id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      onClick={() => openApplicationModal(req)}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                      title="Click row to view complete registration approval request"
                     >
                       {/* Company Name */}
                       <td className="px-5 py-3.5">
                         <div 
-                          onClick={() => openApplicationModal(req)}
-                          className="font-bold text-slate-900 dark:text-white text-xs cursor-pointer hover:text-[#D49A24] dark:hover:text-[#D49A24] transition-colors group"
-                          title="Click to view company registration application details"
+                          className="font-bold text-slate-900 dark:text-white text-xs group-hover:text-[#D49A24] dark:group-hover:text-[#D49A24] transition-colors"
                         >
                           <span className="group-hover:underline">{company.shipping_company_name || 'N/A'}</span>
                         </div>
@@ -503,7 +503,7 @@ export const CompanyApprovals: React.FC = () => {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={(e) => { e.stopPropagation(); openApplicationModal(req); }}
                           className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer ml-auto"

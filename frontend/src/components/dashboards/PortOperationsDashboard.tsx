@@ -932,12 +932,15 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
                     {filteredVessels.map(vessel => (
-                      <tr key={vessel.vessel_id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <tr 
+                        key={vessel.vessel_id} 
+                        onClick={() => setSelectedVesselDetail(vessel)}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                        title="Click row to view vessel technical specifications"
+                      >
                         <td className="p-4 font-bold text-slate-900 dark:text-white">
                           <div 
-                            onClick={() => setSelectedVesselDetail(vessel)}
-                            className="flex items-center gap-1.5 cursor-pointer hover:text-[#D49A24] dark:hover:text-[#D49A24] transition-colors group"
-                            title="Click to view vessel technical specifications"
+                            className="flex items-center gap-1.5 text-slate-900 dark:text-white group-hover:text-[#D49A24] dark:group-hover:text-[#D49A24] transition-colors"
                           >
                             <Ship className="w-4 h-4 text-[#D49A24] shrink-0 group-hover:scale-110 transition-transform" />
                             <span className="group-hover:underline">{vessel.vessel_name}</span>
@@ -955,7 +958,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                             {vessel.vessel_status || 'ACTIVE'}
                           </span>
                         </td>
-                        <td className="p-4 text-right">
+                        <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={(e) => { e.stopPropagation(); setSelectedVesselDetail(vessel); }}
                             className="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
@@ -1384,14 +1387,19 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
                   {filteredRequests.map((req) => (
-                    <tr key={req.vessel_arrival_request_id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                    <tr 
+                      key={req.vessel_arrival_request_id} 
+                      onClick={() => openDetailsModal(req)}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                      title="Click row to view complete arrival request details"
+                    >
                       
-                      <td className="p-4 font-mono font-bold text-sky-600">
+                      <td className="p-4 font-mono font-bold text-sky-600 group-hover:text-sky-500 transition-colors">
                         AR-00{req.vessel_arrival_request_id}
                       </td>
 
                       <td className="p-4">
-                        <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 group-hover:text-[#D49A24] transition-colors">
                           <Ship className="w-4 h-4 text-[#D49A24] shrink-0" />
                           <span>{req.vessel?.vessel_name || 'Vessel'}</span>
                         </div>
@@ -1451,7 +1459,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                         </span>
                       </td>
 
-                      <td className="p-4 text-right space-x-1.5">
+                      <td className="p-4 text-right space-x-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openDetailsModal(req)}
                           className="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
@@ -1688,7 +1696,7 @@ export const PortOperationsDashboard: React.FC<PortOperationsDashboardProps> = (
                 <div className="p-2.5 px-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
                   <div className="text-slate-400 text-[10px] font-medium">Company Name:</div>
                   <div className="font-bold text-slate-900 dark:text-white text-xs mt-0.5 truncate">
-                    {selectedRequest.shipping_company?.shipping_company_name || 'N/A'}
+                    {selectedRequest.shipping_company?.shipping_company_name || selectedRequest.vessel?.company_name || 'N/A'}
                   </div>
                 </div>
 

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PORTIDE Selenium QA Report — Phase 4: Vessel & Arrival Management (100% PASS)</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #0284c7;
+            --pass: #10b981;
+            --fail: #ef4444;
+            --warn: #f59e0b;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 30px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            background: var(--surface);
+            padding: 24px 32px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-title h1 {
+            margin: 0 0 8px 0;
+            font-size: 24px;
+            color: #fff;
+        }
+        .header-title p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .badge-100 {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--pass);
+            border: 1px solid var(--pass);
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-weight: 800;
+            font-size: 18px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .metric-card {
+            background: var(--surface);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 32px;
+            font-weight: 800;
+            margin: 8px 0 4px 0;
+        }
+        .metric-label {
+            color: var(--text-muted);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .card {
+            background: var(--surface);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+        .card h2 {
+            margin: 0 0 16px 0;
+            font-size: 18px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+            color: #fff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            background: rgba(15, 23, 42, 0.4);
+        }
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .badge-pass {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--pass);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .badge-fail {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--fail);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .defect-box {
+            background: rgba(16, 185, 129, 0.05);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+        code {
+            background: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #38bdf8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <h1>PORTIDE Phase 4 Selenium QA Report: Vessel & Arrival Management</h1>
+                <p>Suite Execution Timestamp: 2026-10-07 | Resumed & Retested: 2026-10-07 23:26:53 | Environment: Headless Chrome</p>
+            </div>
+            <div class="badge-100">100.00% PASS</div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Tests</div>
+                <div class="metric-value">27</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Passed</div>
+                <div class="metric-value" style="color: var(--pass);">27</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Failed</div>
+                <div class="metric-value" style="color: var(--text-muted);">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Final Pass Rate</div>
+                <div class="metric-value" style="color: var(--pass);">100.00%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Defects Resolved</div>
+                <div class="metric-value" style="color: #38bdf8;">1 / 1</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Defect Resolution Summary (DEFECT-P4-001)</h2>
+            <div class="defect-box">
+                <div style="font-weight: 700; color: #10b981; margin-bottom: 6px;">[RESOLVED] DEFECT-P4-001: Missing Shipping Company Binding in Vessel Arrival Request Details Modal</div>
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #cbd5e1;">
+                    <strong>Identified during initial Phase 4 execution:</strong> In <code>PortOperationsDashboard.tsx:1699</code>, the modal attempted to render <code>selectedRequest.shipping_company?.shipping_company_name</code>. Because the Django REST serializer nests company info under <code>selectedRequest.vessel?.company_name</code>, the modal rendered "N/A" instead of "Pacific".
+                </p>
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #cbd5e1;">
+                    <strong>Targeted Fix Applied:</strong> Updated line 1699 to read: <code>{selectedRequest.shipping_company?.shipping_company_name || selectedRequest.vessel?.company_name || 'N/A'}</code>.
+                </p>
+                <p style="margin: 0; font-size: 13px; color: #cbd5e1;">
+                    <strong>Retest Result:</strong> <code>ARRIVAL-012</code> was re-executed against the live application. Confirmed company name renders as <strong>"Pacific"</strong> along with all vessel specifications, timestamps, and cargo parameters. Screenshot: <code>ARRIVAL-012-PASS.png</code>. Status: <strong>RESOLVED (PASS)</strong>.
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Comprehensive Test Execution Table (27 / 27 PASS)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Test ID</th>
+                        <th>Test Scenario & Objective</th>
+                        <th style="width: 80px;">Initial</th>
+                        <th style="width: 80px;">Final</th>
+                        <th style="width: 80px;">Duration</th>
+                        <th>Actual Observed Result & Defect Attribution</th>
+                        <th style="width: 170px;">Evidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-001</td>
+        <td><strong>VESSEL-001 – VESSEL MANAGEMENT PAGE LOAD</strong><br><small style="color: #94a3b8;">Verify Shipping Company can access Vessel Management page and view controls.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>5678 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel Management page loaded successfully in 5678 ms. Heading, table, and Register Vessel button are visible.</div>
+            
+        </td>
+        <td><code>VESSEL-001-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-002</td>
+        <td><strong>VESSEL-002 – EXISTING VESSEL LIST DISPLAY</strong><br><small style="color: #94a3b8;">Verify existing vessel records and required specification columns are displayed.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>891 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel table renders registered fleet vessels across columns (VESSEL NAME, IMO NUMBER, TYPE, FLAG, LENGTH, DRAFT).</div>
+            
+        </td>
+        <td><code>VESSEL-002-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-003</td>
+        <td><strong>VESSEL-003 – VESSEL REGISTRATION FORM LOAD</strong><br><small style="color: #94a3b8;">Verify vessel registration modal form loads with all required controls and fields.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>892 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel registration form modal loaded in 892 ms. All maritime fields and controls are accessible.</div>
+            
+        </td>
+        <td><code>VESSEL-003-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-004</td>
+        <td><strong>VESSEL-004 – EMPTY VESSEL REGISTRATION VALIDATION</strong><br><small style="color: #94a3b8;">Verify required fields prevent submission of an empty vessel registration form.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>770 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Empty form submission blocked in 770 ms. HTML5 valueMissing is True and modal remains open.</div>
+            
+        </td>
+        <td><code>VESSEL-004-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-005</td>
+        <td><strong>VESSEL-005 – INVALID IMO NUMBER VALIDATION</strong><br><small style="color: #94a3b8;">Verify invalid IMO numbers (wrong length / invalid pattern) are rejected.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>2353 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Invalid IMO number rejected in 2353 ms. HTML5 patternMismatch is True (\d{7} constraint enforced).</div>
+            
+        </td>
+        <td><code>VESSEL-005-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-006</td>
+        <td><strong>VESSEL-006 – VALID IMO NUMBER ACCEPTED</strong><br><small style="color: #94a3b8;">Verify a valid unique 7-digit IMO number satisfies input pattern validation.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>913 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Valid 7-digit IMO '9826012' accepted in 913 ms without format errors.</div>
+            
+        </td>
+        <td><code>VESSEL-006-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-007</td>
+        <td><strong>VESSEL-007 – CALL SIGN OPTIONAL BEHAVIOR</strong><br><small style="color: #94a3b8;">Verify Call Sign field is optional as designed and allows empty submission.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>89 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Call Sign field verified as optional in 89 ms. Element is not required and labeled 'Optional'.</div>
+            
+        </td>
+        <td><code>VESSEL-007-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-008</td>
+        <td><strong>VESSEL-008 – SUCCESSFUL VESSEL REGISTRATION</strong><br><small style="color: #94a3b8;">Verify complete valid vessel registration successfully creates vessel record.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>6192 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel 'Selenium Test Vessel 20261007161009' (IMO: 9826012, Call Sign: SELTEST01) registered successfully in 6192 ms and rendered in fleet table.</div>
+            
+        </td>
+        <td><code>VESSEL-008-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-009</td>
+        <td><strong>VESSEL-009 – DUPLICATE IMO NUMBER PREVENTION</strong><br><small style="color: #94a3b8;">Verify duplicate IMO numbers cannot create duplicate vessels and are rejected.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>4332 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Duplicate IMO rejected in 4332 ms. Error banner displayed: 'Vessel with this vessel imo number already exists.'.</div>
+            
+        </td>
+        <td><code>VESSEL-009-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-010</td>
+        <td><strong>VESSEL-010 – VESSEL DETAILS VIEW</strong><br><small style="color: #94a3b8;">Verify user can view complete vessel technical specifications in details modal.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>1714 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel specifications modal loaded in 1714 ms. Verified Name, IMO (9826012), LOA (220.0m), Draft (9.0m), and TEU capacity (2800).</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Locator `//div[contains(@class, 'fixed')]` matched the empty backdrop element instead of the dialog container. Fixed to resolve dialog from `modal_title` ancestor.</div>
+        </td>
+        <td><code>VESSEL-010-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-011</td>
+        <td><strong>VESSEL-011 – VESSEL EDIT</strong><br><small style="color: #94a3b8;">Verify vessel details can be edited while IMO remains locked and read-only.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>2920 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel details updated in 2920 ms. Name updated to 'Selenium Test Vessel 20261007161009 (Edited)' while IMO was verified locked/read-only.</div>
+            
+        </td>
+        <td><code>VESSEL-011-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">VESSEL-012</td>
+        <td><strong>VESSEL-012 – VESSEL OWNERSHIP ISOLATION</strong><br><small style="color: #94a3b8;">Verify multi-tenant isolation ensures vessels belonging to other companies cannot be viewed or edited.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>749 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel ownership isolation verified in 749 ms. Other companies' vessels are hidden from directory, and backend returns 403 Forbidden upon direct API query.</div>
+            
+        </td>
+        <td><code>VESSEL-012-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-001</td>
+        <td><strong>ARRIVAL-001 – ARRIVAL REQUEST PAGE LOAD</strong><br><small style="color: #94a3b8;">Verify Shipping Company can access Arrival Requests page and view controls.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>962 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Arrival Requests page loaded in 962 ms. Heading and 'New Arrival Request' control are active.</div>
+            
+        </td>
+        <td><code>ARRIVAL-001-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-002</td>
+        <td><strong>ARRIVAL-002 – NEW ARRIVAL REQUEST FORM LOAD</strong><br><small style="color: #94a3b8;">Verify New Arrival Request form modal opens correctly with all required inputs.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>1321 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">New Arrival Request modal loaded in 1321 ms with vessel selector, ETA/ETD date/time pickers, berth preferences, and cargo declarations.</div>
+            
+        </td>
+        <td><code>ARRIVAL-002-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-003</td>
+        <td><strong>ARRIVAL-003 – EMPTY ARRIVAL REQUEST VALIDATION</strong><br><small style="color: #94a3b8;">Verify required fields prevent submission when required fields (e.g. vessel) are unselected.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>788 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Empty submission blocked in 788 ms with validation error: 'Please select a vessel.'.</div>
+            
+        </td>
+        <td><code>ARRIVAL-003-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-004</td>
+        <td><strong>ARRIVAL-004 – VESSEL SELECTION VALIDATION</strong><br><small style="color: #94a3b8;">Verify arrival request references a valid vessel owned by the company.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>922 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Vessel dropdown contains owned fleet vessels. Successfully selected 'Selenium Test Vessel 20261007161009 (Edited)'.</div>
+            
+        </td>
+        <td><code>ARRIVAL-004-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-005</td>
+        <td><strong>ARRIVAL-005 – PAST ARRIVAL DATE REJECTED</strong><br><small style="color: #94a3b8;">Verify arrival dates in the past are rejected with appropriate validation.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>2977 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Past arrival date rejected in 2977 ms. HTML5 rangeUnderflow and arrival validation prevent past dates.</div>
+            
+        </td>
+        <td><code>ARRIVAL-005-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-006</td>
+        <td><strong>ARRIVAL-006 – INVALID ARRIVAL/DEPARTURE CHRONOLOGY</strong><br><small style="color: #94a3b8;">Verify departure must be strictly after arrival and chronology violations are rejected.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>1919 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Invalid chronology rejected in 1919 ms. Calculation card and validator displayed: 'Invalid Duration Window: Departure must be at least 1 hour after arrival.'.</div>
+            
+        </td>
+        <td><code>ARRIVAL-006-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-007</td>
+        <td><strong>ARRIVAL-007 – MINIMUM ONE-HOUR TIME VALIDATION</strong><br><small style="color: #94a3b8;">Verify departure must be at least 1 hour after arrival.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>1523 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Minimum one-hour requirement verified in 1523 ms. Rejection displayed: 'Departure must be at least 1 hour after arrival.'.</div>
+            
+        </td>
+        <td><code>ARRIVAL-007-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-008</td>
+        <td><strong>ARRIVAL-008 – PREFERRED BERTH SELECTION</strong><br><small style="color: #94a3b8;">Verify company can declare a preferred berth or choose open allocation, with disclaimer.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>3393 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Preferred berth selection verified in 3393 ms. Selected: 'None'. Final allocation notice confirmed.</div>
+            
+        </td>
+        <td><code>ARRIVAL-008-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-009</td>
+        <td><strong>ARRIVAL-009 – SUCCESSFUL ARRIVAL REQUEST SUBMISSION</strong><br><small style="color: #94a3b8;">Verify complete arrival request submission creates request in system and database.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>7607 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Arrival request submitted successfully in 7607 ms. Request (AR-0015) rendered for vessel 'Selenium Test Vessel 20261007161009 (Edited)'. Confirmed created in PostgreSQL database.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Submit button inside scrollable modal container was positioned below viewport fold and intercepted. Fixed by scrolling button into center view (`scrollIntoView({block: 'center'})`), verifying visibility and enabled state, and clicking reliably.</div>
+        </td>
+        <td><code>ARRIVAL-009-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-010</td>
+        <td><strong>ARRIVAL-010 – ARRIVAL REQUEST PENDING STATUS</strong><br><small style="color: #94a3b8;">Verify newly submitted arrival request enters PENDING status and is not prematurely approved.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>5831 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Request status confirmed as 'PENDING' in 5831 ms. Awaiting Port Operations review.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Cascaded failure in initial run because ARRIVAL-009 failed to create an arrival request. In rerun with AR-0015 present, test passed immediately.</div>
+        </td>
+        <td><code>ARRIVAL-010-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-011</td>
+        <td><strong>ARRIVAL-011 – OPERATIONS OFFICER ARRIVAL REQUEST VISIBILITY</strong><br><small style="color: #94a3b8;">Verify Port Operations Officer can see submitted arrival request in their review desk.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>5621 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Port Operations Officer successfully accessed review desk in 5621 ms. Request for 'Selenium Test Vessel 20261007161009 (Edited)' is visible.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Cascaded failure in initial run because ARRIVAL-009 failed to create an arrival request. In rerun with AR-0015 present, test passed immediately.</div>
+        </td>
+        <td><code>ARRIVAL-011-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-012</td>
+        <td><strong>ARRIVAL-012 – OPERATIONS OFFICER VIEW ARRIVAL DETAILS</strong><br><small style="color: #94a3b8;">Verify Operations Officer can inspect full arrival request specifications.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>6739 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Operations details modal inspected in 6739 ms. Verified IMO, dimensions, shipping company 'Pacific' (resolved DEFECT-P4-001), timestamps, and cargo parameters.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Identified during initial Phase 4 execution: frontend `PortOperationsDashboard.tsx` line 1699 attempted to read `selectedRequest.shipping_company?.shipping_company_name`, but backend serializer `VesselArrivalRequestSerializer` nests company info under `selectedRequest.vessel?.company_name`. Applied minimal fix: `{selectedRequest.shipping_company?.shipping_company_name || selectedRequest.vessel?.company_name || 'N/A'}`. Retested and resolved.</div>
+        </td>
+        <td><code>ARRIVAL-012-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-013</td>
+        <td><strong>ARRIVAL-013 – ARRIVAL APPROVAL</strong><br><small style="color: #94a3b8;">Verify Port Operations Officer can approve a valid arrival request.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>4823 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Arrival request approved successfully in 4823 ms. Status updated to 'APPROVED' in UI and PostgreSQL database.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Cascaded failure in initial run because ARRIVAL-009 failed to create an arrival request. In rerun, test selected 'none' allocation radio and approved request cleanly.</div>
+        </td>
+        <td><code>ARRIVAL-013-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-014</td>
+        <td><strong>ARRIVAL-014 – APPROVED STATUS SYNCHRONIZATION</strong><br><small style="color: #94a3b8;">Verify approved status is reflected back to the Shipping Company and persists after reload.</small></td>
+        <td><span class="badge-fail">FAIL</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>6455 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Approved status synchronized and persisted across page refresh in 6455 ms. Shipping company displays 'APPROVED' status badge.</div>
+            <div style="font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 4px 8px; border-radius: 4px; border-left: 2px solid #10b981;"><strong>Root Cause / Defect:</strong> Cascaded failure in initial run because ARRIVAL-009 and ARRIVAL-013 had not executed. In rerun, status synchronization verified before and after hard reload.</div>
+        </td>
+        <td><code>ARRIVAL-014-PASS.png</code></td>
+    </tr>
+    
+    <tr>
+        <td style="font-weight: 700; font-family: monospace;">ARRIVAL-015</td>
+        <td><strong>ARRIVAL-015 – ARRIVAL REQUEST ACCESS CONTROL</strong><br><small style="color: #94a3b8;">Verify unauthorized roles cannot access operations arrival approval routes.</small></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td><span class="badge-pass">PASS</span></td>
+        <td>1294 ms</td>
+        <td>
+            <div style="font-size: 12px; margin-bottom: 4px;">Access control enforced in 1294 ms. Client redirected to 'http://localhost:3000/shipping/dashboard', and backend API returned 403 Forbidden via IsPortOperationsOfficerOnly.</div>
+            
+        </td>
+        <td><code>ARRIVAL-015-PASS.png</code></td>
+    </tr>
+    
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Created Test Data & Maritime Specification Summary</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 13px;">
+                <div>
+                    <h3 style="color: #38bdf8; font-size: 14px; margin-top: 0;">Fleet Vessel Record</h3>
+                    <ul style="line-height: 1.8; color: #cbd5e1; margin: 0; padding-left: 20px;">
+                        <li><strong>Vessel Name</strong>: <code>Selenium Test Vessel 20261007161009 (Edited)</code></li>
+                        <li><strong>IMO Number</strong>: <code>9826012</code> (Locked/Read-Only)</li>
+                        <li><strong>Call Sign</strong>: <code>SELTEST01</code> (Optional)</li>
+                        <li><strong>Specifications</strong>: LOA: 220.0m | Draft: 9.0m | Capacity: 2800 TEU</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 style="color: #38bdf8; font-size: 14px; margin-top: 0;">Arrival Request Record</h3>
+                    <ul style="line-height: 1.8; color: #cbd5e1; margin: 0; padding-left: 20px;">
+                        <li><strong>Request Identifier</strong>: <code>AR-0015</code></li>
+                        <li><strong>Associated Vessel</strong>: <code>Selenium Test Vessel 20261007161009 (Edited)</code></li>
+                        <li><strong>Cargo Manifest</strong>: 1500 TEU (Container Cargo)</li>
+                        <li><strong>Lifecycle Status</strong>: <code>SUBMITTED (PENDING) → APPROVED</code> (Verified in PostgreSQL DB)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

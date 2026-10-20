@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PORTIDE – Selenium Phase 1 Test Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+            margin: 0;
+            padding: 24px;
+        }
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 28px;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            margin-bottom: 24px;
+        }
+        h1 { margin: 0 0 8px 0; font-size: 24px; color: #38bdf8; }
+        h2 { margin: 0 0 16px 0; font-size: 16px; color: #94a3b8; font-weight: normal; }
+        .scorecard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            text-align: center;
+        }
+        .card .value {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+        .card .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+        }
+        .table-container {
+            background: #1e293b;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+            vertical-align: top;
+        }
+        th {
+            background: #0f172a;
+            color: #38bdf8;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 11px;
+        }
+        .badge-pass { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+        .badge-fail { background: #7f1d1d; color: #f87171; border: 1px solid #dc2626; }
+        .badge-blocked { background: #78350f; color: #fbbf24; border: 1px solid #d97706; }
+        a { color: #38bdf8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .env-meta {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PORTIDE — Quality Assurance Automation</h1>
+            <h2>Phase 1: Basic Application & Authentication Testing Report</h2>
+            <div class="env-meta">
+                <strong>Target Frontend:</strong> http://localhost:3000 | 
+                <strong>Target Backend:</strong> http://localhost:8000 | 
+                <strong>Browser:</strong> Chromium / Chrome Headless | 
+                <strong>Selenium:</strong> v4.50.0 | 
+                <strong>Python:</strong> v3.13.14 | 
+                <strong>OS:</strong> Windows 11
+            </div>
+        </div>
+
+        <div class="scorecard">
+            <div class="card">
+                <div class="label">Total Scenarios</div>
+                <div class="value" style="color: #38bdf8;">10</div>
+            </div>
+            <div class="card">
+                <div class="label">Passed</div>
+                <div class="value" style="color: #34d399;">10</div>
+            </div>
+            <div class="card">
+                <div class="label">Failed</div>
+                <div class="value" style="color: #f87171;">0</div>
+            </div>
+            <div class="card">
+                <div class="label">Blocked</div>
+                <div class="value" style="color: #fbbf24;">0</div>
+            </div>
+            <div class="card">
+                <div class="label">Pass Percentage</div>
+                <div class="value" style="color: #10b981;">100.0%</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Test Case</th>
+                        <th>Objective</th>
+                        <th>Expected Result</th>
+                        <th>Actual Result</th>
+                        <th>Status</th>
+                        <th>Evidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+        <tr>
+            <td><strong>AUTH-001</strong></td>
+            <td>AUTH-001 – APPLICATION LOAD</td>
+            <td>Verify PORTIDE application loads successfully and landing page is interactive.</td>
+            <td>PORTIDE application loads successfully, landing page visible, no fatal errors.</td>
+            <td>Application loaded successfully in 3651 ms. Landing page rendered with hero section and active login button.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-001-PASS.png' target='_blank'>AUTH-001-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-002</strong></td>
+            <td>AUTH-002 – LOGIN PAGE LOAD</td>
+            <td>Verify the PORTIDE Login page loads properly and all input controls are functional.</td>
+            <td>Login page loads correctly and required controls (email, password, submit button) are available.</td>
+            <td>Login page rendered successfully. Email input, password input, and Sign In button are visible and interactive.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-002-PASS.png' target='_blank'>AUTH-002-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-003</strong></td>
+            <td>AUTH-003 – VALID PORT ADMINISTRATOR LOGIN</td>
+            <td>Verify valid Port Administrator account logs in successfully and reaches admin dashboard.</td>
+            <td>Port Administrator successfully logs into the correct PORTIDE dashboard.</td>
+            <td>Authentication succeeded in 2402 ms. User navigated to http://localhost:3000/admin/dashboard with active Port Administrator session.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-003-PASS.png' target='_blank'>AUTH-003-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-004</strong></td>
+            <td>AUTH-004 – INVALID EMAIL</td>
+            <td>Verify system rejects non-existing email with appropriate feedback and denies access.</td>
+            <td>Invalid/non-existing email is rejected. User does not enter dashboard.</td>
+            <td>Rejected as expected. Error message displayed: 'Invalid email or password.'. Route remained /login.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-004-PASS.png' target='_blank'>AUTH-004-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-005</strong></td>
+            <td>AUTH-005 – INVALID PASSWORD</td>
+            <td>Verify incorrect password for an existing account is rejected and access denied.</td>
+            <td>Incorrect password is rejected. Dashboard does not open. Error feedback appears.</td>
+            <td>Authentication rejected as expected. Error message displayed: 'Invalid email or password.'. Route remained /login.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-005-PASS.png' target='_blank'>AUTH-005-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-006</strong></td>
+            <td>AUTH-006 – EMPTY LOGIN FORM</td>
+            <td>Verify submission of empty email and password fields is rejected by validation.</td>
+            <td>Empty login form is rejected by validation. Dashboard is not opened.</td>
+            <td>Empty submission blocked by form validation. checkValidity() returned False. No navigation or session created.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-006-PASS.png' target='_blank'>AUTH-006-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-007</strong></td>
+            <td>AUTH-007 – CORRECT ROLE DASHBOARD</td>
+            <td>Verify Port Administrator receives exclusively the correct Admin dashboard and navigation modules.</td>
+            <td>Port Administrator receives only the correct Admin dashboard.</td>
+            <td>Verified Port Administrator dashboard at http://localhost:3000/admin/dashboard. Header, overview cards, and sidebar modules match admin role exclusively.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-007-PASS.png' target='_blank'>AUTH-007-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-008</strong></td>
+            <td>AUTH-008 – REFRESH AFTER LOGIN</td>
+            <td>Verify authenticated session remains valid and active after normal browser refresh.</td>
+            <td>Authenticated session should remain valid after a normal browser refresh. User should not be unexpectedly logged out.</td>
+            <td>Session retained across refresh. User remained on http://localhost:3000/admin/dashboard without re-authenticating.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-008-PASS.png' target='_blank'>AUTH-008-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-009</strong></td>
+            <td>AUTH-009 – LOGOUT</td>
+            <td>Verify clicking Logout terminates the authenticated session and redirects to the login screen.</td>
+            <td>Logout works successfully. Authentication session is cleared, user is redirected to Login.</td>
+            <td>Logout completed successfully in 3262 ms. User redirected to http://localhost:3000/login, session cleared from storage.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-009-PASS.png' target='_blank'>AUTH-009-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>AUTH-010</strong></td>
+            <td>AUTH-010 – PROTECTED PAGE AFTER LOGOUT</td>
+            <td>Verify direct navigation to protected dashboard route after logout is prevented.</td>
+            <td>Protected routes remain protected after logout. User is redirected to Login.</td>
+            <td>Protected route guard blocked direct access and redirected user to http://localhost:3000/login. Login page displayed.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/AUTH-010-PASS.png' target='_blank'>AUTH-010-PASS.png</a></td>
+        </tr>
+        
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PORTIDE – Selenium Phase 2 Registration Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+            margin: 0;
+            padding: 24px;
+        }
+        .container {
+            max-width: 1350px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 28px;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            margin-bottom: 24px;
+        }
+        h1 { margin: 0 0 8px 0; font-size: 24px; color: #38bdf8; }
+        h2 { margin: 0 0 16px 0; font-size: 16px; color: #94a3b8; font-weight: normal; }
+        .scorecard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: #1e293b;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            text-align: center;
+        }
+        .card .value {
+            font-size: 28px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+        .card .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 0.5px;
+        }
+        .table-container {
+            background: #1e293b;
+            border-radius: 16px;
+            border: 1px solid #334155;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+            vertical-align: top;
+        }
+        th {
+            background: #0f172a;
+            color: #38bdf8;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .badge-pass { background: #064e3b; color: #34d399; border: 1px solid #059669; }
+        .badge-fail { background: #7f1d1d; color: #f87171; border: 1px solid #dc2626; }
+        .badge-blocked { background: #78350f; color: #fbbf24; border: 1px solid #d97706; }
+        .badge-ni { background: #334155; color: #cbd5e1; border: 1px solid #64748b; }
+        a { color: #38bdf8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .env-meta {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PORTIDE — Quality Assurance Automation</h1>
+            <h2>Phase 2: Shipping Company Registration & Admin Approval Report</h2>
+            <div class="env-meta">
+                <strong>Target Frontend:</strong> http://localhost:3000 | 
+                <strong>Target Backend:</strong> http://localhost:8000 | 
+                <strong>Browser:</strong> Chromium / Chrome Headless | 
+                <strong>Selenium:</strong> v4.50.0 | 
+                <strong>Python:</strong> v3.13.14 | 
+                <strong>OS:</strong> Windows 11
+            </div>
+        </div>
+
+        <div class="scorecard">
+            <div class="card">
+                <div class="label">Total Tests</div>
+                <div class="value" style="color: #38bdf8;">17</div>
+            </div>
+            <div class="card">
+                <div class="label">Passed</div>
+                <div class="value" style="color: #34d399;">16</div>
+            </div>
+            <div class="card">
+                <div class="label">Failed</div>
+                <div class="value" style="color: #f87171;">0</div>
+            </div>
+            <div class="card">
+                <div class="label">Blocked</div>
+                <div class="value" style="color: #fbbf24;">0</div>
+            </div>
+            <div class="card">
+                <div class="label">Not Implemented</div>
+                <div class="value" style="color: #94a3b8;">1</div>
+            </div>
+            <div class="card">
+                <div class="label">Pass Percentage</div>
+                <div class="value" style="color: #10b981;">100.0%</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Test Case</th>
+                        <th>Objective</th>
+                        <th>Expected Result</th>
+                        <th>Actual Result</th>
+                        <th>Status</th>
+                        <th>Evidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    
+        <tr>
+            <td><strong>REG-001</strong></td>
+            <td>REG-001 – SHIPPING COMPANY REGISTRATION PAGE LOAD</td>
+            <td>Verify the Shipping Company Registration page loads with all required controls and fields visible.</td>
+            <td>Registration page loads correctly and form controls are accessible.</td>
+            <td>Registration page loaded in 3245 ms. All required input fields and controls rendered correctly.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-001-PASS.png' target='_blank'>REG-001-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-002</strong></td>
+            <td>REG-002 – EMPTY REGISTRATION FORM VALIDATION</td>
+            <td>Verify submission of empty registration form is blocked by validation without creating records.</td>
+            <td>Empty required fields prevent submission. Validation feedback appears.</td>
+            <td>Submission was blocked by form validation. HTML5 checkValidity() returned False. No record was created.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-002-PASS.png' target='_blank'>REG-002-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-003</strong></td>
+            <td>REG-003 – INVALID EMAIL VALIDATION</td>
+            <td>Verify malformed or invalid email format is rejected by registration validation.</td>
+            <td>Email validation appears. Registration is not successfully submitted.</td>
+            <td>Malformed email rejected by HTML5 input validation. Form submission prevented.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-003-PASS.png' target='_blank'>REG-003-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-004</strong></td>
+            <td>REG-004 – INVALID PHONE VALIDATION</td>
+            <td>Verify invalid phone number according to country rules produces validation error and stops submission.</td>
+            <td>Phone validation appears. Registration is not successfully submitted.</td>
+            <td>Phone validation message displayed: 'Please enter a valid phone number for the selected country.'. Form submission prevented.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-004-PASS.png' target='_blank'>REG-004-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-005</strong></td>
+            <td>REG-005 – REQUIRED DOCUMENT VALIDATION</td>
+            <td>Verify behavior when submitting registration without document attachments.</td>
+            <td>Document validation if required; otherwise mark NOT IMPLEMENTED / NOT APPLICABLE.</td>
+            <td>Document upload controls are operational on the registration page; document attachments are optional during initial registration per system design, deferring mandatory document requirements to the compliance review workflow.</td>
+            <td><span class='badge badge-ni'>NOT_IMPLEMENTED</span></td>
+            <td><a href='../screenshots/REG-005-NOT-IMPLEMENTED.png' target='_blank'>REG-005-NOT-IMPLEMENTED.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-006</strong></td>
+            <td>REG-006 – VALID SHIPPING COMPANY REGISTRATION</td>
+            <td>Submit a valid shipping company registration and verify success screen and assigned tracking reference.</td>
+            <td>Registration is successfully submitted and enters the review workflow.</td>
+            <td>Registration request submitted successfully in 15075 ms. Assigned reference: REG-2026-055.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-006-PASS.png' target='_blank'>REG-006-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-007</strong></td>
+            <td>REG-007 – REGISTRATION STATUS IS PENDING REVIEW</td>
+            <td>Verify initial status of submitted registration is PENDING REVIEW across applicant and tracking views.</td>
+            <td>Newly submitted company is in PENDING REVIEW status and not marked as approved.</td>
+            <td>Status verified as 'Pending Compliance Review' for 'Selenium Test Shipping Company Primary 20261007144406'.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-007-PASS.png' target='_blank'>REG-007-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-008</strong></td>
+            <td>REG-008 – ADMIN REGISTRATION REQUEST VISIBILITY</td>
+            <td>Verify Port Administrator can view the newly submitted registration in Company Approvals table.</td>
+            <td>Admin can see the submitted registration request with correct company name, license, and pending status.</td>
+            <td>Submitted company successfully located in Admin Approvals table with license 'LIC-SEL-PRIMARY-20261007144406'.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-008-PASS.png' target='_blank'>REG-008-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-009</strong></td>
+            <td>REG-009 – ADMIN VIEW REGISTRATION DETAILS</td>
+            <td>Verify clicking View Application opens the detailed review modal displaying all company details.</td>
+            <td>Modal opens with Company name, license number, email, phone, applicant, address, and status.</td>
+            <td>Detailed review modal rendered in 308 ms. All metadata matched submitted values.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-009-PASS.png' target='_blank'>REG-009-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-010</strong></td>
+            <td>REG-010 – ADMIN VIEW UPLOADED DOCUMENT/EVIDENCE</td>
+            <td>Verify uploaded document/evidence is associated with the company and accessible to the Admin.</td>
+            <td>Uploaded document information is correctly displayed in the review modal.</td>
+            <td>Uploaded document evidence container is visible and associated with the registration request.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-010-PASS.png' target='_blank'>REG-010-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-011</strong></td>
+            <td>REG-011 – ADMIN APPROVES VALID REGISTRATION</td>
+            <td>Execute the Approve action in the review modal and verify successful approval.</td>
+            <td>Valid shipping company registration is successfully approved. Status updates to Approved.</td>
+            <td>Approval action completed in 8844 ms. Status transitioned to APPROVED.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-011-PASS.png' target='_blank'>REG-011-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-012</strong></td>
+            <td>REG-012 – APPROVED COMPANY STATUS VERIFICATION</td>
+            <td>Verify the approved company status persists across page refresh and displays as APPROVED / ACTIVE.</td>
+            <td>Approved company status is persisted in database and shown as APPROVED.</td>
+            <td>Status 'APPROVED' verified across Admin Approvals view and Applicant Status lookup.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-012-PASS.png' target='_blank'>REG-012-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-013</strong></td>
+            <td>REG-013 – ACTION REQUIRED WORKFLOW</td>
+            <td>Submit a second registration, trigger Action Required from Admin review modal, and verify state.</td>
+            <td>Registration enters Action Required state with saved admin instructions.</td>
+            <td>Status updated to ACTION_REQUIRED. Remarks saved and visible on applicant status portal.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-013-PASS.png' target='_blank'>REG-013-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-014</strong></td>
+            <td>REG-014 – ACTION REQUIRED CORRECTION AND RESUBMISSION</td>
+            <td>As the shipping company, upload requested document and resubmit; verify status transitions back to PENDING REVIEW.</td>
+            <td>Existing registration is updated, status returns to PENDING REVIEW, and resubmitted date is recorded.</td>
+            <td>Resubmission succeeded. Existing registration updated and status returned to PENDING REVIEW.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-014-PASS.png' target='_blank'>REG-014-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-015</strong></td>
+            <td>REG-015 – REJECTION WORKFLOW</td>
+            <td>Submit a third test registration, execute Reject action from Admin review modal, and verify REJECTED status.</td>
+            <td>Rejection succeeds. Status becomes REJECTED. Rejection reason is recorded.</td>
+            <td>Registration rejected successfully. Status updated to REJECTED with recorded justification.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-015-PASS.png' target='_blank'>REG-015-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-016</strong></td>
+            <td>REG-016 – ROLE ACCESS CONTROL ON APPROVALS</td>
+            <td>Verify non-admin roles cannot access the Admin Company Approvals view.</td>
+            <td>Unauthorized users receive protected-route redirection and cannot view company approvals.</td>
+            <td>Access denied. User cleanly redirected to http://localhost:3000/login. No administrative tables leaked.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-016-PASS.png' target='_blank'>REG-016-PASS.png</a></td>
+        </tr>
+        
+        <tr>
+            <td><strong>REG-017</strong></td>
+            <td>REG-017 – DUPLICATE SUBMISSION PREVENTION</td>
+            <td>Attempt to submit a registration reusing existing company license and email; verify rejection.</td>
+            <td>Duplicate registration is prevented by business logic with appropriate duplicate error message.</td>
+            <td>Duplicate submission blocked. Error displayed: 'An account with this email address already exists.'.</td>
+            <td><span class='badge badge-pass'>PASS</span></td>
+            <td><a href='../screenshots/REG-017-PASS.png' target='_blank'>REG-017-PASS.png</a></td>
+        </tr>
+        
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

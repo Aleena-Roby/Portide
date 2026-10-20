@@ -1,0 +1,150 @@
+{
+  "execution_timestamp": "2026-10-07T11:51:22.064091",
+  "summary": {
+    "total_tests": 10,
+    "passed": 10,
+    "failed": 0,
+    "blocked": 0,
+    "pass_percentage": 100.0
+  },
+  "environment": {
+    "frontend_url": "http://localhost:3000",
+    "backend_url": "http://localhost:8000",
+    "browser": "Chromium / Chrome Headless",
+    "selenium_version": "4.50.0",
+    "python_version": "3.13.14",
+    "os": "Windows 11"
+  },
+  "results": [
+    {
+      "test_id": "AUTH-001",
+      "test_name": "AUTH-001 \u2013 APPLICATION LOAD",
+      "objective": "Verify PORTIDE application loads successfully and landing page is interactive.",
+      "preconditions": "PORTIDE frontend running at http://localhost:3000.",
+      "actions": "1. Navigate to http://localhost:3000/. 2. Verify page body, brand title, and login CTA.",
+      "expected_result": "PORTIDE application loads successfully, landing page visible, no fatal errors.",
+      "actual_result": "Application loaded successfully in 3651 ms. Landing page rendered with hero section and active login button.",
+      "status": "PASS",
+      "screenshot": "AUTH-001-PASS.png",
+      "duration_ms": 3651,
+      "remarks": "Landing page loaded cleanly without console errors or crash screens."
+    },
+    {
+      "test_id": "AUTH-002",
+      "test_name": "AUTH-002 \u2013 LOGIN PAGE LOAD",
+      "objective": "Verify the PORTIDE Login page loads properly and all input controls are functional.",
+      "preconditions": "PORTIDE web application active at http://localhost:3000.",
+      "actions": "1. Navigate to /login. 2. Verify visibility of email field, password field, and submit button.",
+      "expected_result": "Login page loads correctly and required controls (email, password, submit button) are available.",
+      "actual_result": "Login page rendered successfully. Email input, password input, and Sign In button are visible and interactive.",
+      "status": "PASS",
+      "screenshot": "AUTH-002-PASS.png",
+      "duration_ms": 703,
+      "remarks": "Form controls are accessible and responsive."
+    },
+    {
+      "test_id": "AUTH-003",
+      "test_name": "AUTH-003 \u2013 VALID PORT ADMINISTRATOR LOGIN",
+      "objective": "Verify valid Port Administrator account logs in successfully and reaches admin dashboard.",
+      "preconditions": "Existing Port Administrator test account present in database.",
+      "actions": "1. Open /login. 2. Enter valid credentials. 3. Click Sign In. 4. Wait for dashboard redirect.",
+      "expected_result": "Port Administrator successfully logs into the correct PORTIDE dashboard.",
+      "actual_result": "Authentication succeeded in 2402 ms. User navigated to http://localhost:3000/admin/dashboard with active Port Administrator session.",
+      "status": "PASS",
+      "screenshot": "AUTH-003-PASS.png",
+      "duration_ms": 2402,
+      "remarks": "Existing Port Administrator test account used. Authentication and role dashboard resolution succeeded."
+    },
+    {
+      "test_id": "AUTH-004",
+      "test_name": "AUTH-004 \u2013 INVALID EMAIL",
+      "objective": "Verify system rejects non-existing email with appropriate feedback and denies access.",
+      "preconditions": "Unauthenticated user on /login.",
+      "actions": "1. Enter nonexistent email. 2. Enter password. 3. Click Sign In. 4. Check response.",
+      "expected_result": "Invalid/non-existing email is rejected. User does not enter dashboard.",
+      "actual_result": "Rejected as expected. Error message displayed: 'Invalid email or password.'. Route remained /login.",
+      "status": "PASS",
+      "screenshot": "AUTH-004-PASS.png",
+      "duration_ms": 2415,
+      "remarks": "Invalid email rejection confirmed. No session tokens were issued."
+    },
+    {
+      "test_id": "AUTH-005",
+      "test_name": "AUTH-005 \u2013 INVALID PASSWORD",
+      "objective": "Verify incorrect password for an existing account is rejected and access denied.",
+      "preconditions": "Valid user email 'admin@portide.com' exists in database.",
+      "actions": "1. Enter existing email. 2. Enter incorrect password. 3. Click Sign In. 4. Verify rejection.",
+      "expected_result": "Incorrect password is rejected. Dashboard does not open. Error feedback appears.",
+      "actual_result": "Authentication rejected as expected. Error message displayed: 'Invalid email or password.'. Route remained /login.",
+      "status": "PASS",
+      "screenshot": "AUTH-005-PASS.png",
+      "duration_ms": 2899,
+      "remarks": "Invalid password properly rejected by backend authentication service."
+    },
+    {
+      "test_id": "AUTH-006",
+      "test_name": "AUTH-006 \u2013 EMPTY LOGIN FORM",
+      "objective": "Verify submission of empty email and password fields is rejected by validation.",
+      "preconditions": "User on /login with empty inputs.",
+      "actions": "1. Clear email and password inputs. 2. Click Sign In. 3. Check client validation state.",
+      "expected_result": "Empty login form is rejected by validation. Dashboard is not opened.",
+      "actual_result": "Empty submission blocked by form validation. checkValidity() returned False. No navigation or session created.",
+      "status": "PASS",
+      "screenshot": "AUTH-006-PASS.png",
+      "duration_ms": 1607,
+      "remarks": "Required form input attributes prevented empty payload transmission."
+    },
+    {
+      "test_id": "AUTH-007",
+      "test_name": "AUTH-007 \u2013 CORRECT ROLE DASHBOARD",
+      "objective": "Verify Port Administrator receives exclusively the correct Admin dashboard and navigation modules.",
+      "preconditions": "Port Administrator authenticated session.",
+      "actions": "1. Inspect current dashboard route. 2. Verify header title. 3. Check sidebar modules. 4. Verify role isolation.",
+      "expected_result": "Port Administrator receives only the correct Admin dashboard.",
+      "actual_result": "Verified Port Administrator dashboard at http://localhost:3000/admin/dashboard. Header, overview cards, and sidebar modules match admin role exclusively.",
+      "status": "PASS",
+      "screenshot": "AUTH-007-PASS.png",
+      "duration_ms": 2443,
+      "remarks": "Role-based access control and layout isolation confirmed."
+    },
+    {
+      "test_id": "AUTH-008",
+      "test_name": "AUTH-008 \u2013 REFRESH AFTER LOGIN",
+      "objective": "Verify authenticated session remains valid and active after normal browser refresh.",
+      "preconditions": "Active Port Administrator session on /admin/dashboard.",
+      "actions": "1. Trigger browser refresh. 2. Wait for reload. 3. Check URL and session retention.",
+      "expected_result": "Authenticated session should remain valid after a normal browser refresh. User should not be unexpectedly logged out.",
+      "actual_result": "Session retained across refresh. User remained on http://localhost:3000/admin/dashboard without re-authenticating.",
+      "status": "PASS",
+      "screenshot": "AUTH-008-PASS.png",
+      "duration_ms": 1380,
+      "remarks": "LocalStorage persistence mechanism maintained the session flawlessly across browser refresh."
+    },
+    {
+      "test_id": "AUTH-009",
+      "test_name": "AUTH-009 \u2013 LOGOUT",
+      "objective": "Verify clicking Logout terminates the authenticated session and redirects to the login screen.",
+      "preconditions": "Active Port Administrator session on dashboard.",
+      "actions": "1. Click header Logout button. 2. Wait for navigation. 3. Check localStorage and login form.",
+      "expected_result": "Logout works successfully. Authentication session is cleared, user is redirected to Login.",
+      "actual_result": "Logout completed successfully in 3262 ms. User redirected to http://localhost:3000/login, session cleared from storage.",
+      "status": "PASS",
+      "screenshot": "AUTH-009-PASS.png",
+      "duration_ms": 3262,
+      "remarks": "Logout cleanly revoked local session and displayed login screen."
+    },
+    {
+      "test_id": "AUTH-010",
+      "test_name": "AUTH-010 \u2013 PROTECTED PAGE AFTER LOGOUT",
+      "objective": "Verify direct navigation to protected dashboard route after logout is prevented.",
+      "preconditions": "Logged-out state (no stored session).",
+      "actions": "1. Directly navigate to /admin/dashboard. 2. Verify ProtectedRoute guard redirects to /login.",
+      "expected_result": "Protected routes remain protected after logout. User is redirected to Login.",
+      "actual_result": "Protected route guard blocked direct access and redirected user to http://localhost:3000/login. Login page displayed.",
+      "status": "PASS",
+      "screenshot": "AUTH-010-PASS.png",
+      "duration_ms": 3632,
+      "remarks": "Client-side routing guard (ProtectedRoute) correctly enforces authentication boundary."
+    }
+  ]
+}

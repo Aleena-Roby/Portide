@@ -27,6 +27,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import { PublicContainerTracker } from './PublicContainerTracker';
 
 import landingHeroImg from '/landing_hero.jpg';
 
@@ -86,9 +87,6 @@ export const LandingPage: React.FC = () => {
   // Scroll detection for Navbar shadow & glass effect
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Quick Tracking / Search Form State
-  const [trackingNumber, setTrackingNumber] = useState('');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -192,18 +190,6 @@ export const LandingPage: React.FC = () => {
       label: 'Platform Availability'
     }
   ];
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (trackingNumber.trim()) {
-      setGlobalSearchQuery(trackingNumber.trim());
-    }
-    if (isAuthenticated) {
-      navigate(getDefaultDashboardRoute(activeRole));
-    } else {
-      navigate('/login');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-sky-500 selection:text-white">
@@ -545,42 +531,7 @@ export const LandingPage: React.FC = () => {
       {/* 6. QUICK SHIPMENT & MANIFEST TRACKER SECTION */}
       <section id="tracking" className="py-16 bg-slate-100 text-slate-900 border-y border-slate-200/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            
-            <div className="lg:col-span-5 space-y-2">
-              <span className="text-xs font-black uppercase tracking-widest text-[#064e43]">
-                QUICK CONTAINER & MANIFEST TRACKER
-              </span>
-              <h3 className="text-2xl font-black uppercase tracking-tight text-[#08192d]">
-                Track Your Cargo or Gate Pass
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                Enter your container ID, bill of lading, or e-gate pass reference to view live status.
-              </p>
-            </div>
-
-            <div className="lg:col-span-7">
-              <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  placeholder="e.g. MSKU-782910-4 or GP-9012"
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  className="flex-1 px-5 py-4 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 text-xs sm:text-sm font-semibold focus:outline-none focus:border-[#c88d27] focus:ring-2 focus:ring-[#c88d27]/20 transition-all shadow-inner"
-                />
-                <button
-                  type="submit"
-                  className="px-8 py-4 rounded-xl bg-[#c88d27] hover:bg-[#b57e1e] text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-amber-500/20 flex items-center justify-center gap-2 shrink-0 transition-all duration-200 hover:-translate-y-0.5 cursor-pointer border border-[#c88d27]"
-                >
-                  <Search className="w-4 h-4" />
-                  <span>Track Status</span>
-                </button>
-              </form>
-            </div>
-
-          </div>
-
+          <PublicContainerTracker />
         </div>
       </section>
 

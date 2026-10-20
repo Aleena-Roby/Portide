@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PORTIDE Selenium QA Report — Phase 3: Admin User Management</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #D49A24;
+            --pass: #10b981;
+            --fail: #ef4444;
+            --warn: #f59e0b;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 30px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            background: var(--surface);
+            padding: 24px 32px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0 0 6px 0;
+            font-size: 24px;
+            color: #fff;
+        }
+        .header p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-val {
+            font-size: 32px;
+            font-weight: 800;
+            margin-top: 4px;
+        }
+        .stat-lbl {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--surface);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 14px 18px;
+            text-align: left;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background: #182234;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 800;
+        }
+        tr:hover {
+            background: #243147;
+        }
+        .badge-pass {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 800;
+            font-size: 11px;
+        }
+        .badge-fail {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 800;
+            font-size: 11px;
+        }
+        .badge-ni {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 800;
+            font-size: 11px;
+        }
+        .badge-blocked {
+            background: rgba(148, 163, 184, 0.15);
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 800;
+            font-size: 11px;
+        }
+        code {
+            background: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #38bdf8;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>PORTIDE Maritime Intelligence — Selenium Test Automation Report</h1>
+                <p>Phase 3: Admin User Management & Staff Creation Testing | Executed: 2026-10-07 15:35:26</p>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 28px; font-weight: 900; color: #10b981;">100.0%</span>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Pass Percentage</div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-lbl">Total Tests</div>
+                <div class="stat-val">17</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Passed</div>
+                <div class="stat-val" style="color: #34d399;">17</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Failed</div>
+                <div class="stat-val" style="color: #f87171;">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Blocked</div>
+                <div class="stat-val" style="color: #94a3b8;">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-lbl">Not Implemented</div>
+                <div class="stat-val" style="color: #fbbf24;">0</div>
+            </div>
+        </div>
+
+        <div style="background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">
+            <h3 style="margin-top: 0; font-size: 15px; color: #38bdf8;">Phase 3 Test Execution Lifecycle Data</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
+                <strong>Created Staff User:</strong> Selenium Test Operations Officer 20261007153326 (selenium.ops.20261007153326@testportide.com)<br>
+                <strong>Assigned Role:</strong> Port Operations Officer (<code>port_operations_officer</code>)<br>
+                <strong>Allocated Employee ID:</strong> <code>POO-2026-0005</code><br>
+                <strong>Lifecycle Trail:</strong> Staff Created &rarr; Temporary Credentials Flagged &rarr; First-Login Intercepted &rarr; Password Changed &rarr; Authenticated With New Password &rarr; User Profile Edited &rarr; Role Immutability Verified &rarr; Account Deleted &rarr; Deleted Login Blocked.
+            </p>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Test ID</th>
+                    <th>Scenario & Objective</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Actual Result</th>
+                    <th>Evidence Screenshot</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-001</td>
+            <td><strong>USER-001 – ADMIN USER MANAGEMENT PAGE LOAD</strong><br><small style="color: #64748b;">Verify that Port Administrator can open User Management and view essential controls.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>5527 ms</td>
+            <td>User Management page loaded successfully in 5527 ms. Heading, directory table, and Create Staff User control are visible.</td>
+            <td><code>USER-001-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-002</td>
+            <td><strong>USER-002 – EXISTING USER LIST DISPLAY</strong><br><small style="color: #64748b;">Verify existing users and their attributes are rendered in the directory table.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>329 ms</td>
+            <td>Directory table renders 58 user rows across 8 columns (USER INFO, EMPLOYEE ID, SYSTEM ROLE, DEPARTMENT, CONTACT PHONE, STATUS, CREATED DATE, ACTIONS). Existing users visible.</td>
+            <td><code>USER-002-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-003</td>
+            <td><strong>USER-003 – CREATE USER FORM LOAD</strong><br><small style="color: #64748b;">Verify Create User modal opens correctly with all required fields and controls accessible.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>1441 ms</td>
+            <td>Create User form modal loaded in 1441 ms. All required input fields, auto-allocated Employee ID, and controls are accessible.</td>
+            <td><code>USER-003-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-004</td>
+            <td><strong>USER-004 – PORT ADMINISTRATOR ROLE HIDDEN</strong><br><small style="color: #64748b;">Verify Port Administrator is NOT available as a selectable role when creating internal staff users.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>181 ms</td>
+            <td>Port Administrator is strictly excluded from role options. Available roles: Port Operations Officer, Customs Officer, Terminal & Logistics Operator, Gate & Truck Operations Officer.</td>
+            <td><code>USER-004-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-005</td>
+            <td><strong>USER-005 – CREATE USER EMPTY FORM VALIDATION</strong><br><small style="color: #64748b;">Verify required fields prevent submission of an empty user creation form.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>746 ms</td>
+            <td>Empty submission blocked successfully in 746 ms. HTML5 valueMissing is True and modal remains open.</td>
+            <td><code>USER-005-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-006</td>
+            <td><strong>USER-006 – INVALID PHONE VALIDATION</strong><br><small style="color: #64748b;">Verify invalid phone numbers are rejected with appropriate validation feedback.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>8879 ms</td>
+            <td>Invalid phone rejected in 8879 ms. Form error displayed: 'Please enter a valid phone number for the selected country.'.</td>
+            <td><code>USER-006-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-007</td>
+            <td><strong>USER-007 – VALID STAFF USER CREATION</strong><br><small style="color: #64748b;">Verify Port Administrator can create a valid internal staff user account.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>27359 ms</td>
+            <td>Staff user created successfully in 27359 ms. Employee ID: POO-2026-0005. User appears in directory with Port Operations Officer role.</td>
+            <td><code>USER-007-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-008</td>
+            <td><strong>USER-008 – TEMPORARY PASSWORD WORKFLOW</strong><br><small style="color: #64748b;">Verify the temporary-password workflow: account created with temporary credentials and flagged for mandatory change.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>5721 ms</td>
+            <td>Temporary password workflow verified in 5721 ms. User profile in PostgreSQL has user_must_change_password=True.</td>
+            <td><code>USER-008-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-009</td>
+            <td><strong>USER-009 – FIRST LOGIN REQUIRES PASSWORD CHANGE</strong><br><small style="color: #64748b;">Verify newly created staff users are required to change their password on first login.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>4032 ms</td>
+            <td>MandatoryPasswordChangeModal intercepted first-login session in 4032 ms. Dashboard access is blocked until password update.</td>
+            <td><code>USER-009-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-010</td>
+            <td><strong>USER-010 – SUCCESSFUL PASSWORD CHANGE</strong><br><small style="color: #64748b;">Verify first-login password change form successfully updates password and grants dashboard access.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>5376 ms</td>
+            <td>Password changed successfully in 5376 ms. Modal dismissed and user granted access to Port Operations dashboard (http://localhost:3000/operations/dashboard).</td>
+            <td><code>USER-010-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-011</td>
+            <td><strong>USER-011 – LOGIN WITH NEW PASSWORD</strong><br><small style="color: #64748b;">Verify the created staff user can authenticate using their new permanent password.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>5902 ms</td>
+            <td>User authenticated successfully in 5902 ms. Navigated directly to operations dashboard without any modal interruption.</td>
+            <td><code>USER-011-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-012</td>
+            <td><strong>USER-012 – INCORRECT NEW PASSWORD REJECTED</strong><br><small style="color: #64748b;">Verify invalid credentials are rejected after password change.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>3905 ms</td>
+            <td>Incorrect password rejected in 3905 ms. Displayed feedback: 'Invalid email or password.'. User remains on /login.</td>
+            <td><code>USER-012-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-013</td>
+            <td><strong>USER-013 – EDIT USER</strong><br><small style="color: #64748b;">Verify Port Administrator can edit permitted staff user information (Full Name and Phone).</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>16891 ms</td>
+            <td>User updated successfully in 16891 ms. Updated name 'Selenium Test Operations Officer 20261007153326 (Edited)' is rendered in directory table.</td>
+            <td><code>USER-013-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-014</td>
+            <td><strong>USER-014 – ROLE REMAINS FIXED DURING EDIT</strong><br><small style="color: #64748b;">Verify user role cannot be changed through the edit interface and remains strictly immutable.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>3302 ms</td>
+            <td>Role is immutable and strictly read-only ('Port Operations Officer') in 3302 ms. Employee ID, Email, and Department are also protected.</td>
+            <td><code>USER-014-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-015</td>
+            <td><strong>USER-015 – DELETE USER</strong><br><small style="color: #64748b;">Verify Port Administrator can delete an internal staff user account.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>8444 ms</td>
+            <td>User deleted successfully in 8444 ms. Profile removed from directory list and database.</td>
+            <td><code>USER-015-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-016</td>
+            <td><strong>USER-016 – DELETED USER AUTHENTICATION</strong><br><small style="color: #64748b;">Verify deleted staff user account can no longer authenticate.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>3281 ms</td>
+            <td>Deleted user authentication rejected in 3281 ms. Error feedback: 'Invalid email or password.'. Account cannot access platform.</td>
+            <td><code>USER-016-PASS.png</code></td>
+        </tr>
+        
+        <tr>
+            <td style="font-weight: 700; font-family: monospace;">USER-017</td>
+            <td><strong>USER-017 – ADMIN USER MANAGEMENT ACCESS CONTROL</strong><br><small style="color: #64748b;">Verify non-admin users cannot access Admin User Management.</small></td>
+            <td><span class="badge-pass">PASS</span></td>
+            <td>8925 ms</td>
+            <td>Access control enforced in 8925 ms. Direct navigation to /admin/users was blocked; redirected to http://localhost:3000/shipping/dashboard. Admin directory is inaccessible to non-admin roles.</td>
+            <td><code>USER-017-PASS.png</code></td>
+        </tr>
+        
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

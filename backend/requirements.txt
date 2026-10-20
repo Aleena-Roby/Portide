@@ -7,3 +7,4 @@ phonenumbers==9.0.37
 asgiref==3.12.1
 sqlparse==0.5.5
 tzdata==2026.3
+qrcode>=8.0
