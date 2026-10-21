@@ -3357,17 +3357,17 @@ class YardMovementHistorySerializer(serializers.ModelSerializer):
     from_yard_name = serializers.SerializerMethodField()
     from_location_display = serializers.CharField(read_only=True)
 
-    to_slot_id = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_id', read_only=True)
-    to_slot_code = serializers.CharField(source='yard_movement_to_slot_id.yard_slot_code', read_only=True)
-    to_slot_row = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_row', read_only=True)
-    to_slot_bay = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_bay', read_only=True)
-    to_slot_tier = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_tier', read_only=True)
-    to_block_id = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_id', read_only=True)
-    to_block_code = serializers.CharField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_code', read_only=True)
-    to_block_name = serializers.CharField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_name', read_only=True)
-    to_yard_id = serializers.IntegerField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_yard_id.yard_id', read_only=True)
-    to_yard_code = serializers.CharField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_yard_id.yard_code', read_only=True)
-    to_yard_name = serializers.CharField(source='yard_movement_to_slot_id.yard_slot_block_id.yard_block_yard_id.yard_name', read_only=True)
+    to_slot_id = serializers.SerializerMethodField()
+    to_slot_code = serializers.SerializerMethodField()
+    to_slot_row = serializers.SerializerMethodField()
+    to_slot_bay = serializers.SerializerMethodField()
+    to_slot_tier = serializers.SerializerMethodField()
+    to_block_id = serializers.SerializerMethodField()
+    to_block_code = serializers.SerializerMethodField()
+    to_block_name = serializers.SerializerMethodField()
+    to_yard_id = serializers.SerializerMethodField()
+    to_yard_code = serializers.SerializerMethodField()
+    to_yard_name = serializers.SerializerMethodField()
     to_location_display = serializers.CharField(read_only=True)
 
     movement_type = serializers.CharField(source='yard_movement_movement_type', read_only=True)
@@ -3463,9 +3463,43 @@ class YardMovementHistorySerializer(serializers.ModelSerializer):
             return obj.from_slot.yard_slot_block_id.yard_block_yard_id.yard_code
         return None
 
-    def get_from_yard_name(self, obj):
-        if obj.from_slot and obj.from_slot.yard_slot_block_id and obj.from_slot.yard_slot_block_id.yard_block_yard_id:
-            return obj.from_slot.yard_slot_block_id.yard_block_yard_id.yard_name
+    def get_to_slot_id(self, obj):
+        return obj.to_slot.yard_slot_id if obj.to_slot else None
+
+    def get_to_slot_code(self, obj):
+        return obj.to_slot.yard_slot_code if obj.to_slot else None
+
+    def get_to_slot_row(self, obj):
+        return obj.to_slot.yard_slot_row if obj.to_slot else None
+
+    def get_to_slot_bay(self, obj):
+        return obj.to_slot.yard_slot_bay if obj.to_slot else None
+
+    def get_to_slot_tier(self, obj):
+        return obj.to_slot.yard_slot_tier if obj.to_slot else None
+
+    def get_to_block_id(self, obj):
+        return obj.to_slot.yard_slot_block_id.yard_block_id if (obj.to_slot and obj.to_slot.yard_slot_block_id) else None
+
+    def get_to_block_code(self, obj):
+        return obj.to_slot.yard_slot_block_id.yard_block_code if (obj.to_slot and obj.to_slot.yard_slot_block_id) else None
+
+    def get_to_block_name(self, obj):
+        return obj.to_slot.yard_slot_block_id.yard_block_name if (obj.to_slot and obj.to_slot.yard_slot_block_id) else None
+
+    def get_to_yard_id(self, obj):
+        if obj.to_slot and obj.to_slot.yard_slot_block_id and obj.to_slot.yard_slot_block_id.yard_block_yard_id:
+            return obj.to_slot.yard_slot_block_id.yard_block_yard_id.yard_id
+        return None
+
+    def get_to_yard_code(self, obj):
+        if obj.to_slot and obj.to_slot.yard_slot_block_id and obj.to_slot.yard_slot_block_id.yard_block_yard_id:
+            return obj.to_slot.yard_slot_block_id.yard_block_yard_id.yard_code
+        return None
+
+    def get_to_yard_name(self, obj):
+        if obj.to_slot and obj.to_slot.yard_slot_block_id and obj.to_slot.yard_slot_block_id.yard_block_yard_id:
+            return obj.to_slot.yard_slot_block_id.yard_block_yard_id.yard_name
         return None
 
     def get_crane_id(self, obj):
@@ -4638,6 +4672,218 @@ class EligibleDirectTransferContainerSerializer(serializers.ModelSerializer):
 
     def get_is_eligible(self, obj):
         return len(self.get_ineligibility_reasons(obj)) == 0
+
+
+# ==============================================================================
+# PHASE T4-B / LOADING OPERATIONS (VESSEL STOWAGE) SERIALIZERS
+# ==============================================================================
+
+class LoadContainerExecuteSerializer(serializers.Serializer):
+    """
+    Serializer to validate incoming container vessel loading (stowage) request.
+    Validates vessel schedule, crane allocation, container, origin yard slot, and optional remarks.
+    """
+    vessel_schedule_id = serializers.IntegerField(required=True)
+    crane_allocation_id = serializers.IntegerField(required=True)
+    container_id = serializers.IntegerField(required=True)
+    slot_id = serializers.IntegerField(required=True)
+    remarks = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_vessel_schedule_id(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Valid vessel schedule ID is required.")
+        return value
+
+    def validate_crane_allocation_id(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Valid crane allocation ID is required.")
+        return value
+
+    def validate_container_id(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Valid container ID is required.")
+        return value
+
+    def validate_slot_id(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Valid origin yard slot ID is required.")
+        return value
+
+
+class EligibleLoadingVesselSerializer(serializers.ModelSerializer):
+    """
+    Serializer for berthed vessel schedules eligible for export / container loading.
+    """
+    vessel_id = serializers.IntegerField(source='vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_id', read_only=True)
+    vessel_name = serializers.CharField(source='vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_name', read_only=True)
+    vessel_imo_number = serializers.CharField(source='vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_imo_number', read_only=True)
+    vessel_call_sign = serializers.CharField(source='vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_call_sign', read_only=True)
+    shipping_company_name = serializers.CharField(source='vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id.vessel_shipping_company_id.shipping_company_name', read_only=True)
+    berth_id = serializers.IntegerField(source='vessel_schedule_berth_id.berth_id', read_only=True)
+    berth_name = serializers.CharField(source='vessel_schedule_berth_id.berth_name', read_only=True)
+    berth_code = serializers.CharField(source='vessel_schedule_berth_id.berth_code', read_only=True)
+    schedule_status = serializers.CharField(source='vessel_schedule_status', read_only=True)
+    schedule_status_display = serializers.CharField(source='get_vessel_schedule_status_display', read_only=True)
+    actual_at_berth_at = serializers.DateTimeField(source='vessel_schedule_actual_at_berth_at', read_only=True)
+    active_cranes_count = serializers.SerializerMethodField()
+    yard_containers_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VesselSchedule
+        fields = [
+            'vessel_schedule_id',
+            'vessel_id',
+            'vessel_name',
+            'vessel_imo_number',
+            'vessel_call_sign',
+            'shipping_company_name',
+            'berth_id',
+            'berth_name',
+            'berth_code',
+            'schedule_status',
+            'schedule_status_display',
+            'actual_at_berth_at',
+            'active_cranes_count',
+            'yard_containers_count',
+        ]
+
+    def get_active_cranes_count(self, obj):
+        return obj.crane_allocations.filter(
+            crane_allocation_status='ACTIVE',
+            crane_allocation_operation_type__in=['LOADING', 'BOTH'],
+            crane_allocation_crane_id__crane_is_active=True
+        ).exclude(
+            crane_allocation_crane_id__crane_status__in=['MAINTENANCE', 'INACTIVE']
+        ).count()
+
+    def get_yard_containers_count(self, obj):
+        # Count containers with active yard allocation available for loading
+        return YardAllocation.objects.filter(
+            yard_allocation_status='ACTIVE',
+            yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED']
+        ).count()
+
+
+class ActiveLoadingCraneSerializer(serializers.ModelSerializer):
+    """
+    Serializer for active crane allocations operating for vessel loading.
+    """
+    crane_id = serializers.IntegerField(source='crane_allocation_crane_id.crane_id', read_only=True)
+    crane_code = serializers.CharField(source='crane_allocation_crane_id.crane_code', read_only=True)
+    crane_name = serializers.CharField(source='crane_allocation_crane_id.crane_name', read_only=True)
+    crane_type = serializers.CharField(source='crane_allocation_crane_id.crane_type', read_only=True)
+    crane_type_display = serializers.CharField(source='crane_allocation_crane_id.get_crane_type_display', read_only=True)
+    crane_status = serializers.CharField(source='crane_allocation_crane_id.crane_status', read_only=True)
+    crane_max_lifting_capacity_mt = serializers.DecimalField(source='crane_allocation_crane_id.crane_max_lifting_capacity_mt', max_digits=8, decimal_places=2, read_only=True)
+    berth_id = serializers.IntegerField(source='crane_allocation_berth_id.berth_id', read_only=True, allow_null=True)
+    berth_name = serializers.CharField(source='crane_allocation_berth_id.berth_name', read_only=True, allow_null=True)
+    operation_type = serializers.CharField(source='crane_allocation_operation_type', read_only=True)
+    operation_type_display = serializers.CharField(source='get_crane_allocation_operation_type_display', read_only=True)
+    allocation_status = serializers.CharField(source='crane_allocation_status', read_only=True)
+    allocation_status_display = serializers.CharField(source='get_crane_allocation_status_display', read_only=True)
+
+    class Meta:
+        model = CraneAllocation
+        fields = [
+            'crane_allocation_id',
+            'crane_id',
+            'crane_code',
+            'crane_name',
+            'crane_type',
+            'crane_type_display',
+            'crane_status',
+            'crane_max_lifting_capacity_mt',
+            'berth_id',
+            'berth_name',
+            'operation_type',
+            'operation_type_display',
+            'allocation_status',
+            'allocation_status_display',
+            'crane_allocation_planned_start_at',
+            'crane_allocation_planned_end_at',
+            'crane_allocation_actual_start_at',
+        ]
+
+
+class YardLoadingContainerSerializer(serializers.ModelSerializer):
+    """
+    Serializer for yard-allocated containers available for loading onto a berthed vessel.
+    """
+    container_type_display = serializers.CharField(source='get_container_type_display', read_only=True)
+    container_status_display = serializers.CharField(source='get_container_status_display', read_only=True)
+    teu_equivalent = serializers.FloatField(read_only=True)
+    cargo_id = serializers.IntegerField(source='container_cargo_id.cargo_id', read_only=True)
+    cargo_description = serializers.CharField(source='container_cargo_id.cargo_description', read_only=True)
+    slot_id = serializers.SerializerMethodField()
+    slot_code = serializers.SerializerMethodField()
+    block_code = serializers.SerializerMethodField()
+    yard_code = serializers.SerializerMethodField()
+    location_display = serializers.SerializerMethodField()
+    customs_status_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Container
+        fields = [
+            'container_id',
+            'container_number',
+            'container_type',
+            'container_type_display',
+            'container_gross_weight',
+            'teu_equivalent',
+            'container_status',
+            'container_status_display',
+            'cargo_id',
+            'cargo_description',
+            'slot_id',
+            'slot_code',
+            'block_code',
+            'yard_code',
+            'location_display',
+            'customs_status_display',
+            'container_created_at',
+        ]
+
+    def _get_active_allocation(self, obj):
+        if not hasattr(obj, '_cached_active_alloc'):
+            obj._cached_active_alloc = YardAllocation.objects.select_related(
+                'yard_allocation_slot_id__yard_slot_block_id__yard_block_yard_id'
+            ).filter(
+                yard_allocation_container_id=obj,
+                yard_allocation_status='ACTIVE'
+            ).first()
+        return obj._cached_active_alloc
+
+    def get_slot_id(self, obj):
+        alloc = self._get_active_allocation(obj)
+        return alloc.yard_allocation_slot_id.yard_slot_id if (alloc and alloc.yard_allocation_slot_id) else None
+
+    def get_slot_code(self, obj):
+        alloc = self._get_active_allocation(obj)
+        return alloc.yard_allocation_slot_id.yard_slot_code if (alloc and alloc.yard_allocation_slot_id) else None
+
+    def get_block_code(self, obj):
+        alloc = self._get_active_allocation(obj)
+        return alloc.yard_allocation_slot_id.yard_slot_block_id.yard_block_code if (alloc and alloc.yard_allocation_slot_id) else None
+
+    def get_yard_code(self, obj):
+        alloc = self._get_active_allocation(obj)
+        if alloc and alloc.yard_allocation_slot_id and alloc.yard_allocation_slot_id.yard_slot_block_id:
+            return alloc.yard_allocation_slot_id.yard_slot_block_id.yard_block_yard_id.yard_code
+        return None
+
+    def get_location_display(self, obj):
+        alloc = self._get_active_allocation(obj)
+        if alloc and alloc.yard_allocation_slot_id and alloc.yard_allocation_slot_id.yard_slot_block_id:
+            s = alloc.yard_allocation_slot_id
+            b = s.yard_slot_block_id
+            y = b.yard_block_yard_id
+            return f"{y.yard_code} / {b.yard_block_code} / {s.yard_slot_code}"
+        return "Unassigned"
+
+    def get_customs_status_display(self, obj):
+        insp = obj.latest_customs_inspection
+        return insp.get_customs_inspection_status_display() if insp else obj.get_container_customs_status_display()
+
 
 
 

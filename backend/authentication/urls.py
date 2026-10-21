@@ -104,6 +104,11 @@ from authentication.views import (
     UnloadingActiveCranesAPIView,
     UnloadingManifestContainersAPIView,
     UnloadingHistoryAPIView,
+    LoadingEligibleVesselsAPIView,
+    LoadingActiveCranesAPIView,
+    LoadingYardContainersAPIView,
+    LoadingExecuteAPIView,
+    LoadingHistoryAPIView,
     PreArrivalCustomsSubmitAPIView,
     PreArrivalCustomsListAPIView,
     PreArrivalCustomsDetailAPIView,
@@ -476,6 +481,32 @@ urlpatterns = [
     path('terminal/unloading/history', UnloadingHistoryAPIView.as_view(), name='terminal_unloading_history_noslash'),
     path('unloading/history/', UnloadingHistoryAPIView.as_view(), name='unloading_history'),
     path('unloading/history', UnloadingHistoryAPIView.as_view(), name='unloading_history_noslash'),
+
+    # Phase T4-B / Loading Operations (Vessel Stowage) Endpoints
+    path('terminal/loading/eligible-vessels/', LoadingEligibleVesselsAPIView.as_view(), name='terminal_loading_eligible_vessels'),
+    path('terminal/loading/eligible-vessels', LoadingEligibleVesselsAPIView.as_view(), name='terminal_loading_eligible_vessels_noslash'),
+    path('loading/eligible-vessels/', LoadingEligibleVesselsAPIView.as_view(), name='loading_eligible_vessels'),
+    path('loading/eligible-vessels', LoadingEligibleVesselsAPIView.as_view(), name='loading_eligible_vessels_noslash'),
+
+    path('terminal/loading/active-cranes/', LoadingActiveCranesAPIView.as_view(), name='terminal_loading_active_cranes'),
+    path('terminal/loading/active-cranes', LoadingActiveCranesAPIView.as_view(), name='terminal_loading_active_cranes_noslash'),
+    path('loading/active-cranes/', LoadingActiveCranesAPIView.as_view(), name='loading_active_cranes'),
+    path('loading/active-cranes', LoadingActiveCranesAPIView.as_view(), name='loading_active_cranes_noslash'),
+
+    path('terminal/loading/yard-containers/', LoadingYardContainersAPIView.as_view(), name='terminal_loading_yard_containers'),
+    path('terminal/loading/yard-containers', LoadingYardContainersAPIView.as_view(), name='terminal_loading_yard_containers_noslash'),
+    path('loading/yard-containers/', LoadingYardContainersAPIView.as_view(), name='loading_yard_containers'),
+    path('loading/yard-containers', LoadingYardContainersAPIView.as_view(), name='loading_yard_containers_noslash'),
+
+    path('terminal/loading/load/', LoadingExecuteAPIView.as_view(), name='terminal_loading_load'),
+    path('terminal/loading/load', LoadingExecuteAPIView.as_view(), name='terminal_loading_load_noslash'),
+    path('loading/load/', LoadingExecuteAPIView.as_view(), name='loading_load'),
+    path('loading/load', LoadingExecuteAPIView.as_view(), name='loading_load_noslash'),
+
+    path('terminal/loading/history/', LoadingHistoryAPIView.as_view(), name='terminal_loading_history'),
+    path('terminal/loading/history', LoadingHistoryAPIView.as_view(), name='terminal_loading_history_noslash'),
+    path('loading/history/', LoadingHistoryAPIView.as_view(), name='loading_history'),
+    path('loading/history', LoadingHistoryAPIView.as_view(), name='loading_history_noslash'),
 
     # Phase T5 / Pre-Arrival Customs Clearance Endpoints
     path('customs/pre-arrival/submit/', PreArrivalCustomsSubmitAPIView.as_view(), name='customs_pre_arrival_submit'),

@@ -118,6 +118,10 @@ from authentication.serializers import (
     EligibleUnloadingVesselSerializer,
     ActiveUnloadingCraneSerializer,
     ManifestUnloadingContainerSerializer,
+    LoadContainerExecuteSerializer,
+    EligibleLoadingVesselSerializer,
+    ActiveLoadingCraneSerializer,
+    YardLoadingContainerSerializer,
     PreArrivalCustomsDeclarationSerializer,
     PreArrivalCustomsSubmitSerializer,
     PreArrivalCustomsReviewSerializer,
@@ -12234,6 +12238,404 @@ class DirectTransferDetailAPIView(APIView):
             "status": "success",
             "data": DirectShipToTruckTransferSerializer(transfer).data
         }, status=status.HTTP_200_OK)
+
+
+# ==============================================================================
+# PHASE T4-B / LOADING OPERATIONS (VESSEL STOWAGE) VIEWS
+# ==============================================================================
+
+class LoadingEligibleVesselsAPIView(APIView):
+    """
+    API Endpoint to list berthed vessel schedules eligible for container loading.
+    Requires vessel_schedule_status='AT_BERTH'.
+    Endpoint: GET /api/terminal/loading/eligible-vessels/
+    """
+    permission_classes = [IsUnloadingOperationsAuthorized]
+
+    def get(self, request):
+        schedules = VesselSchedule.objects.select_related(
+            'vessel_schedule_arrival_request_id__vessel_arrival_request_vessel_id__vessel_shipping_company_id',
+            'vessel_schedule_berth_id'
+        ).filter(
+            vessel_schedule_status='AT_BERTH'
+        ).order_by('vessel_schedule_scheduled_arrival_at')
+
+        serializer = EligibleLoadingVesselSerializer(schedules, many=True)
+        return Response({
+            "status": "success",
+            "count": schedules.count(),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class LoadingActiveCranesAPIView(APIView):
+    """
+    API Endpoint to list active crane allocations for a specific vessel schedule permitted for loading.
+    Requires crane_allocation_operation_type in ['LOADING', 'BOTH'] and status='ACTIVE'.
+    Endpoint: GET /api/terminal/loading/active-cranes/?vessel_schedule_id=<id>
+    """
+    permission_classes = [IsUnloadingOperationsAuthorized]
+
+    def get(self, request):
+        schedule_id = request.query_params.get('vessel_schedule_id')
+        queryset = CraneAllocation.objects.select_related(
+            'crane_allocation_crane_id',
+            'crane_allocation_berth_id',
+            'crane_allocation_vessel_schedule_id'
+        ).filter(
+            crane_allocation_status='ACTIVE',
+            crane_allocation_operation_type__in=['LOADING', 'BOTH'],
+            crane_allocation_crane_id__crane_is_active=True,
+            crane_allocation_crane_id__crane_type__in=['STS', 'MHC']
+        ).exclude(
+            crane_allocation_crane_id__crane_status__in=['MAINTENANCE', 'INACTIVE']
+        )
+
+        if schedule_id and str(schedule_id).isdigit():
+            queryset = queryset.filter(crane_allocation_vessel_schedule_id_id=int(schedule_id))
+
+        queryset = queryset.order_by('crane_allocation_crane_id__crane_code')
+        serializer = ActiveLoadingCraneSerializer(queryset, many=True)
+        return Response({
+            "status": "success",
+            "count": queryset.count(),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class LoadingYardContainersAPIView(APIView):
+    """
+    API Endpoint to list containers currently stored in the yard available for vessel loading.
+    Selects containers with an active YardAllocation, lifecycle status in ['AT_TERMINAL', 'CLEARED'],
+    and not committed to an active Direct Transfer or Gate Pass.
+    Endpoint: GET /api/terminal/loading/yard-containers/?vessel_schedule_id=<id>
+    """
+    permission_classes = [IsUnloadingOperationsAuthorized]
+
+    def get(self, request):
+        search_query = request.query_params.get('search', '').strip()
+
+        # Containers currently allocated to active yard slots
+        allocated_container_ids = YardAllocation.objects.filter(
+            yard_allocation_status='ACTIVE'
+        ).values_list('yard_allocation_container_id_id', flat=True)
+
+        queryset = Container.objects.select_related(
+            'container_cargo_id'
+        ).filter(
+            container_id__in=allocated_container_ids,
+            container_status__in=['AT_TERMINAL', 'CLEARED']
+        )
+
+        # Exclude containers in active truck transfers or active gate passes
+        active_transfer_container_ids = DirectShipToTruckTransfer.objects.filter(
+            transfer_status__in=['INITIATED', 'IN_PROGRESS', 'TRANSFERRED_TO_TRUCK', 'AWAITING_GATE_EXIT']
+        ).values_list('transfer_container_id_id', flat=True)
+        queryset = queryset.exclude(container_id__in=active_transfer_container_ids)
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(container_number__icontains=search_query) |
+                Q(container_cargo_id__cargo_description__icontains=search_query)
+            )
+
+        queryset = queryset.order_by('-container_created_at')[:100]
+        serializer = YardLoadingContainerSerializer(queryset, many=True)
+        return Response({
+            "status": "success",
+            "count": len(serializer.data),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class LoadingExecuteAPIView(APIView):
+    """
+    API Endpoint for Atomic Vessel Container Loading (Stowage Operation).
+    Coordinates Vessel Schedule (AT_BERTH) -> Active Crane Allocation -> Yard Container -> Slot Release -> Vessel Stowage.
+    Executes within transaction.atomic() with select_for_update() row locks:
+    1. Validates crane allocation exists, is ACTIVE, and permits LOADING or BOTH.
+    2. Validates crane is operational and active (not MAINTENANCE or INACTIVE).
+    3. Validates vessel schedule is AT_BERTH and consistent with crane allocation and berth.
+    4. Validates container has an active yard allocation at the specified slot.
+    5. Atomically transitions container to LOADED.
+    6. Releases active YardAllocation (status='RELEASED').
+    7. Marks origin yard slot AVAILABLE.
+    8. Updates yard and block occupancy TEU atomically (decremented).
+    9. Records append-only YardMovementHistory with movement_type='LOADING', from_slot=slot, to_slot=None, crane=crane, operator=user.
+    10. Writes AuditLog event (action='LOAD_CONTAINER_VESSEL').
+    11. Writes ContainerTrackingEvent (status='LOADED_ON_VESSEL').
+    Endpoint: POST /api/terminal/loading/load/
+    Permissions: IsUnloadingOperationsAuthorized
+    """
+    permission_classes = [IsUnloadingOperationsAuthorized]
+
+    def post(self, request):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        serializer = LoadContainerExecuteSerializer(data=request.data)
+        if not serializer.is_valid():
+            first_err = ""
+            for field, errs in serializer.errors.items():
+                if isinstance(errs, list) and len(errs) > 0:
+                    first_err = str(errs[0])
+                    break
+                elif isinstance(errs, str):
+                    first_err = errs
+                    break
+            return Response({
+                "status": "error",
+                "message": first_err or "Loading validation failed.",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        vessel_schedule_id = serializer.validated_data['vessel_schedule_id']
+        crane_allocation_id = serializer.validated_data['crane_allocation_id']
+        container_id = serializer.validated_data['container_id']
+        slot_id = serializer.validated_data['slot_id']
+        remarks = serializer.validated_data.get('remarks', '').strip()
+
+        with transaction.atomic():
+            # 1. Fetch & lock vessel schedule
+            try:
+                vessel_schedule = VesselSchedule.objects.select_for_update().get(pk=vessel_schedule_id)
+            except VesselSchedule.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": f"Vessel schedule #{vessel_schedule_id} not found."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            vessel = vessel_schedule.vessel_schedule_arrival_request_id.vessel_arrival_request_vessel_id if vessel_schedule.vessel_schedule_arrival_request_id else None
+            vessel_name = vessel.vessel_name if vessel else 'Unknown Vessel'
+            berth = vessel_schedule.vessel_schedule_berth_id
+
+            if vessel_schedule.vessel_schedule_status != 'AT_BERTH':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Carrier vessel '{vessel_name}' is currently in "
+                        f"'{vessel_schedule.get_vessel_schedule_status_display()}' status. "
+                        f"Vessel must be 'At Berth' for container loading operations."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 2. Fetch & lock crane allocation
+            try:
+                crane_alloc = CraneAllocation.objects.select_for_update().get(pk=crane_allocation_id)
+            except CraneAllocation.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": f"Crane allocation #{crane_allocation_id} not found."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            if crane_alloc.crane_allocation_vessel_schedule_id_id != vessel_schedule.vessel_schedule_id:
+                return Response({
+                    "status": "error",
+                    "message": f"Crane allocation #{crane_allocation_id} does not belong to vessel schedule #{vessel_schedule_id} ('{vessel_name}')."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if crane_alloc.crane_allocation_status != 'ACTIVE':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Crane allocation #{crane_allocation_id} is '{crane_alloc.get_crane_allocation_status_display()}'. "
+                        f"Allocation must be in 'ACTIVE' status for physical container loading."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if crane_alloc.crane_allocation_operation_type not in ['LOADING', 'BOTH']:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Crane allocation #{crane_allocation_id} operation type is "
+                        f"'{crane_alloc.get_crane_allocation_operation_type_display()}'. "
+                        f"Operation type must permit Loading."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validate crane equipment operational status
+            crane = Crane.objects.select_for_update().get(pk=crane_alloc.crane_allocation_crane_id_id)
+            if not crane.crane_is_active or crane.crane_status in ['MAINTENANCE', 'INACTIVE']:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) is currently in "
+                        f"'{crane.get_crane_status_display()}' status and is not operational."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if crane.crane_type not in ['STS', 'MHC']:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) of type '{crane.get_crane_type_display()}' "
+                        f"is not a compatible quayside crane for vessel loading."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 3. Fetch & lock container
+            try:
+                container = Container.objects.select_for_update().get(pk=container_id)
+            except Container.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": f"Container #{container_id} not found."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            if container.container_status == 'LOADED':
+                return Response({
+                    "status": "error",
+                    "message": f"Container '{container.container_number}' is already loaded onto a vessel."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # 4. Fetch & lock origin yard slot & active allocation
+            try:
+                slot = YardSlot.objects.select_for_update().get(pk=slot_id)
+            except YardSlot.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": f"Origin yard slot #{slot_id} not found."
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            active_alloc = YardAllocation.objects.select_for_update().filter(
+                yard_allocation_container_id=container,
+                yard_allocation_status='ACTIVE'
+            ).first()
+
+            if not active_alloc:
+                return Response({
+                    "status": "error",
+                    "message": f"Container '{container.container_number}' has no active yard slot allocation."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if active_alloc.yard_allocation_slot_id_id != slot.yard_slot_id:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' is allocated to slot "
+                        f"'{active_alloc.yard_allocation_slot_id.yard_slot_code}', not slot '{slot.yard_slot_code}'."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            block = YardBlock.objects.select_for_update().get(pk=slot.yard_slot_block_id.pk)
+            yard = Yard.objects.select_for_update().get(pk=block.yard_block_yard_id.pk)
+
+            # 5. Execute state changes atomically
+            now = timezone.now()
+
+            # Transition container status to LOADED
+            container.container_status = 'LOADED'
+            container.save(update_fields=['container_status', 'container_updated_at'])
+
+            # Release active yard allocation
+            active_alloc.yard_allocation_status = 'RELEASED'
+            active_alloc.yard_allocation_released_at = now
+            active_alloc.yard_allocation_remarks = f"Released upon loading onto vessel '{vessel_name}' via crane '{crane.crane_code}'."
+            active_alloc.save(update_fields=[
+                'yard_allocation_status', 
+                'yard_allocation_released_at', 
+                'yard_allocation_remarks', 
+                'yard_allocation_updated_at'
+            ])
+
+            # Release yard slot
+            slot.yard_slot_status = 'AVAILABLE'
+            slot.save(update_fields=['yard_slot_status', 'yard_slot_updated_at'])
+
+            # Decrement block & yard occupancy
+            block.yard_block_occupied = max(0, block.yard_block_occupied - 1)
+            block.save(update_fields=['yard_block_occupied', 'yard_block_updated_at'])
+
+            yard.yard_occupied = max(0, yard.yard_occupied - 1)
+            yard.save(update_fields=['yard_occupied', 'yard_updated_at'])
+
+            # Record append-only YardMovementHistory for vessel loading
+            movement = YardMovementHistory.objects.create(
+                yard_movement_container_id=container,
+                yard_movement_from_slot_id=slot,
+                yard_movement_to_slot_id=None,
+                yard_movement_movement_type='LOADING',
+                yard_movement_crane_id=crane,
+                yard_movement_moved_by_id=user_obj,
+                yard_movement_timestamp=now,
+                yard_movement_remarks=remarks or f"Vessel loading onto {vessel_name}"
+            )
+
+            # Record ContainerTrackingEvent
+            tracking_desc = f"Container {container.container_number} loaded onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' using crane '{crane.crane_code}'."
+            if remarks:
+                tracking_desc += f" Remarks: {remarks}"
+            ContainerTrackingEvent.objects.create(
+                tracking_event_container_id=container,
+                tracking_event_status='LOADED_ON_VESSEL',
+                tracking_event_timestamp=now,
+                tracking_event_location=f"Vessel '{vessel_name}' (Berth: {berth.berth_name if berth else 'N/A'})",
+                tracking_event_description=tracking_desc,
+                tracking_event_updated_by=user_obj
+            )
+
+            # Record AuditLog event
+            operator_name = user_obj.user_full_name if user_obj else 'Terminal Operator'
+            create_audit_log(
+                user=user_obj or login_obj,
+                actor_name=operator_name,
+                role='Terminal & Logistics Operator',
+                action='LOAD_CONTAINER_VESSEL',
+                category='LOADING_OPERATIONS',
+                target_type='Container',
+                target_id=str(container.container_id),
+                description=(
+                    f"Loaded Container '{container.container_number}' ({container.get_container_type_display()}) "
+                    f"from yard slot '{slot.yard_slot_code}' ({yard.yard_code}/{block.yard_block_code}) "
+                    f"onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
+                    f"using crane '{crane.crane_code}'."
+                ),
+                status='SUCCESS',
+                request=request
+            )
+
+            return Response({
+                "status": "success",
+                "message": f"Container '{container.container_number}' successfully loaded onto vessel '{vessel_name}' from slot '{slot.yard_slot_code}'.",
+                "data": {
+                    "container_id": container.container_id,
+                    "container_number": container.container_number,
+                    "container_status": container.container_status,
+                    "container_status_display": container.get_container_status_display(),
+                    "vessel_name": vessel_name,
+                    "berth_name": berth.berth_name if berth else 'N/A',
+                    "crane_code": crane.crane_code,
+                    "vacated_slot": f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code}",
+                    "movement_id": movement.yard_movement_id,
+                    "loaded_at": now.isoformat()
+                }
+            }, status=status.HTTP_201_CREATED)
+
+
+class LoadingHistoryAPIView(APIView):
+    """
+    API Endpoint to list completed vessel container loading (stowage) events.
+    Endpoint: GET /api/terminal/loading/history/
+    """
+    permission_classes = [IsUnloadingOperationsAuthorized]
+
+    def get(self, request):
+        movements = YardMovementHistory.objects.select_related(
+            'yard_movement_container_id',
+            'yard_movement_from_slot_id__yard_slot_block_id__yard_block_yard_id',
+            'yard_movement_from_slot_id__yard_slot_block_id',
+            'yard_movement_from_slot_id',
+            'yard_movement_crane_id',
+            'yard_movement_moved_by_id'
+        ).filter(
+            yard_movement_movement_type='LOADING'
+        ).order_by('-yard_movement_timestamp', '-yard_movement_id')[:100]
+
+        serializer = YardMovementHistorySerializer(movements, many=True)
+        return Response({
+            "status": "success",
+            "count": len(serializer.data),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 
 

@@ -25,6 +25,7 @@ import {
   MapPin,
   MoveHorizontal,
   ArrowDownToLine,
+  ArrowUpFromLine,
   BarChart3,
   Sliders
 } from 'lucide-react';
@@ -131,6 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
           { id: 'unloading-operations', label: 'Unloading Operations', icon: ArrowDownToLine, path: `${basePath}/unloading-operations` },
+          { id: 'loading-operations', label: 'Loading Operations', icon: ArrowUpFromLine, path: `${basePath}/loading-operations` },
           { id: 'yard-master', label: 'Yard Master', icon: Warehouse, path: `${basePath}/yard-master` },
           { id: 'yard-allocation', label: 'Yard Allocation', icon: MapPin, path: `${basePath}/yard-allocation` },
           { id: 'yard-operations', label: 'Yard Operations', icon: MoveHorizontal, path: `${basePath}/yard-operations` },

@@ -70,15 +70,20 @@ This guide explains the end-to-end operational workflows for each of the 6 roles
 
 ## 5. Terminal & Logistics Operator (`terminal_operator`)
 
-* **Quayside Vessel Unloading**:
+* **Quayside Vessel Unloading (Discharge)**:
   * Navigate to **Unloading Operations** (`/terminal/unloading-operations`).
-  * Confirm container discharge from berthed vessels via active quay cranes.
+  * Select carrier vessel in `AT_BERTH` schedule status, active quay crane (`STS`/`MHC`), manifested container, and destination yard slot.
+  * Execute atomic discharge into the yard slot or dispatch via quayside **Direct Ship-to-Truck** transfer for pre-cleared cargo.
+* **Quayside Vessel Loading (Stowage)**:
+  * Navigate to **Loading Operations** (`/terminal/loading-operations`).
+  * Select berthed carrier vessel, assigned active quay crane (`LOADING` or `BOTH`), and export/transshipment container stored in the yard.
+  * Execute physical stowage aboard the vessel: container status transitions to `LOADED`, origin yard slot is automatically marked `AVAILABLE`, and yard/block occupancy count is decremented.
 * **Terminal Yard Stacking (Yard Master & Allocation)**:
   * Navigate to **Yard Master** (`/terminal/yard-master`) and **Yard Allocation** (`/terminal/yard-allocation`).
-  * Allocate incoming containers to exact yard zones, blocks, and bay-row-tier slots.
+  * Manage yards, blocks, and slots; allocate incoming containers to exact bay-row-tier coordinates.
 * **Crane Dispatch Management**:
   * Navigate to **Crane Management** (`/terminal/crane-management`).
-  * Allocate STS gantry cranes and mobile RTG equipment to scheduled vessel berths.
+  * Allocate STS gantry cranes and mobile RTG equipment to scheduled vessel berths with `UNLOADING`, `LOADING`, or `BOTH` operational scopes.
 
 ---
 

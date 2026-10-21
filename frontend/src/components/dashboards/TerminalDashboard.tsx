@@ -6,6 +6,7 @@ import { YardAllocation } from './terminal/YardAllocation';
 import { YardOperations } from './terminal/YardOperations';
 import { CraneManagement } from './terminal/CraneManagement';
 import { UnloadingOperations } from './terminal/UnloadingOperations';
+import { LoadingOperations } from './terminal/LoadingOperations';
 
 interface TerminalDashboardProps {
   activeTab?: string;
@@ -14,11 +15,15 @@ interface TerminalDashboardProps {
 
 export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab = 'overview', onNavigate }) => {
   if (activeTab === 'direct-transfer' || activeTab === 'direct_transfer' || activeTab === 'ship-to-truck') {
-    return <UnloadingOperations initialTab="direct_transfer" />;
+    return <UnloadingOperations initialTab="direct_transfer" onNavigate={onNavigate} />;
   }
 
   if (activeTab === 'unloading-operations' || activeTab === 'unloading' || activeTab === 'discharge') {
-    return <UnloadingOperations />;
+    return <UnloadingOperations onNavigate={onNavigate} />;
+  }
+
+  if (activeTab === 'loading-operations' || activeTab === 'loading' || activeTab === 'stowage') {
+    return <LoadingOperations onNavigate={onNavigate} />;
   }
 
   if (activeTab === 'yard-master' || activeTab === 'yards' || activeTab === 'yard') {
@@ -80,6 +85,21 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             Discharge inbound containers from berthed vessels via active quay cranes directly to yard storage coordinates.
+          </p>
+        </div>
+
+        <div 
+          onClick={() => onNavigate?.('loading-operations')}
+          className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+            <span className="font-bold text-lg">📤</span>
+          </div>
+          <h3 className="font-black text-base text-slate-900 dark:text-white mb-1 group-hover:text-emerald-500 transition-colors">
+            Loading Operations
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Hoist export containers from yard storage coordinates and stow aboard berthed carrier vessels via quay cranes.
           </p>
         </div>
 

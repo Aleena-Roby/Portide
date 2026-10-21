@@ -663,6 +663,7 @@ class Container(models.Model):
         ('CUSTOMS_HOLD', 'Customs Hold'),
         ('CLEARED', 'Cleared'),
         ('RELEASED', 'Released'),
+        ('LOADED', 'Loaded on Vessel'),
     )
 
     container_id = models.BigAutoField(primary_key=True)
@@ -1207,6 +1208,7 @@ class ContainerTrackingEvent(models.Model):
         ('OUT_FOR_DELIVERY', 'Out for Delivery'),
         ('DELIVERED', 'Delivered'),
         ('DELIVERY_EXCEPTION', 'Delivery Exception'),
+        ('LOADED_ON_VESSEL', 'Loaded on Vessel'),
     )
 
     tracking_event_id = models.BigAutoField(primary_key=True)
@@ -1626,6 +1628,7 @@ class YardMovementHistory(models.Model):
     MOVEMENT_TYPE_CHOICES = (
         ('DISCHARGE', 'Vessel Discharge'),
         ('RELOCATION', 'Yard Relocation'),
+        ('LOADING', 'Vessel Loading'),
     )
 
     yard_movement_id = models.BigAutoField(primary_key=True)
@@ -1646,6 +1649,8 @@ class YardMovementHistory(models.Model):
     yard_movement_to_slot_id = models.ForeignKey(
         YardSlot,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         db_column='yard_movement_to_slot_id',
         related_name='movements_to'
     )
@@ -1721,6 +1726,8 @@ class YardMovementHistory(models.Model):
             b = self.to_slot.yard_slot_block_id
             y = b.yard_block_yard_id
             return f"{y.yard_code} / {b.yard_block_code} / {self.to_slot.yard_slot_code}"
+        if self.yard_movement_movement_type == 'LOADING':
+            return "Vessel (Loaded)"
         return "Unknown"
 
     def __str__(self):

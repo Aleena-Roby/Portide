@@ -1245,10 +1245,89 @@ export interface UnloadingHistoryItem {
   crane_code: string | null;
   crane_name: string | null;
   from_location_display: string;
-  to_slot_id: number;
-  to_slot_code: string;
-  to_yard_code: string;
-  to_block_code: string;
+  to_slot_id: number | null;
+  to_slot_code: string | null;
+  to_yard_code: string | null;
+  to_block_code: string | null;
+  to_location_display: string;
+  moved_by_name: string;
+  movement_timestamp: string;
+  remarks: string;
+}
+
+// =============================================================================
+// PHASE T4-B / LOADING OPERATIONS (VESSEL STOWAGE) TYPES
+// =============================================================================
+
+export interface EligibleLoadingVessel {
+  vessel_schedule_id: number;
+  vessel_id: number;
+  vessel_name: string;
+  vessel_imo_number: string;
+  vessel_call_sign: string;
+  shipping_company_name: string;
+  berth_id: number;
+  berth_name: string;
+  berth_code: string;
+  schedule_status: string;
+  schedule_status_display: string;
+  actual_at_berth_at: string | null;
+  active_cranes_count: number;
+  yard_containers_count: number;
+}
+
+export interface ActiveLoadingCrane {
+  crane_allocation_id: number;
+  crane_id: number;
+  crane_code: string;
+  crane_name: string;
+  crane_type: string;
+  crane_type_display: string;
+  crane_status: string;
+  crane_max_lifting_capacity_mt: string | number;
+  berth_id: number | null;
+  berth_name: string | null;
+  operation_type: string;
+  operation_type_display: string;
+  allocation_status: string;
+  allocation_status_display: string;
+  crane_allocation_planned_start_at: string;
+  crane_allocation_planned_end_at: string;
+  crane_allocation_actual_start_at: string | null;
+}
+
+export interface YardLoadingContainer {
+  container_id: number;
+  container_number: string;
+  container_type: string;
+  container_type_display: string;
+  container_gross_weight: string | number;
+  teu_equivalent: number;
+  container_status: string;
+  container_status_display: string;
+  cargo_id: number;
+  cargo_description: string;
+  slot_id: number;
+  slot_code: string;
+  block_code: string;
+  yard_code: string;
+  location_display: string;
+  customs_status_display: string;
+  container_created_at: string;
+}
+
+export interface LoadingHistoryItem {
+  yard_movement_id: number;
+  container_id: number;
+  container_number: string;
+  container_type: string;
+  container_type_display: string;
+  movement_type: string;
+  movement_type_display: string;
+  crane_id: number | null;
+  crane_code: string | null;
+  crane_name: string | null;
+  from_location_display: string;
   to_location_display: string;
   moved_by_name: string;
   movement_timestamp: string;
