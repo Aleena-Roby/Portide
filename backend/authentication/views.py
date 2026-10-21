@@ -144,7 +144,9 @@ from authentication.email_service import (
     send_customs_cleared_notification,
     send_customs_hold_notification,
     send_container_released_notification,
-    send_gate_pass_driver_email
+    send_gate_pass_driver_email,
+    send_customs_document_review_notification,
+    send_customs_document_resubmitted_notification
 )
 from authentication.qr_service import generate_verification_payload, generate_qr_svg
 from authentication.permissions import (
@@ -5690,6 +5692,16 @@ class CustomsDocumentReviewAPIView(APIView):
                 status='SUCCESS',
                 request=request
             )
+            # Trigger asynchronous email notification to the shipping line & submitting agent
+            try:
+                send_customs_document_review_notification(
+                    document=doc,
+                    review_status=review_status,
+                    remarks=remarks,
+                    officer_name=officer_name
+                )
+            except Exception as mail_err:
+                logger.error(f"Failed to queue customs document review email: {mail_err}", exc_info=True)
 
             return Response(
                 {
@@ -6130,6 +6142,16 @@ class CustomsDocumentReplaceAPIView(APIView):
                 status='SUCCESS',
                 request=request
             )
+            # Trigger confirmation email for the corrected replacement document
+            try:
+                send_customs_document_resubmitted_notification(
+                    new_document=new_doc,
+                    old_document=old_doc,
+                    reason=reason,
+                    carrier_name=actor_name
+                )
+            except Exception as mail_err:
+                logger.error(f"Failed to queue replacement document confirmation email: {mail_err}", exc_info=True)
 
             return Response(
                 {

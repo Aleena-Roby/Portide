@@ -850,4 +850,248 @@ Maritime Port Operations Intelligence Platform
         return False, err_msg
 
 
+def send_customs_document_review_notification(document, review_status: str, remarks: str = None, officer_name: str = None) -> bool:
+    """
+    Sends notification email when a Customs Officer reviews a supporting document.
+    - If REJECTED: alerts the shipping company and document uploader with specific remarks and resubmission link.
+    - If VERIFIED: sends an approval confirmation email.
+    """
+    try:
+        container = getattr(document, 'document_container_id', None)
+        if not container:
+            return False
+
+        shipping_company = container.shipping_company
+        recipients = set()
+
+        if shipping_company and getattr(shipping_company, 'shipping_company_email', None):
+            recipients.add(shipping_company.shipping_company_email)
+
+        uploader = getattr(document, 'document_uploaded_by', None)
+        if uploader:
+            if getattr(uploader, 'user_email', None):
+                recipients.add(uploader.user_email)
+            if getattr(uploader, 'login_id', None) and getattr(uploader.login_id, 'login_email', None):
+                recipients.add(uploader.login_id.login_email)
+
+        recipient_list = [r for r in recipients if r and '@' in r]
+        if not recipient_list:
+            logger.warning(f"No recipient email found for customs document #{document.document_id} review notification.")
+            return False
+
+        company_name = shipping_company.shipping_company_name if shipping_company else "Valued Shipping Partner"
+        officer = officer_name or "Customs Authority Officer"
+        doc_name = getattr(document, 'document_name', None) or getattr(document, 'original_filename', None) or f"Document #{document.document_id}"
+        doc_type_display = document.get_document_type_display() if hasattr(document, 'get_document_type_display') else str(document.document_type)
+        vessel_name = container.vessel.vessel_name if container.vessel else 'Scheduled Port Call'
+
+        if review_status == 'REJECTED':
+            subject = f"PORTIDE ACTION REQUIRED: Customs Document Rejected - Container {container.container_number}"
+            plain_message = f"""Dear {company_name},
+
+A customs supporting document submitted for Container {container.container_number} has been REJECTED by Customs Control. Corrective action is required before cargo inspection and clearance can proceed.
+
+Container & Document Details:
+- Container Number: {container.container_number}
+- Cargo Description: {container.cargo.cargo_description if container.cargo else 'Containerized Cargo'}
+- Vessel: {vessel_name}
+- Document Name: {doc_name} (Version {document.document_version})
+- Document Type: {doc_type_display}
+- Review Decision: REJECTED / CORRECTION REQUIRED
+- Customs Officer: {officer}
+- Rejection Remarks / Reason:
+  "{remarks or 'Document does not satisfy customs regulatory criteria or exhibits discrepancy.'}"
+
+Required Corrective Action:
+Please log in to your PORTIDE Shipping Portal, locate Container #{container.container_number}, open the customs document section, and upload a corrected replacement document. Submitting a replacement will create a new version (v{document.document_version + 1}) and resubmit it for customs review.
+
+Access Portal: https://portide.vercel.app
+
+Regards,
+PORTIDE Customs & Border Clearance Division
+Maritime Port Operations Intelligence Platform
+"""
+            html_message = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #be123c, #9f1239); padding: 24px; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.025em;">PORTIDE CUSTOMS ALERT</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Action Required: Supporting Document Rejected</p>
+    </div>
+    
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="font-size: 14px; margin-top: 0;">Dear <strong>{company_name}</strong>,</p>
+      
+      <p style="font-size: 13px; color: #475569; line-height: 1.6;">
+        A customs supporting document submitted for container <strong>#{container.container_number}</strong> has been 
+        <span style="color: #be123c; font-weight: bold; background: #ffe4e6; padding: 2px 8px; border-radius: 4px;">REJECTED</span> 
+        by Port Customs Control. Corrective action is required before cargo inspection can proceed.
+      </p>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 16px 0; font-size: 13px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Container:</td>
+            <td style="padding: 6px 0; font-weight: 700; font-family: monospace; color: #0f172a;">{container.container_number}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Document:</td>
+            <td style="padding: 6px 0; font-weight: 700; color: #0f172a;">{doc_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px;">v{document.document_version}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Document Type:</td>
+            <td style="padding: 6px 0; color: #0f172a;">{doc_type_display}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Customs Officer:</td>
+            <td style="padding: 6px 0; color: #0f172a;">{officer}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 16px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          Rejection Remarks & Reason:
+        </div>
+        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
+          "{remarks or 'Document does not satisfy customs regulatory criteria or exhibits discrepancy.'}"
+        </div>
+      </div>
+
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          Required Carrier Action:
+        </div>
+        <p style="font-size: 12px; color: #14532d; margin: 0; line-height: 1.5;">
+          Log in to your PORTIDE portal, review the officer's remarks above, and click <strong>"Resubmit Correction"</strong> to upload the corrected replacement document.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 12px 0;">
+        <a href="https://portide.vercel.app" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px;">
+          Open Portal & Resubmit Document &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE Customs & Border Clearance Division • Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>
+"""
+        else:  # VERIFIED
+            subject = f"PORTIDE Notice: Customs Document Verified - Container {container.container_number}"
+            plain_message = f"""Dear {company_name},
+
+The customs supporting document "{doc_name}" ({doc_type_display}) for Container {container.container_number} has been VERIFIED and approved by Customs Officer {officer}.
+
+Review Remarks: {remarks or 'Verified and compliant with customs regulations.'}
+
+Regards,
+PORTIDE Customs & Border Clearance Division
+"""
+            html_message = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #059669, #047857); padding: 24px; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 800;">PORTIDE CUSTOMS NOTIFICATION</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Document Verification Approved</p>
+    </div>
+    <div style="padding: 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
+      <p>Dear <strong>{company_name}</strong>,</p>
+      <p>The following supporting document for container <strong>#{container.container_number}</strong> has been <strong style="color: #059669;">VERIFIED</strong> by Customs Officer <strong>{officer}</strong>:</p>
+      <ul>
+        <li><strong>Document:</strong> {doc_name} (v{document.document_version})</li>
+        <li><strong>Category:</strong> {doc_type_display}</li>
+        <li><strong>Customs Remarks:</strong> {remarks or 'Verified and compliant.'}</li>
+      </ul>
+      <p>Thank you for your cooperation in maintaining swift port compliance.</p>
+    </div>
+    <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE Customs & Border Clearance Division • Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+        _send_mail_async(
+            subject=subject,
+            message=plain_message,
+            from_email=get_from_email(),
+            recipient_list=recipient_list,
+            html_message=html_message
+        )
+        logger.info(f"Queued customs document review notification ({review_status}) for doc #{document.document_id} to {recipient_list}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue customs document review notification: {str(e)}", exc_info=True)
+        return False
+
+
+def send_customs_document_resubmitted_notification(new_document, old_document, reason: str = None, carrier_name: str = None) -> bool:
+    """
+    Sends confirmation notification when a shipping carrier uploads a replacement / corrected document.
+    """
+    try:
+        container = getattr(new_document, 'document_container_id', None)
+        if not container:
+            return False
+
+        shipping_company = container.shipping_company
+        recipients = set()
+
+        if shipping_company and getattr(shipping_company, 'shipping_company_email', None):
+            recipients.add(shipping_company.shipping_company_email)
+
+        uploader = getattr(new_document, 'document_uploaded_by', None)
+        if uploader:
+            if getattr(uploader, 'user_email', None):
+                recipients.add(uploader.user_email)
+            if getattr(uploader, 'login_id', None) and getattr(uploader.login_id, 'login_email', None):
+                recipients.add(uploader.login_id.login_email)
+
+        recipient_list = [r for r in recipients if r and '@' in r]
+        if not recipient_list:
+            return False
+
+        company_name = shipping_company.shipping_company_name if shipping_company else "Valued Shipping Partner"
+        doc_name = getattr(new_document, 'document_name', None) or f"Document #{new_document.document_id}"
+        doc_type_display = new_document.get_document_type_display() if hasattr(new_document, 'get_document_type_display') else str(new_document.document_type)
+
+        subject = f"PORTIDE Confirmation: Corrected Document Submitted - Container {container.container_number}"
+        plain_message = f"""Dear {company_name},
+
+Your corrected customs supporting document has been successfully received and submitted for Customs Officer review.
+
+Details:
+- Container: {container.container_number}
+- Replacement File: {doc_name} (Version {new_document.document_version})
+- Superseded File: {old_document.document_name} (Version {old_document.document_version})
+- Document Type: {doc_type_display}
+- Reason / Amendment: {reason or 'Resubmission per customs request'}
+- Review Status: PENDING REVIEW
+
+Port Customs Control has been alerted to review the new file.
+
+Regards,
+PORTIDE Customs & Border Clearance Division
+"""
+        _send_mail_async(
+            subject=subject,
+            message=plain_message,
+            from_email=get_from_email(),
+            recipient_list=recipient_list,
+        )
+        logger.info(f"Queued customs document resubmitted confirmation for doc #{new_document.document_id} to {recipient_list}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue customs document resubmission email: {str(e)}", exc_info=True)
+        return False
+
+
 
