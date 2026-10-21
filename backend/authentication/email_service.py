@@ -1,4 +1,8 @@
 import logging
+import os
+import json
+import urllib.request
+import urllib.error
 from email.mime.image import MIMEImage
 from django.core.mail import EmailMultiAlternatives, send_mail as django_send_mail
 from django.conf import settings
@@ -6,6 +10,75 @@ from authentication.models import User
 from authentication.qr_service import generate_qr_png_bytes
 
 logger = logging.getLogger(__name__)
+
+
+def _send_via_resend(subject, message, from_email, recipient_list, html_message=None):
+    resend_key = os.getenv('RESEND_API_KEY')
+    if not resend_key:
+        return False
+    
+    sender = os.getenv('RESEND_FROM_EMAIL') or 'PORTIDE <onboarding@resend.dev>'
+    payload = {
+        "from": sender,
+        "to": recipient_list,
+        "subject": subject,
+        "text": message,
+    }
+    if html_message:
+        payload["html"] = html_message
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {resend_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "PORTIDE/1.0"
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            logger.info(f"Resend HTTP delivery successful: {data.get('id')} to {recipient_list}")
+            return True
+    except Exception as e:
+        logger.error(f"Resend HTTP delivery failed: {e}", exc_info=True)
+        return False
+
+
+def _send_via_brevo(subject, message, from_email, recipient_list, html_message=None):
+    brevo_key = os.getenv('BREVO_API_KEY')
+    if not brevo_key:
+        return False
+    
+    sender_email = os.getenv('DEFAULT_FROM_EMAIL') or from_email or 'portide.system@gmail.com'
+    payload = {
+        "sender": {"name": "PORTIDE Administration", "email": sender_email},
+        "to": [{"email": r} for r in recipient_list],
+        "subject": subject,
+        "textContent": message,
+    }
+    if html_message:
+        payload["htmlContent"] = html_message
+
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "api-key": brevo_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            logger.info(f"Brevo HTTP delivery successful to {recipient_list}")
+            return True
+    except Exception as e:
+        logger.error(f"Brevo HTTP delivery failed: {e}", exc_info=True)
+        return False
 
 
 def send_mail(
@@ -21,10 +94,23 @@ def send_mail(
     inline_images=None,
 ):
     """
-    Enhanced send_mail supporting inline CID images (e.g. for QR codes)
-    using EmailMultiAlternatives when inline_images are provided,
-    while retaining 100% compatibility with standard Django send_mail.
+    Enhanced send_mail:
+    1. First checks for HTTPS REST API (Resend or Brevo) over Port 443 (never blocked on cloud hosts like Render).
+    2. Falls back to Django standard SMTP for local development or unblocked networks.
     """
+    # 1. Try Resend HTTPS API if configured
+    if os.getenv('RESEND_API_KEY'):
+        success = _send_via_resend(subject, message, from_email, recipient_list, html_message)
+        if success:
+            return 1
+
+    # 2. Try Brevo HTTPS API if configured
+    if os.getenv('BREVO_API_KEY'):
+        success = _send_via_brevo(subject, message, from_email, recipient_list, html_message)
+        if success:
+            return 1
+
+    # 3. Standard SMTP / EmailMultiAlternatives
     if inline_images:
         try:
             msg = EmailMultiAlternatives(
