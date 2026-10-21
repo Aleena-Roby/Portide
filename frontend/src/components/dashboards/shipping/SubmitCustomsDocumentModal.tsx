@@ -65,7 +65,9 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
   container,
   onDocumentUploaded
 }) => {
-  const { addToast } = useApp();
+  const { currentUser, activeRole, addToast } = useApp();
+  const isCustomsOfficer = activeRole === 'customs_officer' || currentUser?.role === 'customs_officer';
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replaceFileInputRef = useRef<HTMLInputElement | null>(null);
   const rowReplaceInputRef = useRef<HTMLInputElement | null>(null);
@@ -93,6 +95,13 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
   const [replacementNotes, setReplacementNotes] = useState<string>('');
   const [replacementError, setReplacementError] = useState<string>('');
   const [replacing, setReplacing] = useState<boolean>(false);
+
+  // Customs Officer Review / Verification / Rejection Decision State
+  const [reviewingDoc, setReviewingDoc] = useState<CustomsDocumentItem | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<'VERIFIED' | 'REJECTED'>('VERIFIED');
+  const [reviewRemarks, setReviewRemarks] = useState<string>('');
+  const [reviewing, setReviewing] = useState<boolean>(false);
+  const [reviewError, setReviewError] = useState<string>('');
 
   // Infer best-guess category from filename, returning empty string if unmatched
   const inferDocumentType = (fileName: string): CustomsDocumentType | '' => {
@@ -345,9 +354,65 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
     setDocumentToReplace(doc);
     setReplacementFile(null);
     setReplacementDocType(doc.document_type || 'BILL_OF_LADING');
-    setReplacementReason('');
+    const isRej = doc.review_status === 'REJECTED' || doc.document_review_status === 'REJECTED';
+    setReplacementReason(
+      isRej
+        ? (doc.review_remarks ? `Correction for customs rejection: ${doc.review_remarks}` : 'Resubmitting corrected document per customs request')
+        : ''
+    );
     setReplacementNotes(doc.notes || '');
     setReplacementError('');
+  };
+
+  // Open Customs Officer Document Review Modal
+  const openReviewModal = (doc: CustomsDocumentItem, initialDecision: 'VERIFIED' | 'REJECTED') => {
+    setReviewingDoc(doc);
+    setReviewDecision(initialDecision);
+    setReviewRemarks(initialDecision === 'REJECTED' ? (doc.review_remarks || doc.document_review_remarks || '') : '');
+    setReviewError('');
+  };
+
+  // Execute Customs Officer Review / Rejection Decision
+  const handleConfirmReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingDoc || !container) return;
+
+    if (reviewDecision === 'REJECTED' && !reviewRemarks.trim()) {
+      setReviewError('Please specify the rejection remarks/reason so the shipping carrier knows what to correct.');
+      return;
+    }
+
+    setReviewing(true);
+    setReviewError('');
+
+    try {
+      const res = await apiFetch(`/api/customs/documents/${reviewingDoc.document_id}/review/`, {
+        method: 'POST',
+        body: JSON.stringify({
+          review_status: reviewDecision,
+          remarks: reviewRemarks.trim()
+        })
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.status === 'success') {
+        addToast(
+          `Document "${reviewingDoc.original_filename || reviewingDoc.document_name}" marked as ${reviewDecision === 'VERIFIED' ? 'Verified' : 'Rejected'}.`,
+          reviewDecision === 'VERIFIED' ? 'success' : 'error'
+        );
+        setReviewingDoc(null);
+        await fetchExistingDocuments();
+        if (onDocumentUploaded) {
+          onDocumentUploaded();
+        }
+      } else {
+        setReviewError(json.message || 'Failed to submit document review decision.');
+      }
+    } catch {
+      setReviewError('Network communication error while submitting review decision.');
+    } finally {
+      setReviewing(false);
+    }
   };
 
   // Execute Document Replacement / Amendment
@@ -462,9 +527,17 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title="Submit Customs Supporting Documents"
-        subtitle={`Container #${container.container_number} • Post-Arrival Customs Procedure`}
-        icon={<UploadCloud className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
+        title={isCustomsOfficer ? "Customs Document Audit & Verification" : "Submit Customs Supporting Documents"}
+        subtitle={
+          isCustomsOfficer
+            ? `Container #${container.container_number} • Review supporting trade dossiers & verify compliance`
+            : `Container #${container.container_number} • Post-Arrival Customs Procedure`
+        }
+        icon={
+          isCustomsOfficer
+            ? <ShieldCheck className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            : <UploadCloud className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+        }
         maxWidth="4xl"
       >
         <div className="space-y-6">
@@ -547,9 +620,21 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
                 <span>Loading uploaded documents...</span>
               </div>
             ) : existingDocuments.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
-                No customs supporting documents have been submitted for this container yet. Upload multiple supporting files below.
-              </div>
+              isCustomsOfficer ? (
+                <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
+                  <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                    No Supporting Documents Submitted by Shipping Carrier
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 max-w-md mx-auto">
+                    The shipping line or agent has not submitted supporting trade documents (Bill of Lading, Invoice, Packing List) for container <strong>#{container.container_number}</strong> yet. Documents must be submitted by the carrier before customs inspection decisions can proceed.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700 text-center text-xs text-slate-400">
+                  No customs supporting documents have been submitted for this container yet. Upload multiple supporting files below.
+                </div>
+              )
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                 {existingDocuments.map((doc) => {
@@ -617,9 +702,36 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
                             </div>
                           )}
 
-                          {doc.review_remarks && (
-                            <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                              Review Remarks: {doc.review_remarks}
+                          {doc.review_remarks && !isRejected && (
+                            <div className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                              Customs Remarks: {doc.review_remarks}
+                            </div>
+                          )}
+
+                          {isRejected && (
+                            <div className="mt-2 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-start gap-2">
+                                <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-bold">Customs Rejection: </span>
+                                  <span>{doc.review_remarks || 'Document does not satisfy customs regulatory requirements.'}</span>
+                                  {!isCustomsOfficer && (
+                                    <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                                      Action required: Upload a corrected replacement document.
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {!isCustomsOfficer && !isSuperseded && (
+                                <button
+                                  type="button"
+                                  onClick={() => openReplaceModal(doc)}
+                                  className="px-2.5 py-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] whitespace-nowrap cursor-pointer inline-flex items-center gap-1 shadow-xs shrink-0 self-start sm:self-auto"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>Resubmit Correction</span>
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -669,33 +781,70 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
                           )}
                         </button>
 
-                        {/* Replace / Amend */}
-                        {!isSuperseded && (
-                          <button
-                            type="button"
-                            onClick={() => openReplaceModal(doc)}
-                            className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer"
-                            title={isVerified ? "Submit Official Amendment / Correction" : "Replace with Corrected File"}
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        {/* Customs Officer Review Decisions */}
+                        {isCustomsOfficer ? (
+                          !isSuperseded && (
+                            <div className="flex items-center gap-1 ml-1 border-l border-slate-200 dark:border-slate-700 pl-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(doc, 'VERIFIED')}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                  isVerified
+                                    ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/30'
+                                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                                }`}
+                                title="Approve / Verify Document Compliance"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                <span>{isVerified ? 'Verified' : 'Verify'}</span>
+                              </button>
 
-                        {/* Delete */}
-                        {!isSuperseded && (
-                          <button
-                            type="button"
-                            onClick={() => setDocumentToDelete(doc)}
-                            disabled={!canDelete}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              canDelete
-                                ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 cursor-pointer'
-                                : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-50'
-                            }`}
-                            title={canDelete ? "Delete this unreviewed document" : "Verified or cleared documents cannot be deleted"}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(doc, 'REJECTED')}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                  isRejected
+                                    ? 'bg-rose-600 text-white ring-2 ring-rose-500/30'
+                                    : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                                }`}
+                                title="Reject Document & Require Re-upload"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                <span>{isRejected ? 'Rejected' : 'Reject'}</span>
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <>
+                            {/* Replace / Amend */}
+                            {!isSuperseded && (
+                              <button
+                                type="button"
+                                onClick={() => openReplaceModal(doc)}
+                                className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer"
+                                title={isVerified ? "Submit Official Amendment / Correction" : isRejected ? "Resubmit Corrected Document" : "Replace with Corrected File"}
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* Delete */}
+                            {!isSuperseded && (
+                              <button
+                                type="button"
+                                onClick={() => setDocumentToDelete(doc)}
+                                disabled={!canDelete}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  canDelete
+                                    ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 cursor-pointer'
+                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-50'
+                                }`}
+                                title={canDelete ? "Delete this unreviewed document" : "Verified or cleared documents cannot be deleted"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -705,222 +854,240 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
             )}
           </div>
 
-          {/* Upload New Documents Form */}
-          <form onSubmit={handleSubmitAll} className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <UploadCloud className="w-3.5 h-3.5 text-teal-600" />
-                <span>Upload Multiple Supporting Documents</span>
-              </h4>
-              <span className="text-[11px] text-slate-400">
-                Assign an individual document type to each attachment
-              </span>
-            </div>
-
-            {errorMessage && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
+          {/* Upload New Documents Form - ONLY SHOWN TO SHIPPING LINES / AGENTS */}
+          {isCustomsOfficer ? (
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                <span>
+                  <strong>Customs Authority Control:</strong> Document review decisions update compliance status and are recorded in the immutable audit log.
+                </span>
               </div>
-            )}
-
-            {/* Drag & Drop File Zone */}
-            <div
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`p-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
-                dragActive
-                  ? 'border-teal-500 bg-teal-500/10'
-                  : 'border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 hover:border-teal-500/60 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff,.tif,.doc,.docx"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleFilesAdded(e.target.files);
-                  }
-                }}
-                className="hidden"
-              />
-              <UploadCloud className="w-8 h-8 text-teal-600 dark:text-teal-400 mx-auto mb-2" />
-              <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Click to browse multiple files or drag & drop them here
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                Supported formats: PDF, PNG, JPG, JPEG, WEBP, TIFF, DOC, DOCX • Max 15MB per file
-              </div>
-            </div>
-
-            {/* Multiple Files Attachment Table */}
-            {uploadQueue.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                    Attachment List ({uploadQueue.length} file{uploadQueue.length > 1 ? 's' : ''} staged)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add More Files</span>
-                  </button>
-                </div>
-
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                      <tr>
-                        <th className="py-2.5 px-3">File Name</th>
-                        <th className="py-2.5 px-3">Document Category / Type *</th>
-                        <th className="py-2.5 px-3">Size</th>
-                        <th className="py-2.5 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {uploadQueue.map((item) => (
-                        <tr 
-                          key={item.id}
-                          className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${
-                            item.error ? 'bg-rose-50/50 dark:bg-rose-950/20' : ''
-                          }`}
-                        >
-                          <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-teal-600 shrink-0" />
-                              <div className="min-w-0">
-                                <div className="font-bold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-sm">
-                                  {item.file.name}
-                                </div>
-                                {item.error && (
-                                  <div className="text-[10px] text-rose-600 font-semibold mt-0.5 flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3 shrink-0" />
-                                    <span>{item.error}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            <div className="space-y-1">
-                              <select
-                                id={`doc-type-select-${item.id}`}
-                                value={item.documentType}
-                                onChange={(e) => handleUpdateItemDocType(item.id, e.target.value as (CustomsDocumentType | ''))}
-                                className={`w-full sm:w-64 px-2.5 py-1.5 rounded-lg font-semibold text-xs transition-colors focus:outline-none ${
-                                  !item.documentType
-                                    ? 'bg-rose-50 border-2 border-rose-400 text-rose-800 dark:bg-rose-950/30 dark:border-rose-500 dark:text-rose-200 focus:border-rose-500'
-                                    : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-teal-500'
-                                }`}
-                              >
-                                <option value="">-- Select Document Type (Required) * --</option>
-                                {DOCUMENT_TYPES.map((dt) => (
-                                  <option key={dt.value} value={dt.value}>
-                                    {dt.label}
-                                  </option>
-                                ))}
-                              </select>
-                              {!item.documentType && (
-                                <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3 shrink-0" />
-                                  <span>Document category required *</span>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            {formatFileSize(item.file.size)}
-                          </td>
-
-                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleInitiateRowReplace(item.id)}
-                                className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-[11px] font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
-                                title="Replace this file with another"
-                              >
-                                Replace
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveQueueItem(item.id)}
-                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors cursor-pointer"
-                                title="Remove file from upload list"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Optional Common Notes */}
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                Submission Notes / Remarks (Optional)
-              </label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Complete commercial dossier certified for customs examination"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
-              />
-            </div>
-
-            {/* Regulatory Notice */}
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                <strong>Customs Officer Verification:</strong> Submitting documents associates them with container <strong>#{container.container_number}</strong> and alerts Customs Control. Document submission alone <em>does not</em> grant automatic clearance; official clearance requires inspection decision.
-              </span>
-            </div>
-
-            {/* Submit Actions */}
-            <div className="pt-2 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                disabled={submitting}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0 self-end sm:self-auto"
               >
-                Close
-              </button>
-              <button
-                type="submit"
-                disabled={submitting || uploadQueue.length === 0 || uploadQueue.some(item => !item.documentType || !!item.error)}
-                className="px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white bg-[#064e43] hover:bg-[#053d34] disabled:opacity-50 transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
-              >
-                {submitting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Submitting {uploadQueue.length} Document{uploadQueue.length === 1 ? '' : 's'}...</span>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Submit {uploadQueue.length} Document{uploadQueue.length === 1 ? '' : 's'}</span>
-                  </>
-                )}
+                Close Audit View
               </button>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmitAll} className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <UploadCloud className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Upload Multiple Supporting Documents</span>
+                </h4>
+                <span className="text-[11px] text-slate-400">
+                  Assign an individual document type to each attachment
+                </span>
+              </div>
+
+              {errorMessage && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Drag & Drop File Zone */}
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
+                  dragActive
+                    ? 'border-teal-500 bg-teal-500/10'
+                    : 'border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 hover:border-teal-500/60 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff,.tif,.doc,.docx"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      handleFilesAdded(e.target.files);
+                    }
+                  }}
+                  className="hidden"
+                />
+                <UploadCloud className="w-8 h-8 text-teal-600 dark:text-teal-400 mx-auto mb-2" />
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Click to browse multiple files or drag & drop them here
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Supported formats: PDF, PNG, JPG, JPEG, WEBP, TIFF, DOC, DOCX • Max 15MB per file
+                </div>
+              </div>
+
+              {/* Multiple Files Attachment Table */}
+              {uploadQueue.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                      Attachment List ({uploadQueue.length} file{uploadQueue.length > 1 ? 's' : ''} staged)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add More Files</span>
+                    </button>
+                  </div>
+
+                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                          <th className="py-2.5 px-3">File Name</th>
+                          <th className="py-2.5 px-3">Document Category / Type *</th>
+                          <th className="py-2.5 px-3">Size</th>
+                          <th className="py-2.5 px-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {uploadQueue.map((item) => (
+                          <tr 
+                            key={item.id}
+                            className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${
+                              item.error ? 'bg-rose-50/50 dark:bg-rose-950/20' : ''
+                            }`}
+                          >
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-teal-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-sm">
+                                    {item.file.name}
+                                  </div>
+                                  {item.error && (
+                                    <div className="text-[10px] text-rose-600 font-semibold mt-0.5 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3 shrink-0" />
+                                      <span>{item.error}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-2.5 px-3">
+                              <div className="space-y-1">
+                                <select
+                                  id={`doc-type-select-${item.id}`}
+                                  value={item.documentType}
+                                  onChange={(e) => handleUpdateItemDocType(item.id, e.target.value as (CustomsDocumentType | ''))}
+                                  className={`w-full sm:w-64 px-2.5 py-1.5 rounded-lg font-semibold text-xs transition-colors focus:outline-none ${
+                                    !item.documentType
+                                      ? 'bg-rose-50 border-2 border-rose-400 text-rose-800 dark:bg-rose-950/30 dark:border-rose-500 dark:text-rose-200 focus:border-rose-500'
+                                      : 'bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:border-teal-500'
+                                  }`}
+                                >
+                                  <option value="">-- Select Document Type (Required) * --</option>
+                                  {DOCUMENT_TYPES.map((dt) => (
+                                    <option key={dt.value} value={dt.value}>
+                                      {dt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                {!item.documentType && (
+                                  <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3 shrink-0" />
+                                    <span>Document category required *</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {formatFileSize(item.file.size)}
+                            </td>
+
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleInitiateRowReplace(item.id)}
+                                  className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-[11px] font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                                  title="Replace this file with another"
+                                >
+                                  Replace
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveQueueItem(item.id)}
+                                  className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors cursor-pointer"
+                                  title="Remove file from upload list"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Optional Common Notes */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Submission Notes / Remarks (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Complete commercial dossier certified for customs examination"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Regulatory Notice */}
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[11px] flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Customs Officer Verification:</strong> Submitting documents associates them with container <strong>#{container.container_number}</strong> and alerts Customs Control. Document submission alone <em>does not</em> grant automatic clearance; official clearance requires inspection decision.
+                </span>
+              </div>
+
+              {/* Submit Actions */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || uploadQueue.length === 0 || uploadQueue.some(item => !item.documentType || !!item.error)}
+                  className="px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white bg-[#064e43] hover:bg-[#053d34] disabled:opacity-50 transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+                >
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Submitting {uploadQueue.length} Document{uploadQueue.length === 1 ? '' : 's'}...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Submit {uploadQueue.length} Document{uploadQueue.length === 1 ? '' : 's'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </Modal>
 
@@ -986,7 +1153,13 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
       <Modal
         isOpen={!!documentToReplace}
         onClose={() => setDocumentToReplace(null)}
-        title={documentToReplace?.review_status === 'VERIFIED' ? "Official Document Amendment" : "Replace Customs Document"}
+        title={
+          documentToReplace?.review_status === 'REJECTED' || documentToReplace?.document_review_status === 'REJECTED'
+            ? "Resubmit Corrected Document"
+            : documentToReplace?.review_status === 'VERIFIED'
+            ? "Official Document Amendment"
+            : "Replace Customs Document"
+        }
         subtitle={`Container #${container.container_number} • Target: ${documentToReplace?.original_filename || documentToReplace?.document_name}`}
         icon={<Edit3 className="w-5 h-5 text-indigo-600" />}
         maxWidth="lg"
@@ -1001,7 +1174,7 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
             )}
 
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
-              <div className="font-semibold text-slate-500">Current Active Document:</div>
+              <div className="font-semibold text-slate-500">Current Target Document:</div>
               <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>{documentToReplace.original_filename || documentToReplace.document_name}</span>
                 <span className="px-1.5 py-0.2 rounded text-[9px] bg-slate-200 dark:bg-slate-700">v{documentToReplace.version || 1}</span>
@@ -1009,6 +1182,11 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
               <div className="text-[11px] text-slate-500">
                 Status: {documentToReplace.review_status_display || documentToReplace.review_status} • {documentToReplace.document_type_display}
               </div>
+              {documentToReplace.review_remarks && (
+                <div className="text-[11px] text-rose-600 font-semibold mt-1">
+                  Rejection Reason: {documentToReplace.review_remarks}
+                </div>
+              )}
             </div>
 
             {/* Document Type Selector */}
@@ -1094,6 +1272,143 @@ export const SubmitCustomsDocumentModal: React.FC<SubmitCustomsDocumentModalProp
                   <>
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Submit Replacement (v{(documentToReplace.version || 1) + 1})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* CUSTOMS OFFICER DOCUMENT REVIEW / DECISION MODAL */}
+      <Modal
+        isOpen={!!reviewingDoc}
+        onClose={() => setReviewingDoc(null)}
+        title={reviewDecision === 'VERIFIED' ? "Verify Customs Document" : "Reject Customs Document"}
+        subtitle={`Container #${container.container_number} • Target: ${reviewingDoc?.original_filename || reviewingDoc?.document_name}`}
+        icon={reviewDecision === 'VERIFIED' ? <CheckCircle className="w-5 h-5 text-emerald-600" /> : <XCircle className="w-5 h-5 text-rose-600" />}
+        maxWidth="md"
+      >
+        {reviewingDoc && (
+          <form onSubmit={handleConfirmReview} className="space-y-4">
+            {reviewError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{reviewError}</span>
+              </div>
+            )}
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+              <div className="font-semibold text-slate-500">Document Under Review:</div>
+              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>{reviewingDoc.original_filename || reviewingDoc.document_name}</span>
+                <span className="px-1.5 py-0.2 rounded text-[9px] bg-slate-200 dark:bg-slate-700">v{reviewingDoc.version || 1}</span>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Category: <strong>{reviewingDoc.document_type_display || reviewingDoc.document_type}</strong>
+              </div>
+            </div>
+
+            {/* Decision Toggle */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                Review Decision *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewDecision('VERIFIED');
+                    setReviewError('');
+                  }}
+                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                    reviewDecision === 'VERIFIED'
+                      ? 'bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/20'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>Verify / Approve</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewDecision('REJECTED');
+                    setReviewError('');
+                  }}
+                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                    reviewDecision === 'REJECTED'
+                      ? 'bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300 ring-2 ring-rose-500/20'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50'
+                  }`}
+                >
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                  <span>Reject / Issue Found</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Review Remarks */}
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                {reviewDecision === 'REJECTED' ? 'Rejection Reason / Required Corrective Action *' : 'Verification Remarks (Optional)'}
+              </label>
+              <textarea
+                rows={3}
+                value={reviewRemarks}
+                onChange={(e) => setReviewRemarks(e.target.value)}
+                placeholder={
+                  reviewDecision === 'REJECTED'
+                    ? 'e.g. Discrepancy between declared weight and packing list. Please upload certified packing list.'
+                    : 'e.g. Certified copy verified against carrier manifest.'
+                }
+                className={`w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border text-xs text-slate-900 dark:text-white focus:outline-none ${
+                  reviewDecision === 'REJECTED' && !reviewRemarks.trim()
+                    ? 'border-rose-400 focus:border-rose-500'
+                    : 'border-slate-300 dark:border-slate-700 focus:border-teal-500'
+                }`}
+              />
+              {reviewDecision === 'REJECTED' && (
+                <span className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 block">
+                  This reason will be displayed to the shipping line, requiring them to upload a corrected replacement document.
+                </span>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setReviewingDoc(null)}
+                disabled={reviewing}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={reviewing || (reviewDecision === 'REJECTED' && !reviewRemarks.trim())}
+                className={`px-4 py-2 rounded-xl text-xs font-bold text-white cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-50 ${
+                  reviewDecision === 'VERIFIED'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                {reviewing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving Decision...</span>
+                  </>
+                ) : reviewDecision === 'VERIFIED' ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Confirm Verification</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Confirm Rejection</span>
                   </>
                 )}
               </button>

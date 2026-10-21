@@ -3,6 +3,7 @@ import { useApp } from '../../../context/AppContext';
 import { apiFetch } from '../../../services/api';
 import { BackendCargo, BackendContainer } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { SubmitCustomsDocumentModal } from '../shipping/SubmitCustomsDocumentModal';
 import {
   Boxes,
   ShieldCheck,
@@ -69,6 +70,7 @@ export const CustomsCargoManifestOversight: React.FC<CustomsCargoManifestOversig
   const [cargoContainers, setCargoContainers] = useState<BackendContainer[]>([]);
   const [loadingContainers, setLoadingContainers] = useState<boolean>(false);
   const [selectedContainerDetail, setSelectedContainerDetail] = useState<BackendContainer | null>(null);
+  const [reviewDocContainer, setReviewDocContainer] = useState<BackendContainer | null>(null);
 
   // Fetch all cargo manifests
   const fetchCargoManifests = useCallback(async () => {
@@ -756,18 +758,30 @@ export const CustomsCargoManifestOversight: React.FC<CustomsCargoManifestOversig
                               )}
                             </td>
                             <td className="p-3 text-right">
-                              {onNavigateToNormalReview && (
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => {
-                                    setSelectedCargo(null);
-                                    onNavigateToNormalReview(cont.container_number);
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  type="button"
+                                  onClick={() => setReviewDocContainer(cont)}
+                                  className="px-2.5 py-1 rounded-lg bg-teal-600/10 hover:bg-teal-600/20 text-teal-700 dark:text-teal-300 text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer border border-teal-500/30"
+                                  title="Review and Verify Customs Documents"
                                 >
-                                  <span>Inspect</span>
-                                  <ArrowRight className="w-3 h-3" />
+                                  <ShieldCheck className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                                  <span>Review Docs</span>
                                 </button>
-                              )}
+
+                                {onNavigateToNormalReview && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedCargo(null);
+                                      onNavigateToNormalReview(cont.container_number);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>Inspect</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -797,6 +811,18 @@ export const CustomsCargoManifestOversight: React.FC<CustomsCargoManifestOversig
           </div>
         </Modal>
       )}
+
+      {/* 6. REUSABLE CUSTOMS SUPPORTING DOCUMENT REVIEW MODAL */}
+      <SubmitCustomsDocumentModal
+        isOpen={!!reviewDocContainer}
+        onClose={() => setReviewDocContainer(null)}
+        container={reviewDocContainer}
+        onDocumentUploaded={() => {
+          if (selectedCargo) {
+            fetchContainersForCargo(selectedCargo);
+          }
+        }}
+      />
     </div>
   );
 };

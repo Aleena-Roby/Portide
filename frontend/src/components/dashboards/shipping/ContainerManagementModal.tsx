@@ -73,6 +73,14 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
     currentUser?.role === 'terminal_operator' || 
     currentUser?.role === 'terminal_logistics_operator';
 
+  const isCustomsOfficer = activeRole === 'customs_officer' || 
+    currentUser?.role === 'customs_officer';
+
+  const isShippingCompany = activeRole === 'shipping_company' || 
+    currentUser?.role === 'shipping_company';
+
+  const canAddContainers = isShippingCompany || (!isTerminalOperator && !isCustomsOfficer && currentUser?.role === 'port_administrator');
+
   const [containers, setContainers] = useState<BackendContainer[]>([]);
   const [summary, setSummary] = useState<ContainerSummaryStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -662,7 +670,7 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                     <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                   </button>
 
-                  {!isTerminalOperator && (
+                  {canAddContainers && (
                     <button
                       onClick={handleOpenAdd}
                       className="px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831c] transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
@@ -676,9 +684,9 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
               </div>
 
               {/* ============================================================= */}
-              {/* 5. ADD / EDIT CONTAINER FORM (EXPANDABLE) */}
+              {/* 5. ADD / EDIT CONTAINER FORM (EXPANDABLE - SHIPPING LINES ONLY) */}
               {/* ============================================================= */}
-              {showAddForm && (
+              {showAddForm && canAddContainers && (
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700 text-xs">
                     <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -886,15 +894,15 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
 
                               {container.customs_documents && container.customs_documents.length > 0 && (
                                 <div className="mt-1">
-                                  {container.customs_documents.every(d => d.review_status === 'VERIFIED') ? (
+                                  {container.customs_documents.every(d => d.review_status === 'VERIFIED' || d.document_review_status === 'VERIFIED') ? (
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
                                       <FileText className="w-2.5 h-2.5" />
                                       <span>Docs Verified</span>
                                     </span>
-                                  ) : container.customs_documents.some(d => d.review_status === 'REJECTED') ? (
+                                  ) : container.customs_documents.some(d => d.review_status === 'REJECTED' || d.document_review_status === 'REJECTED') ? (
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/10 text-rose-600 border border-rose-500/30">
                                       <FileText className="w-2.5 h-2.5" />
-                                      <span>Issue Found</span>
+                                      <span>Docs Rejected</span>
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/30">
@@ -1057,6 +1065,20 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                                       <span>Customs Hold</span>
                                     </span>
                                   )}
+                                </>
+                              ) : isCustomsOfficer ? (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCustomsDocContainer(container);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-teal-600/15 hover:bg-teal-600/25 text-teal-800 dark:text-teal-200 font-bold text-[11px] transition-colors cursor-pointer inline-flex items-center gap-1.5 border border-teal-600/30 shadow-xs"
+                                    title="Review Uploaded Customs Documents & Compliance Verification"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                                    <span>Review Docs</span>
+                                  </button>
                                 </>
                               ) : (
                                 <>
