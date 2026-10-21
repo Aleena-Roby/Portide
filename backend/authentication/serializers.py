@@ -3378,7 +3378,7 @@ class YardMovementHistorySerializer(serializers.ModelSerializer):
     crane_type = serializers.SerializerMethodField()
     crane_type_display = serializers.SerializerMethodField()
 
-    moved_by_id = serializers.IntegerField(source='yard_movement_moved_by_id.user_id', read_only=True)
+    moved_by_id = serializers.SerializerMethodField()
     moved_by_name = serializers.SerializerMethodField()
     movement_timestamp = serializers.DateTimeField(source='yard_movement_timestamp', read_only=True)
     remarks = serializers.CharField(source='yard_movement_remarks', read_only=True)
@@ -3463,6 +3463,11 @@ class YardMovementHistorySerializer(serializers.ModelSerializer):
             return obj.from_slot.yard_slot_block_id.yard_block_yard_id.yard_code
         return None
 
+    def get_from_yard_name(self, obj):
+        if obj.from_slot and obj.from_slot.yard_slot_block_id and obj.from_slot.yard_slot_block_id.yard_block_yard_id:
+            return obj.from_slot.yard_slot_block_id.yard_block_yard_id.yard_name
+        return None
+
     def get_to_slot_id(self, obj):
         return obj.to_slot.yard_slot_id if obj.to_slot else None
 
@@ -3516,6 +3521,9 @@ class YardMovementHistorySerializer(serializers.ModelSerializer):
 
     def get_crane_type_display(self, obj):
         return obj.crane.get_crane_type_display() if obj.crane else None
+
+    def get_moved_by_id(self, obj):
+        return obj.yard_movement_moved_by_id.user_id if obj.yard_movement_moved_by_id else None
 
     def get_moved_by_name(self, obj):
         if obj.yard_movement_moved_by_id:

@@ -11053,7 +11053,7 @@ class UnloadingHistoryAPIView(APIView):
         serializer = YardMovementHistorySerializer(movements, many=True)
         return Response({
             "status": "success",
-            "count": movements.count(),
+            "count": len(serializer.data),
             "data": serializer.data
         }, status=status.HTTP_200_OK)
 
