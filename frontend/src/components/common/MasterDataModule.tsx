@@ -281,17 +281,17 @@ export const MasterDataModule: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sky-600 dark:text-sky-400 font-bold">{eq.crane_code}</span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      eq.crane_status === 'OPERATIONAL' || eq.crane_status === 'AVAILABLE'
+                      eq.is_operational || eq.crane_status === 'AVAILABLE' || eq.crane_status === 'IN_USE'
                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
                         : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                     }`}>
-                      {eq.crane_status}
+                      {eq.crane_status_display || eq.crane_status}
                     </span>
                   </div>
                   <div className="font-extrabold text-slate-900 dark:text-white text-sm">{eq.crane_name}</div>
                   <div className="text-slate-500">{eq.crane_type || 'Quayside Gantry Crane'}</div>
                   <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-400">
-                    Max Safe Working Load: {eq.crane_max_capacity_tonnes || 65} Tonnes
+                    Max Safe Working Load: {eq.crane_max_lifting_capacity_mt || 65} Tonnes
                   </div>
                 </div>
               ))

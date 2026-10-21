@@ -10,7 +10,8 @@ import {
   getStoredSession, 
   setStoredSession, 
   clearStoredSession, 
-  registerSessionExpiredHandler 
+  registerSessionExpiredHandler,
+  StoredSession 
 } from '../services/api';
 
 export type CurrentView = 'landing' | 'login' | 'register' | 'forgot-password' | 'reset-password' | 'dashboard';
@@ -55,9 +56,20 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const initialSession = getStoredSession();
   const [currentView, setCurrentView] = useState<CurrentView>('landing');
-  const [activeRole, setActiveRole] = useState<UserRole>('port_administrator');
-  const [currentUser, setCurrentUser] = useState<PortUser>({
+  const [activeRole, setActiveRole] = useState<UserRole>(() => (initialSession?.role as UserRole) || 'port_administrator');
+  const [currentUser, setCurrentUser] = useState<PortUser>(() => initialSession ? {
+    id: initialSession.id,
+    name: initialSession.name,
+    email: initialSession.email,
+    phone: initialSession.phone || '',
+    role: initialSession.role as UserRole,
+    organisation: initialSession.organisation || 'PORTIDE Port Authority',
+    status: (initialSession.status as any) || 'active',
+    createdAt: new Date().toISOString().substring(0, 10),
+    mustChangePassword: !!initialSession.mustChangePassword
+  } : {
     id: '',
     name: '',
     email: '',
@@ -73,13 +85,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toasts, setToasts] = useState<ToastAlert[]>([]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
-  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!initialSession);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(() => !initialSession);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(() => !!initialSession?.mustChangePassword);
+
+  const restoreStoredSession = (session: StoredSession) => {
+    const isMustChange = !!session.mustChangePassword;
+    const portUser: PortUser = {
+      id: session.id,
+      name: session.name,
+      email: session.email,
+      role: session.role as UserRole,
+      organisation: session.organisation || 'PORTIDE Port Authority',
+      phone: session.phone || '',
+      status: 'active',
+      createdAt: new Date().toISOString().substring(0, 10),
+      mustChangePassword: isMustChange
+    };
+    setCurrentUser(portUser);
+    setActiveRole(session.role as UserRole);
+    setIsAuthenticated(true);
+    setMustChangePassword(isMustChange);
+  };
 
   // Check auth session on app mount
   const checkAuthSession = async () => {
-    setIsAuthLoading(true);
     const storedSession = getStoredSession();
     
     if (!storedSession) {
@@ -91,65 +121,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       const res = await apiFetch('/api/auth/me/');
-      const data = await res.json();
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && data.status === 'success' && data.data) {
+          const u = data.data;
+          const isMustChange = !!u.must_change_password;
+          const portUser: PortUser = {
+            id: String(u.login_id),
+            name: u.full_name,
+            email: u.email,
+            role: u.role as UserRole,
+            organisation: u.company_name || 'PORTIDE Port Authority',
+            phone: u.phone || '',
+            status: 'active',
+            createdAt: new Date().toISOString().substring(0, 10),
+            mustChangePassword: isMustChange
+          };
+          setCurrentUser(portUser);
+          setActiveRole(u.role as UserRole);
+          setIsAuthenticated(true);
+          setMustChangePassword(isMustChange);
+          setStoredSession({
+            id: portUser.id,
+            name: portUser.name,
+            email: portUser.email,
+            role: portUser.role,
+            organisation: portUser.organisation,
+            phone: portUser.phone,
+            status: portUser.status,
+            mustChangePassword: isMustChange
+          });
+          return;
+        }
+      }
       
-      if (res.ok && data.status === 'success') {
-        const u = data.data;
-        const isMustChange = !!u.must_change_password;
-        const portUser: PortUser = {
-          id: String(u.login_id),
-          name: u.full_name,
-          email: u.email,
-          role: u.role as UserRole,
-          organisation: u.company_name || 'PORTIDE Port Authority',
-          phone: u.phone || '',
-          status: 'active',
-          createdAt: new Date().toISOString().substring(0, 10),
-          mustChangePassword: isMustChange
-        };
-        setCurrentUser(portUser);
-        setActiveRole(u.role as UserRole);
-        setIsAuthenticated(true);
-        setMustChangePassword(isMustChange);
-        setStoredSession({
-          id: portUser.id,
-          name: portUser.name,
-          email: portUser.email,
-          role: portUser.role,
-          organisation: portUser.organisation,
-          phone: portUser.phone,
-          status: portUser.status,
-          mustChangePassword: isMustChange
-        });
-      } else {
+      // If server explicitly returned HTTP 401 Unauthorized, invalidate session
+      if (res.status === 401) {
         clearStoredSession();
         setIsAuthenticated(false);
         setMustChangePassword(false);
+        return;
       }
+
+      // For any non-401 responses (e.g. 502 Bad Gateway during Render spin up, 500, network error),
+      // keep the authenticated session active without logging the user out!
+      restoreStoredSession(storedSession);
     } catch {
       // Offline fallback: restore valid stored session if available
-      try {
-        const isMustChange = !!storedSession.mustChangePassword;
-        const portUser: PortUser = {
-          id: storedSession.id,
-          name: storedSession.name,
-          email: storedSession.email,
-          role: storedSession.role as UserRole,
-          organisation: storedSession.organisation || 'PORTIDE Port Authority',
-          phone: storedSession.phone || '',
-          status: 'active',
-          createdAt: new Date().toISOString().substring(0, 10),
-          mustChangePassword: isMustChange
-        };
-        setCurrentUser(portUser);
-        setActiveRole(storedSession.role as UserRole);
-        setIsAuthenticated(true);
-        setMustChangePassword(isMustChange);
-      } catch {
-        clearStoredSession();
-        setIsAuthenticated(false);
-        setMustChangePassword(false);
-      }
+      restoreStoredSession(storedSession);
     } finally {
       setIsAuthLoading(false);
     }

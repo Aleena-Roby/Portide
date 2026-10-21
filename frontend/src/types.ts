@@ -212,7 +212,7 @@ export interface CustomsInspectionData {
   customs_inspection_officer_email?: string;
   customs_inspection_status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'ON_HOLD';
   customs_inspection_status_display?: string;
-  customs_inspection_result?: 'PENDING' | 'CLEARED' | 'HOLD' | null;
+  customs_inspection_result?: 'PENDING' | 'CLEARED' | 'HOLD' | 'ADDITIONAL_INFORMATION_REQUIRED' | 'UNDER_INSPECTION' | null;
   customs_inspection_result_display?: string;
   customs_inspection_document_status: 'PENDING' | 'VERIFIED' | 'ISSUE_FOUND';
   customs_inspection_document_status_display?: string;
@@ -1368,6 +1368,7 @@ export interface PreArrivalCustomsDeclaration {
   reviewed_by_name?: string;
   declaration_review_remarks: string;
   declaration_hold_reason: string;
+  declaration_notes?: string;
   declaration_review_history?: any[];
   documents?: CustomsDocumentItem[];
   declaration_submitted_at: string;

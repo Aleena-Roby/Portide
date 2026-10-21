@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { apiFetch } from '../../services/api';
 import { BackendContainer, CustomsDocumentItem, CustomsInspectionData } from '../../types';
 import { Modal } from '../common/Modal';
-import { ReadOnlyCargoDirectory } from '../common/ReadOnlyCargoDirectory';
+import { CustomsCargoManifestOversight } from './customs/CustomsCargoManifestOversight';
 import {
   ShieldCheck,
   Clock,
@@ -645,10 +645,14 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
 
       {/* VIEW 1: CARGO MANIFEST OVERSIGHT */}
       {currentTab === 'cargo-management' && (
-        <ReadOnlyCargoDirectory
-          title="Customs Cargo Manifest Oversight"
-          subtitle="Pre-arrival cargo declarations and vessel consignment manifests (Read-Only Review)"
-          roleBadgeText="Customs Authority Cargo Review"
+        <CustomsCargoManifestOversight
+          onNavigateToNormalReview={(containerNum) => {
+            if (containerNum) {
+              setSearchQuery(containerNum);
+            }
+            handleTabChange('normal-review');
+          }}
+          onNavigateToPreArrival={() => handleTabChange('pre-arrival')}
         />
       )}
 

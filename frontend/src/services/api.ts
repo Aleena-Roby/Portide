@@ -20,13 +20,14 @@ export interface StoredSession {
 }
 
 /**
- * Tab-Isolated Session Storage:
- * Uses browser sessionStorage so that different tabs can maintain independent user sessions
- * (e.g. Tab 1 as Port Administrator, Tab 2 as Port Operations Officer) without cross-tab
- * account overriding on page refresh.
+ * Dual-Tier Tab-Isolated Session Storage:
+ * 1. Checks tab-isolated sessionStorage FIRST so each browser tab maintains its own active
+ *    role/account without cross-tab collisions when refreshed.
+ * 2. Falls back to localStorage if this is a newly opened tab or window, ensuring users
+ *    never get logged out unexpectedly when opening new tabs.
  */
 export const getStoredSession = (): StoredSession | null => {
-  // 1. Check tab-isolated sessionStorage
+  // 1. Check tab-isolated sessionStorage first
   try {
     const raw = sessionStorage.getItem('portide_user_session');
     if (raw) {
@@ -38,14 +39,15 @@ export const getStoredSession = (): StoredSession | null => {
     } catch {}
   }
 
-  // 2. Fallback / Migration: If an existing session exists in legacy localStorage,
-  // migrate it into this tab's sessionStorage and delete from localStorage so other tabs won't collide.
+  // 2. Persistent fallback: localStorage (for newly opened tabs or page restorations)
   try {
-    const legacy = localStorage.getItem('portide_user_session');
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      sessionStorage.setItem('portide_user_session', legacy);
-      localStorage.removeItem('portide_user_session');
+    const fallback = localStorage.getItem('portide_user_session');
+    if (fallback) {
+      const parsed = JSON.parse(fallback);
+      // Populate this tab's sessionStorage so subsequent refreshes strictly use this tab's state
+      try {
+        sessionStorage.setItem('portide_user_session', fallback);
+      } catch {}
       return parsed;
     }
   } catch {
@@ -58,23 +60,29 @@ export const getStoredSession = (): StoredSession | null => {
 };
 
 export const setStoredSession = (session: StoredSession): void => {
+  const jsonStr = JSON.stringify(session);
   try {
-    // Store strictly in this tab's sessionStorage to isolate each browser tab
-    sessionStorage.setItem('portide_user_session', JSON.stringify(session));
-    // Clean up any lingering localStorage to prevent any other tab from reading it
-    localStorage.removeItem('portide_user_session');
+    // Store in tab's isolated sessionStorage
+    sessionStorage.setItem('portide_user_session', jsonStr);
   } catch (err) {
-    console.error('Failed to store session in sessionStorage:', err);
+    console.error('Failed to write to sessionStorage:', err);
+  }
+
+  try {
+    // Also store in localStorage as persistent fallback
+    localStorage.setItem('portide_user_session', jsonStr);
+  } catch (err) {
+    console.error('Failed to write to localStorage:', err);
   }
 };
 
 export const clearStoredSession = (): void => {
   try {
     sessionStorage.removeItem('portide_user_session');
+  } catch {}
+  try {
     localStorage.removeItem('portide_user_session');
-  } catch (err) {
-    console.error('Failed to clear stored session:', err);
-  }
+  } catch {}
 };
 
 type SessionExpiredHandler = (message: string) => void;
