@@ -30,24 +30,31 @@ This guide details how PORTIDE is hosted in production across **Render** (Django
 
 ### Environment Variables on Render
 ```ini
-PYTHON_VERSION=3.13.0
-DJANGO_SECRET_KEY=your_production_secret_key
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=portide-api.onrender.com,127.0.0.1,localhost
-CORS_ALLOWED_ORIGINS=https://portide.vercel.app,http://localhost:5173,http://localhost:3000
+PYTHON_VERSION=3.11.9
+DEBUG=False
+SECRET_KEY=django-insecure-ilu2@_(%iijbz%j!g951u+h=j(l6gnedz^gv55#@fu!k+1qs)&
+FRONTEND_URL=https://portide.vercel.app
 
 # Supabase IPv4 Pooler Connection String (Crucial for Render IPv4 compatibility)
 DATABASE_URL=postgresql://postgres.somsgwatpldtmktkzofi:Aleena%40Roby@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require
 
-# SMTP Credentials for Email Notifications
+# Google Apps Script HTTPS Email Relay (Bypasses Render Free Tier Outbound Port 587 Block)
+GOOGLE_SCRIPT_EMAIL_URL=https://script.google.com/macros/s/AKfycbzIPSgHMj39fp7_2u5eAnZOMrJ1CN-um_PcoaX-odNSRyvEGNf3nIOkMlCrqRoyJyYN/exec
+
+# Fallback SMTP Credentials (Used during local development)
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USE_TLS=True
 EMAIL_HOST_USER=portide.system@gmail.com
-EMAIL_HOST_PASSWORD=your_gmail_app_password
+EMAIL_HOST_PASSWORD=eyrjphdwwpzxjldf
 DEFAULT_FROM_EMAIL=portide.system@gmail.com
 ```
+
+> [!IMPORTANT]
+> **Why Google Apps Script Relay is Used in Production**:
+> Render's free tier firewall blocks outbound network traffic on standard SMTP ports (`25`, `465`, `587`). To ensure email delivery without requiring paid third-party subscriptions, PORTIDE dispatches emails via an HTTPS POST request over port `443` to a lightweight Google Apps Script Web App. The script invokes native `MailApp.sendEmail()` directly within Google's cloud infrastructure, delivering emails seamlessly from `portide.system@gmail.com`.
+
 
 ---
 
