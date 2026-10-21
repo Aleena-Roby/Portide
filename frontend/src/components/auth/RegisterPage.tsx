@@ -30,7 +30,8 @@ import {
   FileCheck,
   Globe,
   Eye,
-  EyeOff
+  EyeOff,
+  Loader2
 } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
@@ -61,6 +62,7 @@ export const RegisterPage: React.FC = () => {
   const idInputRef = React.useRef<HTMLInputElement>(null);
 
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedRequestId, setSubmittedRequestId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isPhoneValid, setIsPhoneValid] = useState(false);
@@ -84,6 +86,7 @@ export const RegisterPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMessage('');
 
     if (!formData.orgName.trim()) {
@@ -122,6 +125,8 @@ export const RegisterPage: React.FC = () => {
       setErrorMessage('Please accept the Terms of Service and Data Governance Policy.');
       return;
     }
+
+    setIsSubmitting(true);
 
     try {
       const bodyFormData = new FormData();
@@ -166,7 +171,9 @@ export const RegisterPage: React.FC = () => {
         setErrorMessage(backendError);
       }
     } catch (error) {
-      setErrorMessage('Unable to connect to the backend server. Please ensure Django is running.');
+      setErrorMessage('Unable to connect to the backend server. Please ensure the server is running.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -611,10 +618,24 @@ export const RegisterPage: React.FC = () => {
               <div>
                 <button
                   type="submit"
-                  className="w-full py-2.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831b] shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer border border-[#D49A24]"
+                  disabled={isSubmitting}
+                  className={`w-full py-2.5 px-6 rounded-xl text-xs font-black uppercase tracking-wider text-white transition-all flex items-center justify-center gap-2 border ${
+                    isSubmitting 
+                      ? 'bg-amber-600/70 border-amber-600/70 cursor-not-allowed opacity-80 shadow-none' 
+                      : 'bg-[#D49A24] hover:bg-[#b8831b] border-[#D49A24] shadow-md cursor-pointer'
+                  }`}
                 >
-                  <UserPlus className="w-4 h-4" />
-                  <span>SUBMIT REGISTRATION REQUEST</span>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>SUBMITTING REGISTRATION APPLICATION...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      <span>SUBMIT REGISTRATION REQUEST</span>
+                    </>
+                  )}
                 </button>
               </div>
 

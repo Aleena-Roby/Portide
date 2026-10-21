@@ -69,9 +69,41 @@ def format_reg_id(req_id: int) -> str:
     return f"REG-2026-{int(req_id):03d}"
 
 
+import threading
+
+def _send_mail_async(subject, message, from_email, recipient_list, html_message=None, inline_images=None):
+    """
+    Asynchronously delivers email in a background daemon thread so it never blocks the request-response thread.
+    Automatically closes DB connection in worker thread to prevent connection pool exhaustion.
+    """
+    def _worker():
+        from django.db import connection
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=from_email,
+                recipient_list=recipient_list,
+                html_message=html_message,
+                inline_images=inline_images,
+                fail_silently=True
+            )
+        except Exception as err:
+            logger.error(f"Async email sending error to {recipient_list}: {err}", exc_info=True)
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+
 def send_registration_submitted_email(registration_request):
     """
     Sends confirmation email to shipping company upon initial registration submission.
+    Executed asynchronously so HTTP response is returned immediately.
     """
     try:
         company = registration_request.shipping_company_id
@@ -80,6 +112,8 @@ def send_registration_submitted_email(registration_request):
 
         applicant_name = registration_request.registration_request_applicant_name or company.shipping_company_name
         req_code = format_reg_id(registration_request.registration_request_id)
+        email = company.shipping_company_email
+        company_name = company.shipping_company_name
 
         subject = "PORTIDE Registration Request Received"
         body = f"""Hello {applicant_name},
@@ -87,7 +121,7 @@ def send_registration_submitted_email(registration_request):
 Your Shipping Company registration request has been successfully submitted to PORTIDE.
 
 Registration Request ID: {req_code}
-Company: {company.shipping_company_name}
+Company: {company_name}
 Status: Pending Review
 
 Your application will be reviewed by Port Administration.
@@ -97,17 +131,16 @@ Regards,
 PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
-            recipient_list=[company.shipping_company_email],
-            fail_silently=True
+            recipient_list=[email],
         )
-        logger.info(f"Sent registration submission email to {company.shipping_company_email} for request {req_code}")
+        logger.info(f"Queued async registration submission email to {email} for request {req_code}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send registration submission email: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue registration submission email: {str(e)}", exc_info=True)
         return False
 
 
@@ -122,13 +155,15 @@ def send_registration_action_required_email(registration_request, required_docs_
 
         applicant_name = registration_request.registration_request_applicant_name or company.shipping_company_name
         req_code = format_reg_id(registration_request.registration_request_id)
+        email = company.shipping_company_email
+        company_name = company.shipping_company_name
 
         subject = "PORTIDE Registration – Additional Documentation Required"
         body = f"""Hello {applicant_name},
 
 Additional documentation or information is required for your PORTIDE registration request.
 
-Company: {company.shipping_company_name}
+Company: {company_name}
 Registration Request ID: {req_code}
 Status: ACTION REQUIRED
 
@@ -146,17 +181,16 @@ Regards,
 PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
-            recipient_list=[company.shipping_company_email],
-            fail_silently=True
+            recipient_list=[email],
         )
-        logger.info(f"Sent action required email to {company.shipping_company_email} for request {req_code}")
+        logger.info(f"Queued async action required email to {email} for request {req_code}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send action required email: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue action required email: {str(e)}", exc_info=True)
         return False
 
 
@@ -192,17 +226,16 @@ The company has uploaded the requested correction/document. Please review the up
 Regards,
 PORTIDE Notification System
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
             recipient_list=admin_emails,
-            fail_silently=True
         )
-        logger.info(f"Sent registration resubmission email to admins {admin_emails} for request {req_code}")
+        logger.info(f"Queued async registration resubmission email to admins {admin_emails} for request {req_code}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send registration resubmission email: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue registration resubmission email: {str(e)}", exc_info=True)
         return False
 
 
@@ -217,35 +250,38 @@ def send_registration_approved_email(registration_request):
 
         applicant_name = registration_request.registration_request_applicant_name or company.shipping_company_name
         req_code = format_reg_id(registration_request.registration_request_id)
+        email = company.shipping_company_email
+        company_name = company.shipping_company_name
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        login_url = f"{frontend_url.rstrip('/')}/login"
 
         subject = "PORTIDE Registration Approved"
         body = f"""Hello {applicant_name},
 
-Congratulations! Your Shipping Company registration for {company.shipping_company_name} has been approved.
+Congratulations! Your Shipping Company registration for {company_name} has been approved.
 
 Registration Request ID: {req_code}
 Status: APPROVED
 
 Your account is now fully active. You can log in to PORTIDE using your registered account credentials.
 
-Login URL: http://localhost:5173/login
+Login URL: {login_url}
 
 Welcome to PORTIDE Maritime Port Operations Intelligence Platform.
 
 Regards,
 PORTIDE Administration
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
-            recipient_list=[company.shipping_company_email],
-            fail_silently=True
+            recipient_list=[email],
         )
-        logger.info(f"Sent registration approval email to {company.shipping_company_email} for request {req_code}")
+        logger.info(f"Queued async registration approval email to {email} for request {req_code}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send registration approval email: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue registration approval email: {str(e)}", exc_info=True)
         return False
 
 
@@ -260,13 +296,15 @@ def send_registration_rejected_email(registration_request, rejection_reason: str
 
         applicant_name = registration_request.registration_request_applicant_name or company.shipping_company_name
         req_code = format_reg_id(registration_request.registration_request_id)
+        email = company.shipping_company_email
+        company_name = company.shipping_company_name
 
         subject = "PORTIDE Registration Request – Rejected"
         body = f"""Hello {applicant_name},
 
 Thank you for your interest in PORTIDE.
 
-Company: {company.shipping_company_name}
+Company: {company_name}
 Registration Request ID: {req_code}
 Status: REJECTED
 
@@ -278,17 +316,16 @@ This is a final registration decision. If you have questions regarding this deci
 Regards,
 PORTIDE Administration
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
-            recipient_list=[company.shipping_company_email],
-            fail_silently=True
+            recipient_list=[email],
         )
-        logger.info(f"Sent registration rejection email to {company.shipping_company_email} for request {req_code}")
+        logger.info(f"Queued async registration rejection email to {email} for request {req_code}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send registration rejection email: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue registration rejection email: {str(e)}", exc_info=True)
         return False
 
 
@@ -392,17 +429,16 @@ Regards,
 PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
-            fail_silently=True
         )
-        logger.info(f"Sent customs cleared notification email for container {container.container_number} to {recipient_email}")
+        logger.info(f"Queued async customs cleared notification email for container {container.container_number} to {recipient_email}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send customs cleared notification: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue customs cleared notification: {str(e)}", exc_info=True)
         return False
 
 
@@ -438,17 +474,16 @@ Regards,
 PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
-            fail_silently=True
         )
-        logger.info(f"Sent customs hold notification email for container {container.container_number} to {recipient_email}")
+        logger.info(f"Queued async customs hold notification email for container {container.container_number} to {recipient_email}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send customs hold notification: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue customs hold notification: {str(e)}", exc_info=True)
         return False
 
 
@@ -482,17 +517,16 @@ Regards,
 PORTIDE Gate & Truck Operations
 Maritime Port Operations Intelligence Platform
 """
-        send_mail(
+        _send_mail_async(
             subject=subject,
             message=body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
-            fail_silently=True
         )
-        logger.info(f"Sent container released notification email for container {container.container_number} to {recipient_email}")
+        logger.info(f"Queued async container released notification email for container {container.container_number} to {recipient_email}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send container released notification: {str(e)}", exc_info=True)
+        logger.error(f"Failed to queue container released notification: {str(e)}", exc_info=True)
         return False
 
 

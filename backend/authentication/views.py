@@ -392,6 +392,8 @@ class LoginAPIView(APIView):
                     "full_name": user_profile.user_full_name if user_profile else "User",
                     "designation": user_profile.user_designation if user_profile else "",
                     "company_id": user_profile.shipping_company_id_id if user_profile else None,
+                    "company_name": company.shipping_company_name if company else None,
+                    "phone": user_profile.user_phone if user_profile and user_profile.user_phone else "",
                     "must_change_password": user_profile.user_must_change_password if user_profile else False
                 }
             },
@@ -475,6 +477,7 @@ class CurrentUserAPIView(APIView):
                     "designation": user_obj.user_designation if user_obj else "",
                     "company_id": user_obj.shipping_company_id_id if user_obj else None,
                     "company_name": company_obj.shipping_company_name if company_obj else None,
+                    "phone": user_obj.user_phone if user_obj and user_obj.user_phone else "",
                     "status": user_obj.user_status if user_obj else login_obj.login_status,
                     "must_change_password": user_obj.user_must_change_password if user_obj else False
                 }

@@ -102,7 +102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: u.email,
           role: u.role as UserRole,
           organisation: u.company_name || 'PORTIDE Port Authority',
-          phone: '+1-555-0100',
+          phone: u.phone || '',
           status: 'active',
           createdAt: new Date().toISOString().substring(0, 10),
           mustChangePassword: isMustChange
@@ -117,6 +117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: portUser.email,
           role: portUser.role,
           organisation: portUser.organisation,
+          phone: portUser.phone,
           status: portUser.status,
           mustChangePassword: isMustChange
         });
@@ -135,7 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: storedSession.email,
           role: storedSession.role as UserRole,
           organisation: storedSession.organisation || 'PORTIDE Port Authority',
-          phone: '+1-555-0100',
+          phone: storedSession.phone || '',
           status: 'active',
           createdAt: new Date().toISOString().substring(0, 10),
           mustChangePassword: isMustChange
@@ -187,7 +188,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: authData.email,
           role: userRole,
           organisation: authData.company_name || 'PORTIDE Port Authority',
-          phone: '+1-555-0100',
+          phone: authData.phone || '',
           status: 'active',
           createdAt: new Date().toISOString().substring(0, 10),
           mustChangePassword: isMustChange
@@ -202,6 +203,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: portUser.email,
           role: portUser.role,
           organisation: portUser.organisation,
+          phone: portUser.phone,
           status: portUser.status,
           mustChangePassword: isMustChange
         });

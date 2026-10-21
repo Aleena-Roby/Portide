@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { PortideLogo } from '../common/PortideLogo';
 import { Eye, EyeOff, Lock, Mail, ArrowLeft, ShieldCheck, AlertTriangle, Clock } from 'lucide-react';
-import { ForgotPasswordModal } from './ForgotPasswordModal';
 import { getDefaultDashboardRoute } from './ProtectedRoute';
 
 export const LoginPage: React.FC = () => {
@@ -19,7 +18,6 @@ export const LoginPage: React.FC = () => {
   const [blockedRegistrationStatus, setBlockedRegistrationStatus] = useState<string | null>(null);
   const [blockedRegistrationRequestId, setBlockedRegistrationRequestId] = useState<number | string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // If already logged in, redirect to user dashboard
   useEffect(() => {
@@ -312,13 +310,6 @@ export const LoginPage: React.FC = () => {
         </div>
 
       </div>
-
-      {/* Forgot Password Modal */}
-      <ForgotPasswordModal
-        isOpen={isForgotPasswordOpen}
-        onClose={() => setIsForgotPasswordOpen(false)}
-        initialEmail={email}
-      />
 
     </div>
   );
