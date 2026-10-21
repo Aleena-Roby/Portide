@@ -81,6 +81,36 @@ def _send_via_brevo(subject, message, from_email, recipient_list, html_message=N
         return False
 
 
+def _send_via_google_script(subject, message, from_email, recipient_list, html_message=None):
+    script_url = os.getenv('GOOGLE_SCRIPT_EMAIL_URL')
+    if not script_url:
+        return False
+
+    payload = {
+        "to": recipient_list,
+        "subject": subject,
+        "message": message,
+        "html": html_message or message
+    }
+
+    req = urllib.request.Request(
+        script_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "PORTIDE/1.0"
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            logger.info(f"Google Apps Script email delivery successful to {recipient_list}")
+            return True
+    except Exception as e:
+        logger.error(f"Google Apps Script email delivery failed: {e}", exc_info=True)
+        return False
+
+
 def send_mail(
     subject,
     message,
@@ -95,22 +125,29 @@ def send_mail(
 ):
     """
     Enhanced send_mail:
-    1. First checks for HTTPS REST API (Resend or Brevo) over Port 443 (never blocked on cloud hosts like Render).
-    2. Falls back to Django standard SMTP for local development or unblocked networks.
+    1. First checks for Google Apps Script HTTPS Relay (uses actual Gmail over Port 443).
+    2. Checks for HTTPS REST API (Resend or Brevo) over Port 443.
+    3. Falls back to Django standard SMTP for local development or unblocked networks.
     """
-    # 1. Try Resend HTTPS API if configured
+    # 1. Try Google Apps Script HTTPS Relay if configured
+    if os.getenv('GOOGLE_SCRIPT_EMAIL_URL'):
+        success = _send_via_google_script(subject, message, from_email, recipient_list, html_message)
+        if success:
+            return 1
+
+    # 2. Try Resend HTTPS API if configured
     if os.getenv('RESEND_API_KEY'):
         success = _send_via_resend(subject, message, from_email, recipient_list, html_message)
         if success:
             return 1
 
-    # 2. Try Brevo HTTPS API if configured
+    # 3. Try Brevo HTTPS API if configured
     if os.getenv('BREVO_API_KEY'):
         success = _send_via_brevo(subject, message, from_email, recipient_list, html_message)
         if success:
             return 1
 
-    # 3. Standard SMTP / EmailMultiAlternatives
+    # 4. Standard SMTP / EmailMultiAlternatives
     if inline_images:
         try:
             msg = EmailMultiAlternatives(
