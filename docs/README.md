@@ -19,6 +19,7 @@ docs/
 │   ├── DEPLOYMENT_GUIDE.md            # Live cloud deployment (Render API & Vercel Web)
 │   └── SUPABASE_SETUP.md              # Supabase PostgreSQL connection, pooling & RLS
 ├── user-guides/
+│   ├── CONTAINER_LOADING_UNLOADING_FLOW.md # Quayside Loading & Unloading flowcharts & guide
 │   ├── ROLE_BASED_WORKFLOWS.md        # Comprehensive workflows for all 6 port personas
 │   └── TESTING_GUIDE.md               # Selenium E2E & Django test suite execution
 └── database/
@@ -44,6 +45,7 @@ docs/
 * **[Supabase Setup](deployment/SUPABASE_SETUP.md)**: How to configure the Supabase IPv4 connection pooler (`port 5432`), Row-Level Security (RLS), and schema grants.
 
 ### 4. Operational User Guides
+* **[Container Loading & Unloading Flow](user-guides/CONTAINER_LOADING_UNLOADING_FLOW.md)**: Visual step-by-step workflow diagrams for vessel discharge, vessel export loading, and quayside direct ship-to-truck transfer.
 * **[Role-Based Workflows](user-guides/ROLE_BASED_WORKFLOWS.md)**: Step-by-step guides for:
   1. Port Administrator
   2. Shipping Company / Shipping Agent

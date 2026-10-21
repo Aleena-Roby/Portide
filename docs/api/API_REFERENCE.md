@@ -78,6 +78,17 @@ All API endpoints accept and return `application/json` unless handling multipart
 | `GET` | `/api/terminal/yards/{id}/` | Drilldown yard blocks and slot occupancy | Terminal Operator |
 | `GET` | `/api/terminal/cranes/` | List STS quay cranes & RTG equipment | Terminal Operator |
 | `POST` | `/api/terminal/crane-allocations/` | Assign cranes to berthed vessel | Terminal Operator |
+| `GET` | `/api/terminal/unloading/eligible-vessels/` | List berthed vessels eligible for discharge | Terminal Operator |
+| `GET` | `/api/terminal/unloading/active-cranes/?vessel_schedule_id={id}` | List active cranes for vessel discharge | Terminal Operator |
+| `GET` | `/api/terminal/unloading/manifest-containers/?vessel_schedule_id={id}` | List manifested containers awaiting discharge | Terminal Operator |
+| `POST` | `/api/terminal/unloading/discharge/` | Atomically discharge container into yard slot | Terminal Operator |
+| `GET` | `/api/terminal/unloading/history/` | View vessel discharge history log | Terminal Operator |
+| `GET` | `/api/terminal/loading/eligible-vessels/` | List berthed vessels eligible for container loading | Terminal Operator |
+| `GET` | `/api/terminal/loading/active-cranes/?vessel_schedule_id={id}` | List active cranes for vessel loading | Terminal Operator |
+| `GET` | `/api/terminal/loading/yard-containers/?vessel_schedule_id={id}` | List yard export containers ready for loading | Terminal Operator |
+| `POST` | `/api/terminal/loading/load/` | Atomically load container onto vessel & free slot | Terminal Operator |
+| `GET` | `/api/terminal/loading/history/` | View vessel loading (stowage) history log | Terminal Operator |
+| `POST` | `/api/terminal/direct-transfer/execute/` | Quayside direct vessel-to-truck discharge | Terminal Operator |
 | `GET` | `/api/containers/` | Query containers across the terminal | Terminal Operator |
 | `POST` | `/api/containers/{id}/status/` | Transition container terminal status | Terminal Operator |
 | `GET` | `/api/containers/track/?number={num}` | Public real-time container tracker | Public |
