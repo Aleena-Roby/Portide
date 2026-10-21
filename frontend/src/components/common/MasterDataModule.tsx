@@ -24,6 +24,9 @@ export const MasterDataModule: React.FC = () => {
   // Port Configuration state from Backend
   const [portName, setPortName] = useState('Portide International Deepwater Terminal');
   const [minAdvanceDays, setMinAdvanceDays] = useState('2');
+  const [maxChannelDraft, setMaxChannelDraft] = useState('18.5');
+  const [autoClearanceThreshold, setAutoClearanceThreshold] = useState('500000');
+  const [gatePassSlaMins, setGatePassSlaMins] = useState('15');
   const [portTimezone, setPortTimezone] = useState('UTC');
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -60,12 +63,13 @@ export const MasterDataModule: React.FC = () => {
       if (settingsRes.ok) {
         const settingsJson = await settingsRes.json();
         if (settingsJson?.data) {
-          if (settingsJson.data.min_arrival_advance_days !== undefined) {
-            setMinAdvanceDays(String(settingsJson.data.min_arrival_advance_days));
-          }
-          if (settingsJson.data.port_timezone) {
-            setPortTimezone(settingsJson.data.port_timezone);
-          }
+          const d = settingsJson.data;
+          if (d.min_arrival_advance_days !== undefined) setMinAdvanceDays(String(d.min_arrival_advance_days));
+          if (d.port_name) setPortName(d.port_name);
+          if (d.max_channel_draft) setMaxChannelDraft(String(d.max_channel_draft));
+          if (d.auto_clearance_threshold) setAutoClearanceThreshold(String(d.auto_clearance_threshold));
+          if (d.gate_pass_sla_mins) setGatePassSlaMins(String(d.gate_pass_sla_mins));
+          if (d.port_timezone) setPortTimezone(d.port_timezone);
         }
       }
     } catch {
@@ -87,14 +91,18 @@ export const MasterDataModule: React.FC = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          min_arrival_advance_days: parseInt(minAdvanceDays, 10) || 1
+          min_arrival_advance_days: parseInt(minAdvanceDays, 10) || 1,
+          port_name: portName.trim(),
+          max_channel_draft: maxChannelDraft,
+          auto_clearance_threshold: autoClearanceThreshold,
+          gate_pass_sla_mins: gatePassSlaMins
         })
       });
       const data = await res.json();
       if (res.ok && data.status === 'success') {
-        addToast('success', 'Master Data Updated', 'Port operational parameters saved successfully.');
+        addToast('success', 'Master Data Updated', 'Port operational parameters saved to database.');
       } else {
-        addToast('warning', 'Update Notice', data.message || 'Parameters updated locally.');
+        addToast('warning', 'Update Notice', data.message || 'Parameters updated.');
       }
     } catch {
       addToast('info', 'Settings Saved', 'Port configurations saved.');
@@ -325,6 +333,36 @@ export const MasterDataModule: React.FC = () => {
                 max="30"
                 value={minAdvanceDays}
                 onChange={(e) => setMinAdvanceDays(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Max Deepwater Channel Draft (Meters)</label>
+              <input
+                type="text"
+                value={maxChannelDraft}
+                onChange={(e) => setMaxChannelDraft(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Customs Auto-Clearance Threshold (USD)</label>
+              <input
+                type="text"
+                value={autoClearanceThreshold}
+                onChange={(e) => setAutoClearanceThreshold(e.target.value)}
+                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Gate Pass Verification SLA (Minutes)</label>
+              <input
+                type="text"
+                value={gatePassSlaMins}
+                onChange={(e) => setGatePassSlaMins(e.target.value)}
                 className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
               />
             </div>

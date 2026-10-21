@@ -3328,11 +3328,28 @@ class PortSettingsAPIView(APIView):
     def get(self, request):
         min_days = get_min_arrival_advance_days()
         now_local = timezone.localtime(timezone.now())
+
+        def get_setting_val(key, default):
+            try:
+                s = SystemSetting.objects.filter(system_setting_key=key).first()
+                return s.system_setting_value if s and s.system_setting_value else default
+            except Exception:
+                return default
+
+        port_name = get_setting_val('PORT_NAME', 'Portide International Deepwater Terminal')
+        max_draft = get_setting_val('MAX_CHANNEL_DRAFT', '18.5')
+        auto_clearance = get_setting_val('AUTO_CLEARANCE_THRESHOLD', '500000')
+        gate_sla = get_setting_val('GATE_PASS_SLA_MINS', '15')
+
         return Response(
             {
                 "status": "success",
                 "data": {
                     "min_arrival_advance_days": min_days,
+                    "port_name": port_name,
+                    "max_channel_draft": max_draft,
+                    "auto_clearance_threshold": auto_clearance,
+                    "gate_pass_sla_mins": gate_sla,
                     "port_timezone": str(timezone.get_current_timezone_name()),
                     "server_current_time": now_local.isoformat(),
                     "server_today_date": now_local.date().isoformat()
@@ -3342,8 +3359,11 @@ class PortSettingsAPIView(APIView):
         )
 
     def patch(self, request):
-        role = request.headers.get('X-User-Role')
-        if role != 'port_administrator':
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        role = request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else '')
+        normalized_role = str(role).strip().lower()
+
+        if normalized_role not in ['admin', 'port_administrator']:
             return Response(
                 {
                     "status": "error",
@@ -3352,6 +3372,7 @@ class PortSettingsAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # 1. Update min_arrival_advance_days
         min_days = request.data.get('min_arrival_advance_days')
         if min_days is not None:
             try:
@@ -3378,6 +3399,46 @@ class PortSettingsAPIView(APIView):
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        # 2. Update port_name
+        port_name = request.data.get('port_name')
+        if port_name is not None and str(port_name).strip():
+            setting, _ = SystemSetting.objects.get_or_create(
+                system_setting_key='PORT_NAME',
+                defaults={'system_setting_description': 'Official designated Port Facility Name.'}
+            )
+            setting.system_setting_value = str(port_name).strip()
+            setting.save()
+
+        # 3. Update max_channel_draft
+        max_draft = request.data.get('max_channel_draft')
+        if max_draft is not None:
+            setting, _ = SystemSetting.objects.get_or_create(
+                system_setting_key='MAX_CHANNEL_DRAFT',
+                defaults={'system_setting_description': 'Maximum navigable deepwater channel draft in meters.'}
+            )
+            setting.system_setting_value = str(max_draft).strip()
+            setting.save()
+
+        # 4. Update auto_clearance_threshold
+        auto_thresh = request.data.get('auto_clearance_threshold')
+        if auto_thresh is not None:
+            setting, _ = SystemSetting.objects.get_or_create(
+                system_setting_key='AUTO_CLEARANCE_THRESHOLD',
+                defaults={'system_setting_description': 'Customs low-risk auto clearance value threshold in USD.'}
+            )
+            setting.system_setting_value = str(auto_thresh).strip()
+            setting.save()
+
+        # 5. Update gate_pass_sla_mins
+        gate_sla = request.data.get('gate_pass_sla_mins')
+        if gate_sla is not None:
+            setting, _ = SystemSetting.objects.get_or_create(
+                system_setting_key='GATE_PASS_SLA_MINS',
+                defaults={'system_setting_description': 'Gate pass appointment verification SLA in minutes.'}
+            )
+            setting.system_setting_value = str(gate_sla).strip()
+            setting.save()
 
         return self.get(request)
 

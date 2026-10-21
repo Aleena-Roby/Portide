@@ -11,7 +11,9 @@ import { CompanyApprovals } from './admin/CompanyApprovals';
 import { AdminAuditLogs } from './admin/AdminAuditLogs';
 import { AdminBerthManagement } from './admin/AdminBerthManagement';
 import { AdminGatePassMonitoring } from './admin/AdminGatePassMonitoring';
-import { Truck } from 'lucide-react';
+import { AdminAnalytics } from './admin/AdminAnalytics';
+import { MasterDataModule } from '../common/MasterDataModule';
+import { Truck, BarChart3, Sliders } from 'lucide-react';
 
 interface AdminDashboardProps {
   activeTab?: string;
@@ -21,10 +23,22 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'overview', onNavigate }) => {
   const quickAccessCards = [
     {
+      id: 'analytics',
+      title: 'Operational Telemetry & Analytics',
+      description: 'Real-time telemetry, vessel turn-around velocity, berth utilization metrics, and quay throughput.',
+      icon: BarChart3
+    },
+    {
       id: 'berths',
       title: 'Berth Master Management',
       description: 'Configure port berth infrastructure, draft & length specifications, and operational status.',
       icon: Anchor
+    },
+    {
+      id: 'master-data',
+      title: 'Port Master Infrastructure Registry',
+      description: 'Configure port facility parameters, cargo classifications, crane equipment, and security thresholds.',
+      icon: Sliders
     },
     {
       id: 'company-approvals',
@@ -53,6 +67,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'ove
   ];
 
   // Render specific view selected from Sidebar
+  if (activeTab === 'analytics') {
+    return <AdminAnalytics />;
+  }
+
+  if (activeTab === 'master-data' || activeTab === 'master_data' || activeTab === 'config') {
+    return <MasterDataModule />;
+  }
+
   if (activeTab === 'berths' || activeTab === 'berth-management') {
     return <AdminBerthManagement />;
   }

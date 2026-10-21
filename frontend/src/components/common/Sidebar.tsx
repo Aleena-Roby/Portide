@@ -24,7 +24,9 @@ import {
   Warehouse,
   MapPin,
   MoveHorizontal,
-  ArrowDownToLine
+  ArrowDownToLine,
+  BarChart3,
+  Sliders
 } from 'lucide-react';
 
 interface NavChildItem {
@@ -92,7 +94,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       case 'port_administrator':
         return [
           { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, path: `${basePath}/dashboard` },
+          { id: 'analytics', label: 'Port Telemetry & Analytics', icon: BarChart3, path: `${basePath}/analytics` },
           { id: 'berths', label: 'Berth Management', icon: Anchor, path: `${basePath}/berths` },
+          { id: 'master-data', label: 'Master Infrastructure Registry', icon: Sliders, path: `${basePath}/master-data` },
           { id: 'company-approvals', label: 'Company Approvals', icon: FileCheck, path: `${basePath}/company-approvals` },
           { id: 'users', label: 'User & Registration', icon: Users, path: `${basePath}/users` },
           { id: 'gate-passes', label: 'Gate Passes Monitor', icon: Truck, path: `${basePath}/gate-passes` },
