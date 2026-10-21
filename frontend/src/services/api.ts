@@ -19,23 +19,62 @@ export interface StoredSession {
   mustChangePassword?: boolean;
 }
 
+/**
+ * Tab-Isolated Session Storage:
+ * Uses browser sessionStorage so that different tabs can maintain independent user sessions
+ * (e.g. Tab 1 as Port Administrator, Tab 2 as Port Operations Officer) without cross-tab
+ * account overriding on page refresh.
+ */
 export const getStoredSession = (): StoredSession | null => {
-  const raw = localStorage.getItem('portide_user_session');
-  if (!raw) return null;
+  // 1. Check tab-isolated sessionStorage
   try {
-    return JSON.parse(raw);
+    const raw = sessionStorage.getItem('portide_user_session');
+    if (raw) {
+      return JSON.parse(raw);
+    }
   } catch {
-    localStorage.removeItem('portide_user_session');
-    return null;
+    try {
+      sessionStorage.removeItem('portide_user_session');
+    } catch {}
   }
+
+  // 2. Fallback / Migration: If an existing session exists in legacy localStorage,
+  // migrate it into this tab's sessionStorage and delete from localStorage so other tabs won't collide.
+  try {
+    const legacy = localStorage.getItem('portide_user_session');
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      sessionStorage.setItem('portide_user_session', legacy);
+      localStorage.removeItem('portide_user_session');
+      return parsed;
+    }
+  } catch {
+    try {
+      localStorage.removeItem('portide_user_session');
+    } catch {}
+  }
+
+  return null;
 };
 
 export const setStoredSession = (session: StoredSession): void => {
-  localStorage.setItem('portide_user_session', JSON.stringify(session));
+  try {
+    // Store strictly in this tab's sessionStorage to isolate each browser tab
+    sessionStorage.setItem('portide_user_session', JSON.stringify(session));
+    // Clean up any lingering localStorage to prevent any other tab from reading it
+    localStorage.removeItem('portide_user_session');
+  } catch (err) {
+    console.error('Failed to store session in sessionStorage:', err);
+  }
 };
 
 export const clearStoredSession = (): void => {
-  localStorage.removeItem('portide_user_session');
+  try {
+    sessionStorage.removeItem('portide_user_session');
+    localStorage.removeItem('portide_user_session');
+  } catch (err) {
+    console.error('Failed to clear stored session:', err);
+  }
 };
 
 type SessionExpiredHandler = (message: string) => void;
