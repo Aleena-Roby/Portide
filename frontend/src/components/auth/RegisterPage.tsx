@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
-  const { addUser, addToast } = useApp();
+  const { addToast } = useApp();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -152,16 +152,6 @@ export const RegisterPage: React.FC = () => {
       const result = await response.json();
 
       if (response.ok) {
-        addUser({
-          name: formData.fullName || formData.orgName,
-          email: formData.email,
-          role: 'shipping_company',
-          organisation: formData.orgName,
-          orgId: formData.orgId,
-          phone: formData.phone,
-          status: 'pending'
-        });
-
         const regId = result.data?.registration_request_id;
         if (regId) {
           setSubmittedRequestId(regId);

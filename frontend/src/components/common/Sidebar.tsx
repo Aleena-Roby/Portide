@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { USER_ROLES_INFO } from '../../data/mockData';
+import { USER_ROLES_INFO } from '../../data/rolesConfig';
 import { PortideLogo } from './PortideLogo';
 import { 
   LayoutDashboard, 

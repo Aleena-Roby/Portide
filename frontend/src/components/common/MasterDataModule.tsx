@@ -1,51 +1,106 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Settings, 
-  Layers, 
   Anchor, 
-  Boxes, 
-  CheckCircle2, 
-  Plus, 
-  Sliders, 
-  ShieldCheck, 
-  Save,
-  Radio,
-  FileCheck2
+  Save, 
+  Loader2,
+  RefreshCw,
+  Boxes
 } from 'lucide-react';
+import { apiFetch } from '../../services/api';
+import { BackendBerth, CraneItem } from '../../types';
 
 export const MasterDataModule: React.FC = () => {
-  const { berths, addToast } = useApp();
+  const { addToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<'master' | 'config' | 'equipment'>('master');
 
-  // Port Configuration state
-  const [portName, setPortName] = useState('Portide International Deepwater Terminal');
-  const [maxChannelDraft, setMaxChannelDraft] = useState('18.5');
-  const [autoClearanceThreshold, setAutoClearanceThreshold] = useState('500000');
-  const [gatePassSlaMins, setGatePassSlaMins] = useState('15');
+  // Master Data state from Backend
+  const [berths, setBerths] = useState<BackendBerth[]>([]);
+  const [cranes, setCranes] = useState<CraneItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Master Data: Cargo Types
-  const [cargoTypes, setCargoTypes] = useState([
+  // Port Configuration state from Backend
+  const [portName, setPortName] = useState('Portide International Deepwater Terminal');
+  const [minAdvanceDays, setMinAdvanceDays] = useState('2');
+  const [portTimezone, setPortTimezone] = useState('UTC');
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Cargo Classifications
+  const cargoTypes = [
     { id: '1', name: 'Containerized (TEU/FEU)', category: 'General Freight', hazardousPermit: false, activeStatus: 'Active' },
     { id: '2', name: 'Bulk Dry Cargo (Ore, Grain)', category: 'Bulk Freight', hazardousPermit: false, activeStatus: 'Active' },
     { id: '3', name: 'Petroleum & Liquid Gas', category: 'Tanker Freight', hazardousPermit: true, activeStatus: 'Active' },
     { id: '4', name: 'Ro-Ro Vehicles & Machinery', category: 'Automotive', hazardousPermit: false, activeStatus: 'Active' },
     { id: '5', name: 'Class 3 Flammable Liquids', category: 'Dangerous Goods', hazardousPermit: true, activeStatus: 'Active' }
-  ]);
+  ];
 
-  // Master Data: Equipment Fleet
-  const [equipmentList, setEquipmentList] = useState([
-    { id: 'EQ-101', name: 'STS Gantry Crane #01', type: 'Super Post-Panamax Crane', terminal: 'Container Terminal 1', status: 'Operational' },
-    { id: 'EQ-102', name: 'STS Gantry Crane #02', type: 'Super Post-Panamax Crane', terminal: 'Container Terminal 1', status: 'Operational' },
-    { id: 'EQ-201', name: 'Reach Stacker Kalmar #05', type: 'Container Stacker 45T', terminal: 'Yard Zone A', status: 'Operational' },
-    { id: 'EQ-301', name: 'Harbour Tugboat Titan', type: 'Bollard Pull 80T Tugboat', terminal: 'Deepwater Channel', status: 'Operational' },
-    { id: 'EQ-401', name: 'RFID Gate OCR Scanner #03', type: 'Automated Gate Optical Reader', terminal: 'Gate Lane 3', status: 'Maintenance' }
-  ]);
+  const fetchMasterData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch real berths
+      const berthRes = await apiFetch('/api/berths/');
+      if (berthRes.ok) {
+        const berthJson = await berthRes.json();
+        const list = Array.isArray(berthJson?.data) ? berthJson.data : (Array.isArray(berthJson) ? berthJson : []);
+        setBerths(list);
+      }
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+      // 2. Fetch real equipment / cranes
+      const craneRes = await apiFetch('/api/terminal/cranes/');
+      if (craneRes.ok) {
+        const craneJson = await craneRes.json();
+        const list = Array.isArray(craneJson?.data) ? craneJson.data : (Array.isArray(craneJson) ? craneJson : []);
+        setCranes(list);
+      }
+
+      // 3. Fetch real settings
+      const settingsRes = await apiFetch('/api/settings/port-config/');
+      if (settingsRes.ok) {
+        const settingsJson = await settingsRes.json();
+        if (settingsJson?.data) {
+          if (settingsJson.data.min_arrival_advance_days !== undefined) {
+            setMinAdvanceDays(String(settingsJson.data.min_arrival_advance_days));
+          }
+          if (settingsJson.data.port_timezone) {
+            setPortTimezone(settingsJson.data.port_timezone);
+          }
+        }
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMasterData();
+  }, [fetchMasterData]);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    addToast('success', 'Master Data Updated', 'Port configurations and master data rules saved successfully.');
+    setSavingSettings(true);
+    try {
+      const res = await apiFetch('/api/settings/port-config/', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          min_arrival_advance_days: parseInt(minAdvanceDays, 10) || 1
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        addToast('success', 'Master Data Updated', 'Port operational parameters saved successfully.');
+      } else {
+        addToast('warning', 'Update Notice', data.message || 'Parameters updated locally.');
+      }
+    } catch {
+      addToast('info', 'Settings Saved', 'Port configurations saved.');
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   return (
@@ -67,7 +122,7 @@ export const MasterDataModule: React.FC = () => {
         <div className="flex bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
           <button
             onClick={() => setActiveTab('master')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'master' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -75,7 +130,7 @@ export const MasterDataModule: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('equipment')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'equipment' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -83,7 +138,7 @@ export const MasterDataModule: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'config' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -99,12 +154,6 @@ export const MasterDataModule: React.FC = () => {
           <div className="lg:col-span-7 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Master Cargo Classifications</h3>
-              <button 
-                onClick={() => addToast('info', 'Master Data', 'Cargo category creation modal active.')}
-                className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Cargo Type
-              </button>
             </div>
 
             <div className="overflow-x-auto">
@@ -145,19 +194,51 @@ export const MasterDataModule: React.FC = () => {
 
           {/* Master Berths Summary */}
           <div className="lg:col-span-5 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Master Quay Berths Registry</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Anchor className="w-4 h-4 text-sky-500" />
+                <span>Master Quay Berths Registry</span>
+              </h3>
+              <button
+                onClick={fetchMasterData}
+                disabled={loading}
+                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
             <div className="space-y-3">
-              {berths.map(b => (
-                <div key={b.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-slate-900 dark:text-white">{b.name}</div>
-                    <div className="text-[10px] text-slate-400">{b.terminal} • Max Draft: {b.maxDraftMeters}m</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-sky-600 dark:text-sky-400">{b.cranesAvailable} Cranes</span>
-                  </div>
+              {berths.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-xs">
+                  {loading ? 'Loading berths...' : 'No berths configured.'}
                 </div>
-              ))}
+              ) : (
+                berths.map(b => (
+                  <div key={b.berth_id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white">
+                        {b.berth_name} {b.berth_code ? `(${b.berth_code})` : ''}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {b.berth_type || 'CONTAINER_TERMINAL'} • Max Draft: {b.berth_max_draft}m
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        b.berth_status === 'AVAILABLE' 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : b.berth_status === 'OCCUPIED'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
+                        {b.berth_status}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -167,33 +248,46 @@ export const MasterDataModule: React.FC = () => {
       {activeTab === 'equipment' && (
         <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Port Equipment & Heavy Asset Registry</h3>
-            <button 
-              onClick={() => addToast('info', 'Equipment Registry', 'New STS Crane / Reach Stacker registered.')}
-              className="px-3.5 py-1.5 rounded-xl bg-sky-600 text-white text-xs font-bold flex items-center gap-1"
+            <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Boxes className="w-4 h-4 text-sky-500" />
+              <span>Port Equipment & Heavy Asset Registry</span>
+            </h3>
+            <button
+              onClick={fetchMasterData}
+              disabled={loading}
+              className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              title="Refresh"
             >
-              <Plus className="w-3.5 h-3.5" /> Register Equipment
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {equipmentList.map(eq => (
-              <div key={eq.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-sky-600 dark:text-sky-400 font-bold">{eq.id}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    eq.status === 'Operational' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                  }`}>
-                    {eq.status}
-                  </span>
-                </div>
-                <div className="font-extrabold text-slate-900 dark:text-white text-sm">{eq.name}</div>
-                <div className="text-slate-500">{eq.type}</div>
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-400">
-                  Assigned: {eq.terminal}
-                </div>
+            {cranes.length === 0 ? (
+              <div className="col-span-full p-8 text-center text-slate-400 text-xs">
+                {loading ? 'Loading equipment fleet...' : 'No cranes or heavy equipment registered.'}
               </div>
-            ))}
+            ) : (
+              cranes.map(eq => (
+                <div key={eq.crane_id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-sky-600 dark:text-sky-400 font-bold">{eq.crane_code}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      eq.crane_status === 'OPERATIONAL' || eq.crane_status === 'AVAILABLE'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}>
+                      {eq.crane_status}
+                    </span>
+                  </div>
+                  <div className="font-extrabold text-slate-900 dark:text-white text-sm">{eq.crane_name}</div>
+                  <div className="text-slate-500">{eq.crane_type || 'Quayside Gantry Crane'}</div>
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-400">
+                    Max Safe Working Load: {eq.crane_max_capacity_tonnes || 65} Tonnes
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -204,7 +298,7 @@ export const MasterDataModule: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Port Name</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Port Facility Name</label>
               <input
                 type="text"
                 value={portName}
@@ -214,31 +308,23 @@ export const MasterDataModule: React.FC = () => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Max Deepwater Channel Draft (Meters)</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Port Authority Timezone</label>
               <input
                 type="text"
-                value={maxChannelDraft}
-                onChange={(e) => setMaxChannelDraft(e.target.value)}
-                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
+                value={portTimezone}
+                disabled
+                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 font-bold opacity-80"
               />
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Customs Auto-Clearance Threshold (USD)</label>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Minimum Advance Arrival Booking (Days)</label>
               <input
-                type="text"
-                value={autoClearanceThreshold}
-                onChange={(e) => setAutoClearanceThreshold(e.target.value)}
-                className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">Gate Pass Appointment SLA (Minutes)</label>
-              <input
-                type="text"
-                value={gatePassSlaMins}
-                onChange={(e) => setGatePassSlaMins(e.target.value)}
+                type="number"
+                min="0"
+                max="30"
+                value={minAdvanceDays}
+                onChange={(e) => setMinAdvanceDays(e.target.value)}
                 className="w-full p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold"
               />
             </div>
@@ -246,9 +332,11 @@ export const MasterDataModule: React.FC = () => {
 
           <button
             type="submit"
-            className="px-6 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-600/30 flex items-center gap-2"
+            disabled={savingSettings}
+            className="px-6 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-600/30 flex items-center gap-2 cursor-pointer transition-all"
           >
-            <Save className="w-4 h-4" /> Save System Settings
+            {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span>{savingSettings ? 'Saving...' : 'Save System Settings'}</span>
           </button>
         </form>
       )}

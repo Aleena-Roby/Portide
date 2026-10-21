@@ -2,25 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   UserRole, 
   PortUser, 
-  Vessel, 
-  Berth, 
-  Container, 
-  CustomsDocument, 
-  GatePass, 
   NotificationItem, 
-  ActivityLog, 
   ToastAlert 
 } from '../types';
-import { 
-  INITIAL_USERS, 
-  INITIAL_VESSELS, 
-  INITIAL_BERTHS, 
-  INITIAL_CONTAINERS, 
-  INITIAL_CUSTOMS_DOCS, 
-  INITIAL_GATE_PASSES, 
-  INITIAL_NOTIFICATIONS, 
-  INITIAL_ACTIVITY_LOGS 
-} from '../data/mockData';
 import { 
   apiFetch, 
   getStoredSession, 
@@ -42,16 +26,12 @@ interface AppContextType {
   setIsDarkMode: (dark: boolean | ((prev: boolean) => boolean)) => void;
   toggleDarkMode: () => void;
   
-  // Data lists & CRUD methods
-  users: PortUser[];
-  vessels: Vessel[];
-  berths: Berth[];
-  containers: Container[];
-  customsDocs: CustomsDocument[];
-  gatePasses: GatePass[];
+  // Real-time notification & toast alerts
   notifications: NotificationItem[];
-  activityLogs: ActivityLog[];
+  addNotification: (title: string, message: string, type?: NotificationItem['type']) => void;
   toasts: ToastAlert[];
+  addToast: (type: ToastAlert['type'] | string, title?: string, message?: string) => void;
+  removeToast: (id: string) => void;
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
 
@@ -70,21 +50,6 @@ interface AppContextType {
   }>;
   logoutUser: (silent?: boolean) => Promise<void>;
   checkAuthSession: () => Promise<void>;
-
-  // Actions
-  addToast: (type: ToastAlert['type'] | string, title?: string, message?: string) => void;
-  removeToast: (id: string) => void;
-  registerVessel: (vessel: Omit<Vessel, 'id'>) => void;
-  assignBerth: (vesselId: string, berthId: string) => void;
-  approveCustomsDoc: (docId: string, notes?: string) => void;
-  rejectCustomsDoc: (docId: string, reason: string) => void;
-  generateGatePass: (pass: Omit<GatePass, 'id' | 'issuedAt' | 'status'>) => void;
-  approveGateEntry: (passId: string) => void;
-  approveGateExit: (passId: string) => void;
-  moveContainer: (containerId: string, newZone: string, newSlot: string) => void;
-  addUser: (user: Omit<PortUser, 'id' | 'createdAt'>) => void;
-  approveUserRegistration: (userId: string) => void;
-  addNotification: (title: string, message: string, type?: NotificationItem['type']) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -92,7 +57,6 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentView, setCurrentView] = useState<CurrentView>('landing');
   const [activeRole, setActiveRole] = useState<UserRole>('port_administrator');
-  const [users, setUsers] = useState<PortUser[]>(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState<PortUser>({
     id: '',
     name: '',
@@ -105,13 +69,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
-  const [vessels, setVessels] = useState<Vessel[]>(INITIAL_VESSELS);
-  const [berths, setBerths] = useState<Berth[]>(INITIAL_BERTHS);
-  const [containers, setContainers] = useState<Container[]>(INITIAL_CONTAINERS);
-  const [customsDocs, setCustomsDocs] = useState<CustomsDocument[]>(INITIAL_CUSTOMS_DOCS);
-  const [gatePasses, setGatePasses] = useState<GatePass[]>(INITIAL_GATE_PASSES);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(INITIAL_ACTIVITY_LOGS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [toasts, setToasts] = useState<ToastAlert[]>([]);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
 
@@ -263,7 +221,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logoutUser = async (silent: boolean = false) => {
-    // Clear session state synchronously first to prevent any race condition
     clearStoredSession();
     setIsAuthenticated(false);
     setMustChangePassword(false);
@@ -299,12 +256,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let resolvedMessage = '';
 
     if (message !== undefined) {
-      // 3 arguments: (type, title, message)
       resolvedType = (['success', 'warning', 'error', 'info'].includes(type) ? type : 'info') as ToastAlert['type'];
       resolvedTitle = title || '';
       resolvedMessage = message;
     } else if (title !== undefined) {
-      // 2 arguments: (message, type) or (type, message)
       if (['success', 'warning', 'error', 'info'].includes(title)) {
         resolvedType = title as ToastAlert['type'];
         resolvedTitle = resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1);
@@ -319,7 +274,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resolvedMessage = title;
       }
     } else {
-      // 1 argument: (message)
       resolvedType = 'info';
       resolvedTitle = 'Notification';
       resolvedMessage = type;
@@ -337,19 +291,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const logActivity = (action: string, target: string, type: ActivityLog['type']) => {
-    const newLog: ActivityLog = {
-      id: `act-${Date.now()}`,
-      user: currentUser.name,
-      role: currentUser.organisation,
-      action,
-      target,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      type
-    };
-    setActivityLogs(prev => [newLog, ...prev]);
-  };
-
   const addNotification = (title: string, message: string, type: NotificationItem['type'] = 'info') => {
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
@@ -363,164 +304,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => [newNotif, ...prev]);
   };
 
-  const registerVessel = (vesselData: Omit<Vessel, 'id'>) => {
-    const id = `vsl-${String(vessels.length + 1).padStart(3, '0')}`;
-    const newVessel: Vessel = { ...vesselData, id };
-    setVessels(prev => [newVessel, ...prev]);
-    logActivity('Registered Vessel', newVessel.name, 'vessel');
-    addNotification('New Vessel Registered', `${newVessel.name} (${newVessel.imo}) registered by ${newVessel.shippingCompany}.`, 'info');
-    addToast('success', 'Vessel Registered', `${newVessel.name} successfully registered.`);
-  };
-
-  const assignBerth = (vesselId: string, berthId: string) => {
-    const vessel = vessels.find(v => v.id === vesselId);
-    const berth = berths.find(b => b.id === berthId);
-
-    if (!vessel || !berth) return;
-
-    setBerths(prev => prev.map(b => {
-      if (b.id === berthId) {
-        return {
-          ...b,
-          status: 'Occupied',
-          currentVesselId: vessel.id,
-          currentVesselName: vessel.name,
-          occupancyPercent: 85
-        };
-      }
-      return b;
-    }));
-
-    setVessels(prev => prev.map(v => {
-      if (v.id === vesselId) {
-        return {
-          ...v,
-          status: 'At Berth',
-          assignedBerthId: berth.id,
-          assignedBerthName: berth.name
-        };
-      }
-      return v;
-    }));
-
-    logActivity('Assigned Berth', `${berth.name} → ${vessel.name}`, 'berth');
-    addNotification('Berth Assigned', `${berth.name} assigned to ${vessel.name}`, 'success');
-    addToast('success', 'Berth Allocated', `${vessel.name} is now allocated to ${berth.name}.`);
-  };
-
-  const approveCustomsDoc = (docId: string, notes?: string) => {
-    setCustomsDocs(prev => prev.map(d => {
-      if (d.id === docId) {
-        return {
-          ...d,
-          status: 'Approved',
-          officerNotes: notes || 'Cleared by Customs Inspector'
-        };
-      }
-      return d;
-    }));
-
-    const doc = customsDocs.find(d => d.id === docId);
-    if (doc) {
-      logActivity('Approved Customs Declaration', doc.id, 'customs');
-      addNotification('Customs Approved', `Declaration ${doc.id} approved for ${doc.vesselName}.`, 'success');
-      addToast('success', 'Customs Cleared', `Declaration ${doc.id} approved.`);
-    }
-  };
-
-  const rejectCustomsDoc = (docId: string, reason: string) => {
-    setCustomsDocs(prev => prev.map(d => {
-      if (d.id === docId) {
-        return {
-          ...d,
-          status: 'Rejected',
-          rejectionReason: reason
-        };
-      }
-      return d;
-    }));
-
-    const doc = customsDocs.find(d => d.id === docId);
-    if (doc) {
-      logActivity('Rejected Customs Declaration', doc.id, 'customs');
-      addNotification('Customs Rejected', `Declaration ${doc.id} rejected: ${reason}`, 'warning');
-      addToast('error', 'Customs Declaration Rejected', `Reason: ${reason}`);
-    }
-  };
-
-  const generateGatePass = (passData: Omit<GatePass, 'id' | 'issuedAt' | 'status'>) => {
-    const passNumber = Math.floor(1000 + Math.random() * 9000);
-    const id = `GP-${passNumber}`;
-    const newPass: GatePass = {
-      ...passData,
-      id,
-      issuedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'Generated',
-      qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${id}`
-    };
-
-    setGatePasses(prev => [newPass, ...prev]);
-    logActivity('Generated Gate Pass', `${id} (${newPass.truckPlate})`, 'gate');
-    addNotification('Gate Pass Generated', `Pass ${id} generated for truck ${newPass.truckPlate}.`, 'info');
-    addToast('success', 'Gate Pass Created', `Pass ${id} generated for ${newPass.truckPlate}.`);
-  };
-
-  const approveGateEntry = (passId: string) => {
-    setGatePasses(prev => prev.map(p => p.id === passId ? { ...p, status: 'In Terminal' } : p));
-    const pass = gatePasses.find(p => p.id === passId);
-    if (pass) {
-      logActivity('Gate Entry Approved', `${pass.id} (${pass.truckPlate})`, 'gate');
-      addToast('success', 'Truck Entry Approved', `Truck ${pass.truckPlate} admitted into Terminal.`);
-    }
-  };
-
-  const approveGateExit = (passId: string) => {
-    setGatePasses(prev => prev.map(p => p.id === passId ? { ...p, status: 'Completed' } : p));
-    const pass = gatePasses.find(p => p.id === passId);
-    if (pass) {
-      logActivity('Gate Exit Approved', `${pass.id} (${pass.truckPlate})`, 'gate');
-      addToast('success', 'Truck Exit Approved', `Truck ${pass.truckPlate} departure logged.`);
-    }
-  };
-
-  const moveContainer = (containerId: string, newZone: string, newSlot: string) => {
-    setContainers(prev => prev.map(c => {
-      if (c.id === containerId) {
-        return {
-          ...c,
-          yardZone: newZone,
-          baySlot: newSlot,
-          status: 'In Yard'
-        };
-      }
-      return c;
-    }));
-
-    logActivity('Container Re-located', `${containerId} → ${newZone}`, 'system');
-    addToast('info', 'Container Moved', `Container ${containerId} transferred to ${newZone} (${newSlot}).`);
-  };
-
-  const addUser = (userData: Omit<PortUser, 'id' | 'createdAt'>) => {
-    const id = `usr-${Date.now().toString().slice(-4)}`;
-    const newUser: PortUser = {
-      ...userData,
-      id,
-      createdAt: new Date().toISOString().substring(0, 10)
-    };
-    setUsers(prev => [newUser, ...prev]);
-    logActivity('Added System User', `${newUser.name} (${newUser.role})`, 'user');
-    addToast('success', 'User Added', `${newUser.name} account registered.`);
-  };
-
-  const approveUserRegistration = (userId: string) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'active' } : u));
-    const user = users.find(u => u.id === userId);
-    if (user) {
-      logActivity('Approved User Account', user.email, 'user');
-      addToast('success', 'User Approved', `${user.name} is now approved for platform access.`);
-    }
-  };
-
   return (
     <AppContext.Provider value={{
       currentView,
@@ -532,15 +315,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDarkMode,
       setIsDarkMode,
       toggleDarkMode,
-      users,
-      vessels,
-      berths,
-      containers,
-      customsDocs,
-      gatePasses,
       notifications,
-      activityLogs,
+      addNotification,
       toasts,
+      addToast,
+      removeToast,
       globalSearchQuery,
       setGlobalSearchQuery,
       isAuthenticated,
@@ -549,20 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setMustChangePassword,
       loginUser,
       logoutUser,
-      checkAuthSession,
-      addToast,
-      removeToast,
-      registerVessel,
-      assignBerth,
-      approveCustomsDoc,
-      rejectCustomsDoc,
-      generateGatePass,
-      approveGateEntry,
-      approveGateExit,
-      moveContainer,
-      addUser,
-      approveUserRegistration,
-      addNotification
+      checkAuthSession
     }}>
       {children}
     </AppContext.Provider>

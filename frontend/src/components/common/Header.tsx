@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
-import { USER_ROLES_INFO } from '../../data/mockData';
+import { USER_ROLES_INFO } from '../../data/rolesConfig';
 import { ProfileModal } from '../profile/ProfileModal';
 import { 
   Bell, 
@@ -124,24 +124,30 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen 
               </div>
 
               <div className="py-2 space-y-2.5 max-h-80 overflow-y-auto my-1">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`p-3 rounded-xl border text-xs space-y-1 transition-all ${
-                      n.read
-                        ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400'
-                        : 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold">
-                      <span>{n.title}</span>
-                      <span className="text-[10px] opacity-70 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {n.time}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 dark:text-slate-300 leading-snug">{n.message}</p>
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No new notifications.
                   </div>
-                ))}
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`p-3 rounded-xl border text-xs space-y-1 transition-all ${
+                        n.read
+                          ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                          : 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <span>{n.title}</span>
+                        <span className="text-[10px] opacity-70 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {n.time}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 dark:text-slate-300 leading-snug">{n.message}</p>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
