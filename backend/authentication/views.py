@@ -141,6 +141,8 @@ from authentication.email_service import (
     send_registration_approved_email,
     send_registration_rejected_email,
     send_staff_account_created_email,
+    send_password_reset_email,
+    send_password_changed_notification,
     send_customs_cleared_notification,
     send_customs_hold_notification,
     send_container_released_notification,
@@ -1011,48 +1013,16 @@ class ForgotPasswordAPIView(APIView):
             expires_at=expires_at
         )
 
-        # Build secure password reset link
-        reset_link = f"http://localhost:3000/?view=reset-password&token={plain_token}"
+        # Build secure password reset link using dynamic FRONTEND_URL
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        reset_link = f"{frontend_url.rstrip('/')}/reset-password?token={plain_token}"
 
-        # Email content
-        subject = "Password Reset Request"
-        email_body = f"""Someone requested a password reset for your account.
-Click the button below to create a new password.
-This link will expire in 30 minutes.
-
-{reset_link}
-
-If you did not request a password reset, please ignore this email.
-
-Best regards,
-PORTIDE Enterprise Platform
-"""
-
-        from_email = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER or 'webmaster@localhost'
-
-        try:
-            send_mail(
-                subject,
-                email_body,
-                from_email,
-                [login_obj.login_email],
-                fail_silently=False
-            )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"SMTP Email Delivery Failed for {login_obj.login_email}: {str(e)}", exc_info=True)
-            print(f"\n==================================================")
-            print(f"[SMTP EMAIL DELIVERY ERROR] {login_obj.login_email}: {str(e)}")
-            print(f"==================================================\n")
-
-            return Response(
-                {
-                    "status": "error",
-                    "message": f"Failed to send email. SMTP Error: {str(e)}. Please configure EMAIL_HOST_USER and EMAIL_HOST_PASSWORD in your .env file."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # Dispatch modern Gmail responsive password reset email
+        send_password_reset_email(
+            login_obj=login_obj,
+            plain_token=plain_token,
+            reset_link=reset_link
+        )
 
         create_audit_log(
             user=login_obj,
@@ -1207,6 +1177,9 @@ class ResetPasswordAPIView(APIView):
             status='SUCCESS',
             request=request
         )
+
+        # Dispatch modern security confirmation email
+        send_password_changed_notification(login_obj)
 
         return Response(
             {
@@ -1577,6 +1550,9 @@ class ChangePasswordAPIView(APIView):
             request=request
         )
 
+        # Dispatch modern security confirmation email
+        send_password_changed_notification(login_obj)
+
         return Response(
             {
                 "status": "success",
@@ -1651,6 +1627,9 @@ class FirstLoginChangePasswordAPIView(APIView):
             status='SUCCESS',
             request=request
         )
+
+        # Dispatch modern security confirmation email
+        send_password_changed_notification(login_obj)
 
         return Response(
             {

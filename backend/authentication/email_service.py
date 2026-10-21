@@ -223,6 +223,27 @@ def _send_mail_async(subject, message, from_email, recipient_list, html_message=
     t.start()
 
 
+def _render_copyable_code_box(code_text: str, label: str = "Credential / Code", helper_note: str = "Click or double-click to select & copy") -> str:
+    """
+    Renders an email-client resilient monospace code block with user-select styling.
+    When clicked or tapped in webmail / mobile mail clients, selects the exact string.
+    """
+    clean_code = str(code_text or '').strip()
+    return f"""
+    <div style="margin: 18px 0; text-align: center;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
+        {label}
+      </div>
+      <div style="display: inline-block; background: #0f172a; border: 1.5px dashed #38bdf8; border-radius: 10px; padding: 12px 24px; text-align: center; cursor: pointer; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);">
+        <span style="font-family: 'Courier New', Courier, monospace, Consolas; font-size: 19px; font-weight: 800; color: #38bdf8; letter-spacing: 2px; user-select: all; -webkit-user-select: all; display: inline-block;">{clean_code}</span>
+      </div>
+      <div style="margin-top: 6px; font-size: 11px; color: #64748b;">
+        <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 4px; font-weight: 600;">📋 {helper_note}</span>
+      </div>
+    </div>
+    """
+
+
 def send_registration_submitted_email(registration_request):
     """
     Sends confirmation email to shipping company upon initial registration submission.
@@ -237,9 +258,10 @@ def send_registration_submitted_email(registration_request):
         req_code = format_reg_id(registration_request.registration_request_id)
         email = company.shipping_company_email
         company_name = company.shipping_company_name
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
 
-        subject = "PORTIDE Registration Request Received"
-        body = f"""Hello {applicant_name},
+        subject = f"PORTIDE Registration Request Received ({req_code})"
+        plain_body = f"""Hello {applicant_name},
 
 Your Shipping Company registration request has been successfully submitted to PORTIDE.
 
@@ -250,15 +272,82 @@ Status: Pending Review
 Your application will be reviewed by Port Administration.
 You will receive an email notification when the status changes.
 
+Track / Access Portal: {frontend_url}
+
 Regards,
 PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Intelligence Platform</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">REGISTRATION RECEIVED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Shipping Partner Onboarding</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Your Shipping Company registration request has been successfully submitted and queued for administrative review.
+      </p>
+
+      {copy_box}
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Company</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{company_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Applicant</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{applicant_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Registered Email</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{email}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Review Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #d97706; text-align: right; border-top: 1px solid #e2e8f0;">PENDING REVIEW</td>
+        </tr>
+      </table>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #475569; line-height: 1.6;">
+        <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Next Steps:</div>
+        <ol style="margin: 0; padding-left: 20px;">
+          <li>Port Administration will verify your company documentation and credentials.</li>
+          <li>You will receive an automated notification as soon as your account is approved.</li>
+          <li>Save the reference code above to check application progress.</li>
+        </ol>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{frontend_url}" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
+          Visit PORTIDE Platform &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[email],
+            html_message=html_body,
         )
         logger.info(f"Queued async registration submission email to {email} for request {req_code}")
         return True
@@ -280,9 +369,10 @@ def send_registration_action_required_email(registration_request, required_docs_
         req_code = format_reg_id(registration_request.registration_request_id)
         email = company.shipping_company_email
         company_name = company.shipping_company_name
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
 
-        subject = "PORTIDE Registration – Additional Documentation Required"
-        body = f"""Hello {applicant_name},
+        subject = f"PORTIDE ACTION REQUIRED: Additional Documentation Needed – {req_code}"
+        plain_body = f"""Hello {applicant_name},
 
 Additional documentation or information is required for your PORTIDE registration request.
 
@@ -297,18 +387,77 @@ Administrator Message:
 "{admin_message}"
 
 Instructions:
-Please visit PORTIDE and upload the requested document(s).
+Please visit {frontend_url} and upload the requested document(s).
 Important: You do NOT need to complete the entire registration form again. Your existing company details remain saved.
 
 Regards,
 PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #7c2d12 0%, #9a3412 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fed7aa; text-transform: uppercase;">PORTIDE Administration</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">ACTION REQUIRED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #ffedd5;">Additional Documentation Needed</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Port Administration has reviewed your Shipping Company registration for <strong>{company_name}</strong> and requires additional information or document updates before approval can be granted.
+      </p>
+
+      {copy_box}
+
+      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 18px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+          Administrator Message:
+        </div>
+        <div style="font-size: 13px; color: #78350f; font-weight: 600; line-height: 1.5;">
+          "{admin_message}"
+        </div>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 18px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+          Requested Document(s) / Correction(s):
+        </div>
+        <div style="font-size: 13px; color: #334155; line-height: 1.5;">
+          {required_docs_display}
+        </div>
+      </div>
+
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; margin: 18px 0; font-size: 12px; color: #1e40af; line-height: 1.5;">
+        💡 <strong>Quick Note:</strong> You do NOT need to complete the entire registration form again. Your company details remain safely preserved. Simply upload the requested document(s).
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{frontend_url}" style="display: inline-block; background: #9a3412; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
+          Open Portal &amp; Upload Document &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[email],
+            html_message=html_body,
         )
         logger.info(f"Queued async action required email to {email} for request {req_code}")
         return True
@@ -325,8 +474,8 @@ def send_registration_resubmitted_email(registration_request):
         company = registration_request.shipping_company_id
         company_name = company.shipping_company_name if company else "Shipping Company"
         req_code = format_reg_id(registration_request.registration_request_id)
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
 
-        # Look up admin email(s)
         admin_emails = list(User.objects.filter(
             login_id__login_role='port_administrator',
             login_id__login_is_active=True
@@ -335,8 +484,8 @@ def send_registration_resubmitted_email(registration_request):
         if not admin_emails:
             admin_emails = [get_from_email()]
 
-        subject = "PORTIDE Registration Resubmitted"
-        body = f"""Hello Port Administrator,
+        subject = f"PORTIDE Notice: Registration Resubmitted ({req_code})"
+        plain_body = f"""Hello Port Administrator,
 
 A shipping company has resubmitted their registration application with updated documentation.
 
@@ -346,14 +495,53 @@ Status: Pending Review
 
 The company has uploaded the requested correction/document. Please review the updated application in the Port Administration portal.
 
+Portal: {frontend_url}
+
 Regards,
 PORTIDE Notification System
 """
+
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Administration</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">APPLICATION RESUBMITTED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Updated Documentation Ready for Review</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello Port Administrator,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        <strong>{company_name}</strong> has resubmitted their registration application with the requested replacement documentation.
+      </p>
+
+      {copy_box}
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{frontend_url}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
+          Review Application in Admin Portal &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=admin_emails,
+            html_message=html_body,
         )
         logger.info(f"Queued async registration resubmission email to admins {admin_emails} for request {req_code}")
         return True
@@ -378,8 +566,8 @@ def send_registration_approved_email(registration_request):
         frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
         login_url = f"{frontend_url.rstrip('/')}/login"
 
-        subject = "PORTIDE Registration Approved"
-        body = f"""Hello {applicant_name},
+        subject = f"PORTIDE Registration Approved – Welcome Aboard ({company_name})"
+        plain_body = f"""Hello {applicant_name},
 
 Congratulations! Your Shipping Company registration for {company_name} has been approved.
 
@@ -395,11 +583,72 @@ Welcome to PORTIDE Maritime Port Operations Intelligence Platform.
 Regards,
 PORTIDE Administration
 """
+
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #a7f3d0; text-transform: uppercase;">PORTIDE Official Approval</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">WELCOME TO PORTIDE</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Registration Approved &amp; Account Activated</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Congratulations <strong>{applicant_name}</strong>,</p>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Your Shipping Company registration for <strong>{company_name}</strong> has been officially approved by Port Administration. Your account is now fully active.
+      </p>
+
+      {copy_box}
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Company</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{company_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Portal Email</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{email}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Account Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">ACTIVE &bull; APPROVED</td>
+        </tr>
+      </table>
+
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #166534; line-height: 1.5;">
+        <div style="font-weight: 700; margin-bottom: 4px;">🚀 Unlocked Operational Capabilities:</div>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Vessel Arrival Notification submission &amp; tracking</li>
+          <li>Digital Cargo Manifests &amp; Customs document uploads</li>
+          <li>Berth schedule monitoring and real-time container tracking</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{login_url}" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">
+          Sign In to PORTIDE &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[email],
+            html_message=html_body,
         )
         logger.info(f"Queued async registration approval email to {email} for request {req_code}")
         return True
@@ -422,8 +671,8 @@ def send_registration_rejected_email(registration_request, rejection_reason: str
         email = company.shipping_company_email
         company_name = company.shipping_company_name
 
-        subject = "PORTIDE Registration Request – Rejected"
-        body = f"""Hello {applicant_name},
+        subject = f"PORTIDE Registration Request – Rejected ({req_code})"
+        plain_body = f"""Hello {applicant_name},
 
 Thank you for your interest in PORTIDE.
 
@@ -439,11 +688,55 @@ This is a final registration decision. If you have questions regarding this deci
 Regards,
 PORTIDE Administration
 """
+
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #881337 0%, #9f1239 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fecdd3; text-transform: uppercase;">PORTIDE Administration</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">APPLICATION REJECTED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #ffe4e6;">Registration Request Decision</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Thank you for your interest in the PORTIDE Maritime Intelligence Platform. After reviewing the application for <strong>{company_name}</strong>, Port Administration has decided not to approve this registration at this time.
+      </p>
+
+      {copy_box}
+
+      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+          Reason for Decision:
+        </div>
+        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
+          "{rejection_reason}"
+        </div>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
+        If you have questions regarding this decision or wish to submit a new application with verified credentials, please contact the Port Administration Office.
+      </p>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[email],
+            html_message=html_body,
         )
         logger.info(f"Queued async registration rejection email to {email} for request {req_code}")
         return True
@@ -454,7 +747,7 @@ PORTIDE Administration
 
 def send_staff_account_created_email(user_obj, temp_password: str) -> bool:
     """
-    Sends credential notification email to newly created internal staff member.
+    Sends credential notification email to newly created internal staff member with modern Gmail design & 1-click copyable password.
     The temporary password is NEVER logged or saved elsewhere.
     """
     ROLE_DISPLAY_MAP = {
@@ -474,46 +767,107 @@ def send_staff_account_created_email(user_obj, temp_password: str) -> bool:
         employee_id = user_obj.user_employee_id or 'N/A'
         role_code = user_obj.login_id.login_role if user_obj.login_id else ''
         role_display = ROLE_DISPLAY_MAP.get(role_code, role_code.replace('_', ' ').title())
-        department = user_obj.user_department or (user_obj.department_id.department_department_name if user_obj.department_id else 'Port Operations')
+        department = user_obj.user_department or (user_obj.department_id.department_department_name if getattr(user_obj, 'department_id', None) else 'Port Operations')
         
-        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'http://localhost:5173'
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
         login_url = f"{frontend_url.rstrip('/')}/login"
 
-        subject = "PORTIDE – Internal Staff Account Created"
-        body = f"""Hello {full_name},
+        subject = "PORTIDE – Internal Staff Account Created & Login Credentials"
+        plain_body = f"""Hello {full_name},
 
-Your internal staff account has been created in the
-PORTIDE Intelligent Maritime Port Operations Platform.
+Your internal staff account has been created in the PORTIDE Intelligent Maritime Port Operations Platform.
 
 Account Details:
-
-Employee ID: {employee_id}
-Role: {role_display}
-Department: {department}
-Email: {recipient_email}
+- Employee ID: {employee_id}
+- Role: {role_display}
+- Department: {department}
+- Email: {recipient_email}
 
 Temporary Password:
 {temp_password}
 
-Login:
+Login URL:
 {login_url}
 
 IMPORTANT:
-
-This is a temporary password generated by PORTIDE.
-
-You must change your password after your first successful login.
-
-Please do not share your credentials with anyone.
+- This is a temporary password generated by PORTIDE.
+- You must change your password immediately after your first successful login.
+- Please do not share your credentials with anyone.
 
 Regards,
 PORTIDE Administration
+Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(temp_password, "Temporary Access Password", "Click or tap password to select & copy")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Security &amp; Access</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">STAFF ACCOUNT CREATED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Welcome to Maritime Operations Intelligence</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{full_name}</strong>,</p>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        An internal operational staff account has been provisioned for you. Use the temporary credentials below to sign in to the PORTIDE platform.
+      </p>
+
+      {copy_box}
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Employee ID</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace;">{employee_id}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Assigned Role</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{role_display}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Department</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{department}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Portal Email</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{recipient_email}</td>
+        </tr>
+      </table>
+
+      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #92400e; line-height: 1.5;">
+        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          🔒 Mandatory First-Login Security Policy:
+        </div>
+        <div>
+          This temporary password was generated automatically by PORTIDE. Upon signing in for the first time, you will be prompted to choose a permanent, private password.
+        </div>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{login_url}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3);">
+          Sign In to Portal &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
         send_mail(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
+            html_message=html_body,
             fail_silently=False
         )
         logger.info(f"Sent staff account creation email to {recipient_email} for employee {employee_id}")
@@ -523,10 +877,209 @@ PORTIDE Administration
         return False
 
 
+def send_password_reset_email(login_obj, plain_token: str, reset_link: str) -> bool:
+    """
+    Sends responsive HTML password reset email with 1-click copyable security token and direct reset CTA.
+    """
+    try:
+        email = login_obj.login_email
+        full_name = getattr(login_obj, 'profile', None)
+        recipient_name = getattr(full_name, 'user_full_name', None) or email.split('@')[0].capitalize()
+
+        subject = "PORTIDE Security – Password Reset Request"
+        plain_body = f"""Hello {recipient_name},
+
+A password reset was requested for your PORTIDE account ({email}).
+
+To set a new password, click the link below:
+{reset_link}
+
+Alternatively, you can copy your Password Reset Security Token:
+{plain_token}
+
+This link and token are valid for 30 minutes.
+
+If you did NOT request a password reset, you can safely ignore this email. Your account remains secure.
+
+Regards,
+PORTIDE Security & Administration
+Maritime Port Operations Intelligence Platform
+"""
+
+        copy_box = _render_copyable_code_box(plain_token, "Password Reset Security Token", "Click or tap token to select & copy")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Security &amp; Access</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">PASSWORD RESET REQUEST</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Secure Account Recovery</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{recipient_name}</strong>,</p>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        A request was submitted to reset the password for your PORTIDE account (<strong>{email}</strong>). Click the button below to choose a new password:
+      </p>
+
+      <div style="text-align: center; margin: 24px 0 20px 0;">
+        <a href="{reset_link}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 34px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3);">
+          Reset Password &rarr;
+        </a>
+      </div>
+
+      {copy_box}
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin: 20px 0; font-size: 11px; color: #64748b; word-break: break-all;">
+        <span style="font-weight: 700; color: #334155;">Direct Reset Link:</span><br/>
+        <span style="font-family: monospace; color: #0284c7; user-select: all; -webkit-user-select: all; font-size: 12px;">{reset_link}</span>
+      </div>
+
+      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #92400e; line-height: 1.5;">
+        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          ⏱️ Security Notice:
+        </div>
+        <div>
+          This link and token are valid for <strong>30 minutes</strong> and can only be used once. If you did not request this change, please disregard this email — your account remains completely secure.
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
+        _send_mail_async(
+            subject=subject,
+            message=plain_body,
+            from_email=get_from_email(),
+            recipient_list=[email],
+            html_message=html_body,
+        )
+        logger.info(f"Queued async password reset email to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue password reset email: {str(e)}", exc_info=True)
+        return False
+
+
+def send_password_changed_notification(login_obj) -> bool:
+    """
+    Sends confirmation notification email when an account password is changed or reset.
+    """
+    try:
+        from django.utils import timezone
+        email = login_obj.login_email
+        time_str = timezone.now().strftime('%d %b %Y %H:%M UTC')
+        role_display = login_obj.login_role.replace('_', ' ').title() if login_obj.login_role else 'Platform User'
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        login_url = f"{frontend_url.rstrip('/')}/login"
+
+        subject = "PORTIDE Security Alert: Password Updated Successfully"
+        plain_body = f"""Hello,
+
+The password for your PORTIDE account ({email}) was successfully updated on {time_str}.
+
+Account Details:
+- Email: {email}
+- Role: {role_display}
+- Updated: {time_str}
+- Security: PBKDF2 Encrypted
+
+If you performed this change, you can safely disregard this notice.
+
+If you did NOT authorize this change, please contact Port Administration and the PORTIDE Security Team immediately to protect your account.
+
+Login: {login_url}
+
+Regards,
+PORTIDE Security & Administration
+Maritime Port Operations Intelligence Platform
+"""
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #86efac; text-transform: uppercase;">PORTIDE Security Alert</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">PASSWORD UPDATED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Security Credentials Successfully Changed</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello,</p>
+      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        The password for your PORTIDE account (<strong>{email}</strong>) was successfully updated.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Account Email</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{email}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Account Role</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{role_display}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Updated At</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0; font-family: monospace;">{time_str}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Security Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">ACTIVE &bull; SECURED</td>
+        </tr>
+      </table>
+
+      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #9f1239; line-height: 1.5;">
+        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          ⚠️ Did not make this change?
+        </div>
+        <div>
+          If you did NOT initiate this password change, your account may be compromised. Please contact Port Administration and the PORTIDE Security Team immediately to lock the account and restore access.
+        </div>
+      </div>
+
+      <div style="text-align: center; margin: 24px 0 10px 0;">
+        <a href="{login_url}" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">
+          Sign In to PORTIDE &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
+    </div>
+  </div>
+</body>
+</html>"""
+
+        _send_mail_async(
+            subject=subject,
+            message=plain_body,
+            from_email=get_from_email(),
+            recipient_list=[email],
+            html_message=html_body,
+        )
+        logger.info(f"Queued async password changed notification to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue password changed notification: {str(e)}", exc_info=True)
+        return False
+
+
 def send_customs_cleared_notification(container, officer_name: str = None) -> bool:
     """
     Sends notification email when a container is cleared by Customs.
-    Notifies the linked shipping company.
+    Notifies the linked shipping company with copyable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -535,28 +1088,91 @@ def send_customs_cleared_notification(container, officer_name: str = None) -> bo
             return False
 
         subject = f"PORTIDE Customs Notification: Container {container.container_number} Cleared"
-        body = f"""Dear {shipping_company.shipping_company_name},
+        container_type_display = container.get_container_type_display() if hasattr(container, 'get_container_type_display') else 'Standard Container'
+        cargo_desc = container.cargo.cargo_description if getattr(container, 'cargo', None) else 'Containerized Cargo'
+        vessel_name = container.vessel.vessel_name if getattr(container, 'vessel', None) else 'N/A'
+        officer = officer_name or 'Customs Authority'
+
+        plain_body = f"""Dear {shipping_company.shipping_company_name},
 
 Container {container.container_number} has been cleared by Customs and is ready for the next operational stage.
 
 Container Details:
 - Container Number: {container.container_number}
-- Container Type: {container.get_container_type_display()}
+- Container Type: {container_type_display}
 - Gross Weight: {container.container_gross_weight} Tonnes
-- Cargo Description: {container.cargo.cargo_description}
-- Vessel: {container.vessel.vessel_name if container.vessel else 'N/A'}
-- Customs Officer: {officer_name or 'Customs Authority'}
+- Cargo Description: {cargo_desc}
+- Vessel: {vessel_name}
+- Customs Officer: {officer}
 - Status: Cleared
 
 Regards,
 PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #a7f3d0; text-transform: uppercase;">PORTIDE Customs &amp; Border Clearance</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CONTAINER CLEARED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Cargo Verification Approved</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Customs inspection has been successfully completed for container <strong>#{container.container_number}</strong>. The container has been granted customs clearance.
+      </p>
+
+      {copy_box}
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Container Type</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{container_type_display}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gross Weight</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Cargo</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{cargo_desc}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Carrying Vessel</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Officer</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">CLEARED</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
+            html_message=html_body,
         )
         logger.info(f"Queued async customs cleared notification email for container {container.container_number} to {recipient_email}")
         return True
@@ -568,7 +1184,7 @@ Maritime Port Operations Intelligence Platform
 def send_customs_hold_notification(container, hold_reason: str = None, officer_name: str = None) -> bool:
     """
     Sends notification email when a container is placed on Customs Hold.
-    Notifies the linked shipping company.
+    Notifies the linked shipping company with copyable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -577,18 +1193,24 @@ def send_customs_hold_notification(container, hold_reason: str = None, officer_n
             return False
 
         subject = f"PORTIDE Customs Alert: Container {container.container_number} Placed on Hold"
-        body = f"""Dear {shipping_company.shipping_company_name},
+        container_type_display = container.get_container_type_display() if hasattr(container, 'get_container_type_display') else 'Standard Container'
+        cargo_desc = container.cargo.cargo_description if getattr(container, 'cargo', None) else 'Containerized Cargo'
+        vessel_name = container.vessel.vessel_name if getattr(container, 'vessel', None) else 'N/A'
+        officer = officer_name or 'Customs Authority'
+        reason = hold_reason or 'Documentation / Inspection Discrepancy'
+
+        plain_body = f"""Dear {shipping_company.shipping_company_name},
 
 Container {container.container_number} has been placed on Customs Hold.
 
 Container Details:
 - Container Number: {container.container_number}
-- Container Type: {container.get_container_type_display()}
+- Container Type: {container_type_display}
 - Gross Weight: {container.container_gross_weight} Tonnes
-- Cargo Description: {container.cargo.cargo_description}
-- Vessel: {container.vessel.vessel_name if container.vessel else 'N/A'}
-- Hold Reason: {hold_reason or 'Documentation / Inspection Discrepancy'}
-- Customs Officer: {officer_name or 'Customs Authority'}
+- Cargo Description: {cargo_desc}
+- Vessel: {vessel_name}
+- Hold Reason: {reason}
+- Customs Officer: {officer}
 - Status: Customs Hold
 
 Please contact the Port Customs Authority or submit required documentation to resolve this hold.
@@ -597,11 +1219,74 @@ Regards,
 PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fecaca; text-transform: uppercase;">PORTIDE Customs &amp; Border Clearance</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CUSTOMS HOLD ALERT</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #fee2e2;">Inspection or Documentation Discrepancy</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Container <strong>#{container.container_number}</strong> has been placed on <strong>Customs Hold</strong> by Port Customs Control. Terminal release and gate movement are paused pending resolution.
+      </p>
+
+      {copy_box}
+
+      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 18px 0;">
+        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+          Hold Reason / Discrepancy:
+        </div>
+        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
+          "{reason}"
+        </div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Cargo</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{cargo_desc}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Vessel</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Officer</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Current Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #dc2626; text-align: right; border-top: 1px solid #e2e8f0;">CUSTOMS HOLD</td>
+        </tr>
+      </table>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0;">
+        Please log in to your PORTIDE Shipping Portal to inspect required documents or submit clarifications to Customs Control.
+      </p>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
+            html_message=html_body,
         )
         logger.info(f"Queued async customs hold notification email for container {container.container_number} to {recipient_email}")
         return True
@@ -613,7 +1298,7 @@ Maritime Port Operations Intelligence Platform
 def send_container_released_notification(container, truck_number: str = '', officer_name: str = None) -> bool:
     """
     Sends notification email when a container is released through the gate.
-    Notifies the linked shipping company.
+    Notifies the linked shipping company with copyable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -621,30 +1306,90 @@ def send_container_released_notification(container, truck_number: str = '', offi
         if not recipient_email:
             return False
 
-        subject = f"PORTIDE Gate Release Notification: Container {container.container_number} Released"
-        body = f"""Dear {shipping_company.shipping_company_name},
+        subject = f"PORTIDE Gate Release: Container {container.container_number} Released"
+        container_type_display = container.get_container_type_display() if hasattr(container, 'get_container_type_display') else 'Standard Container'
+        cargo_desc = container.cargo.cargo_description if getattr(container, 'cargo', None) else 'Containerized Cargo'
+        vessel_name = container.vessel.vessel_name if getattr(container, 'vessel', None) else 'N/A'
+        officer = officer_name or 'Gate & Truck Operations'
+        assigned_truck = truck_number or 'Assigned Carrier Truck'
+
+        plain_body = f"""Dear {shipping_company.shipping_company_name},
 
 Container {container.container_number} has completed gate verification and has been officially released from the port terminal.
 
 Container Details:
 - Container Number: {container.container_number}
-- Container Type: {container.get_container_type_display()}
+- Container Type: {container_type_display}
 - Gross Weight: {container.container_gross_weight} Tonnes
-- Cargo Description: {container.cargo.cargo_description}
-- Vessel: {container.vessel.vessel_name if container.vessel else 'N/A'}
-- Truck Number: {truck_number or 'Assigned Carrier'}
-- Gate Officer: {officer_name or 'Gate & Truck Operations'}
+- Cargo Description: {cargo_desc}
+- Vessel: {vessel_name}
+- Truck Number: {assigned_truck}
+- Gate Officer: {officer}
 - Status: Released
 
 Regards,
 PORTIDE Gate & Truck Operations
 Maritime Port Operations Intelligence Platform
 """
+
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>{subject}</title></head>
+<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
+      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Gate &amp; Terminal Operations</div>
+      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CONTAINER RELEASED</h1>
+      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Gate Outbound Verification Complete</div>
+    </div>
+
+    <div style="padding: 24px; color: #1e293b;">
+      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+        Container <strong>#{container.container_number}</strong> has successfully completed physical and digital gate verification and has exited the port terminal.
+      </p>
+
+      {copy_box}
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Transport Truck</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace;">{assigned_truck}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Container Type</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container_type_display}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gross Weight</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gate Officer</td>
+          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gate Status</td>
+          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">RELEASED &bull; OUTBOUND</td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+      PORTIDE &bull; Maritime Port Operations Intelligence Platform
+    </div>
+  </div>
+</body>
+</html>"""
+
         _send_mail_async(
             subject=subject,
-            message=body,
+            message=plain_body,
             from_email=get_from_email(),
             recipient_list=[recipient_email],
+            html_message=html_body,
         )
         logger.info(f"Queued async container released notification email for container {container.container_number} to {recipient_email}")
         return True
