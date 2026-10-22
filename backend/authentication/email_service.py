@@ -3,11 +3,12 @@ import os
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 from email.mime.image import MIMEImage
 from django.core.mail import EmailMultiAlternatives, send_mail as django_send_mail
 from django.conf import settings
 from authentication.models import User
-from authentication.qr_service import generate_qr_png_bytes
+from authentication.qr_service import generate_qr_png_bytes, generate_qr_png_base64
 
 logger = logging.getLogger(__name__)
 
@@ -223,22 +224,189 @@ def _send_mail_async(subject, message, from_email, recipient_list, html_message=
     t.start()
 
 
-def _render_copyable_code_box(code_text: str, label: str = "Credential / Code", helper_note: str = "Click or double-click to select & copy") -> str:
+def _render_responsive_email_layout(
+    subject: str,
+    header_kicker: str,
+    header_title: str,
+    header_subtitle: str,
+    header_gradient: str,
+    header_kicker_color: str,
+    header_subtitle_color: str,
+    body_content: str,
+    footer_text: str = "PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System",
+) -> str:
+    """
+    Renders a unified, mobile-first responsive HTML email template:
+    - Zero horizontal scrolling across mobile (320px, 375px, 390px, 430px), tablet, and desktop.
+    - Uses fluid width: 100% with max-width: 600px.
+    - Stacked responsive table rows on narrow viewports for long labels, roles, departments, emails, and container numbers.
+    - Preserves PORTIDE branding, gradients, typography, and status indicators.
+    - Avoids JavaScript, onclick, and Clipboard APIs inside emails.
+    """
+    clean_subj = str(subject or "PORTIDE Notification")
+    clean_kicker = str(header_kicker or "PORTIDE")
+    clean_title = str(header_title or "")
+    clean_subtitle = str(header_subtitle or "")
+    clean_footer = str(footer_text or "")
+
+    css_styles = """
+    /* Reset & fluid email layout */
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      height: 100% !important;
+      width: 100% !important;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    table, td {
+      border-collapse: collapse !important;
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+      -ms-interpolation-mode: bicubic;
+    }
+    /* Responsive overrides for narrow screens (320px, 375px, 390px, 430px, tablet) */
+    @media only screen and (max-width: 600px) {
+      .email-wrapper {
+        padding: 12px 6px !important;
+      }
+      .email-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 12px !important;
+      }
+      .header-content {
+        padding: 22px 16px !important;
+      }
+      .header-title {
+        font-size: 20px !important;
+        letter-spacing: -0.25px !important;
+      }
+      .body-content {
+        padding: 18px 14px !important;
+      }
+      .data-table-stacked tr {
+        display: block !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+      }
+      .data-table-stacked tr:last-child {
+        border-bottom: none !important;
+      }
+      .data-table-stacked td.data-label {
+        display: block !important;
+        width: 100% !important;
+        text-align: left !important;
+        padding: 8px 12px 2px 12px !important;
+        box-sizing: border-box !important;
+      }
+      .data-table-stacked td.data-value {
+        display: block !important;
+        width: 100% !important;
+        text-align: left !important;
+        padding: 2px 12px 10px 12px !important;
+        border-top: none !important;
+        box-sizing: border-box !important;
+      }
+      .footer-content {
+        padding: 14px 14px !important;
+        font-size: 11px !important;
+      }
+      .code-box-inner {
+        padding: 10px 14px !important;
+        max-width: 100% !important;
+      }
+      .code-box-text {
+        font-size: 16px !important;
+        letter-spacing: 1px !important;
+      }
+      .btn-action {
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        padding: 12px 16px !important;
+      }
+      .alert-box {
+        padding: 12px 12px !important;
+      }
+      .qr-wrapper {
+        padding: 10px !important;
+      }
+      .qr-img {
+        width: 180px !important;
+        height: 180px !important;
+      }
+    }
+    """
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{clean_subj}</title>
+  <style>{css_styles}</style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="email-wrapper" style="background-color: #f1f5f9; padding: 24px 12px; margin: 0; width: 100%;">
+    <tr>
+      <td align="center" style="padding: 0;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width: 600px; width: 100%; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <tr>
+            <td class="header-content" style="background: {header_gradient}; padding: 26px 24px; text-align: center; color: #ffffff;">
+              <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: {header_kicker_color}; text-transform: uppercase;">{clean_kicker}</div>
+              <h1 class="header-title" style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff;">{clean_title}</h1>
+              <div style="margin-top: 8px; font-size: 13px; color: {header_subtitle_color}; word-break: break-word;">{clean_subtitle}</div>
+            </td>
+          </tr>
+          <!-- Body Content -->
+          <tr>
+            <td class="body-content" style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.5;">
+              {body_content}
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td class="footer-content" style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.5;">
+              {clean_footer}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def _render_copyable_code_box(code_text: str, label: str = "Credential / Code", helper_note: str = "Select code to copy") -> str:
     """
     Renders an email-client resilient monospace code block with user-select styling.
-    When clicked or tapped in webmail / mobile mail clients, selects the exact string.
+    Selectable text in highlighted box with simple manual-copy instructions.
+    No JavaScript, onclick, or clipboard API used.
     """
     clean_code = str(code_text or '').strip()
     return f"""
-    <div style="margin: 18px 0; text-align: center;">
+    <div style="margin: 16px 0; text-align: center; max-width: 100%; box-sizing: border-box;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
         {label}
       </div>
-      <div style="display: inline-block; background: #0f172a; border: 1.5px dashed #38bdf8; border-radius: 10px; padding: 12px 24px; text-align: center; cursor: pointer; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);">
-        <span style="font-family: 'Courier New', Courier, monospace, Consolas; font-size: 19px; font-weight: 800; color: #38bdf8; letter-spacing: 2px; user-select: all; -webkit-user-select: all; display: inline-block;">{clean_code}</span>
+      <div class="code-box-inner" style="display: inline-block; max-width: 100%; box-sizing: border-box; background: #0f172a; border: 1.5px dashed #38bdf8; border-radius: 10px; padding: 12px 18px; text-align: center; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08); word-break: break-all; overflow-wrap: anywhere;">
+        <span class="code-box-text" style="font-family: 'Courier New', Courier, monospace, Consolas; font-size: 18px; font-weight: 800; color: #38bdf8; letter-spacing: 1.5px; user-select: all; -webkit-user-select: all; display: inline-block; max-width: 100%; word-break: break-all; overflow-wrap: anywhere;">{clean_code}</span>
       </div>
       <div style="margin-top: 6px; font-size: 11px; color: #64748b;">
-        <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 4px; font-weight: 600;">📋 {helper_note}</span>
+        <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 4px; font-weight: 600; display: inline-block; max-width: 100%; word-break: break-word;">📋 {helper_note}</span>
       </div>
     </div>
     """
@@ -279,68 +447,61 @@ PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Select reference code to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Intelligence Platform</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">REGISTRATION RECEIVED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Shipping Partner Onboarding</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Your Shipping Company registration request has been successfully submitted and queued for administrative review.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Your Shipping Company registration request has been successfully submitted and queued for administrative review.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Company</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{company_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Applicant</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{applicant_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Registered Email</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-all; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{email}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Review Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #d97706; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">PENDING REVIEW</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Company</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{company_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Applicant</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{applicant_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Registered Email</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{email}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Review Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #d97706; text-align: right; border-top: 1px solid #e2e8f0;">PENDING REVIEW</td>
-        </tr>
-      </table>
+          <div class="alert-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #475569; line-height: 1.6; box-sizing: border-box;">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Next Steps:</div>
+            <ol style="margin: 0; padding-left: 20px;">
+              <li>Port Administration will verify your company documentation and credentials.</li>
+              <li>You will receive an automated notification as soon as your account is approved.</li>
+              <li>Save the reference code above to check application progress.</li>
+            </ol>
+          </div>
 
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #475569; line-height: 1.6;">
-        <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Next Steps:</div>
-        <ol style="margin: 0; padding-left: 20px;">
-          <li>Port Administration will verify your company documentation and credentials.</li>
-          <li>You will receive an automated notification as soon as your account is approved.</li>
-          <li>Save the reference code above to check application progress.</li>
-        </ol>
-      </div>
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{frontend_url}" class="btn-action" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px; max-width: 100%; box-sizing: border-box;">
+              Visit PORTIDE Platform &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{frontend_url}" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
-          Visit PORTIDE Platform &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Intelligence Platform",
+            header_title="REGISTRATION RECEIVED",
+            header_subtitle="Shipping Partner Onboarding",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            header_kicker_color="#f59e0b",
+            header_subtitle_color="#94a3b8",
+            body_content=body_html,
+        )
 
         _send_mail_async(
             subject=subject,
@@ -395,62 +556,55 @@ PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Select reference code to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #7c2d12 0%, #9a3412 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fed7aa; text-transform: uppercase;">PORTIDE Administration</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">ACTION REQUIRED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #ffedd5;">Additional Documentation Needed</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Port Administration has reviewed your Shipping Company registration for <strong>{company_name}</strong> and requires additional information or document updates before approval can be granted.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Port Administration has reviewed your Shipping Company registration for <strong>{company_name}</strong> and requires additional information or document updates before approval can be granted.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <div class="alert-box" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 18px 0; box-sizing: border-box;">
+            <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+              Administrator Message:
+            </div>
+            <div style="font-size: 13px; color: #78350f; font-weight: 600; line-height: 1.5; word-break: break-word;">
+              "{admin_message}"
+            </div>
+          </div>
 
-      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 18px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
-          Administrator Message:
-        </div>
-        <div style="font-size: 13px; color: #78350f; font-weight: 600; line-height: 1.5;">
-          "{admin_message}"
-        </div>
-      </div>
+          <div class="alert-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 18px 0; box-sizing: border-box;">
+            <div style="font-size: 11px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+              Requested Document(s) / Correction(s):
+            </div>
+            <div style="font-size: 13px; color: #334155; line-height: 1.5; word-break: break-word;">
+              {required_docs_display}
+            </div>
+          </div>
 
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 18px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
-          Requested Document(s) / Correction(s):
-        </div>
-        <div style="font-size: 13px; color: #334155; line-height: 1.5;">
-          {required_docs_display}
-        </div>
-      </div>
+          <div class="alert-box" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; margin: 18px 0; font-size: 12px; color: #1e40af; line-height: 1.5; box-sizing: border-box;">
+            💡 <strong>Quick Note:</strong> You do NOT need to complete the entire registration form again. Your company details remain safely preserved. Simply upload the requested document(s).
+          </div>
 
-      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 12px 16px; margin: 18px 0; font-size: 12px; color: #1e40af; line-height: 1.5;">
-        💡 <strong>Quick Note:</strong> You do NOT need to complete the entire registration form again. Your company details remain safely preserved. Simply upload the requested document(s).
-      </div>
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{frontend_url}" class="btn-action" style="display: inline-block; background: #9a3412; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px; max-width: 100%; box-sizing: border-box;">
+              Open Portal &amp; Upload Document &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{frontend_url}" style="display: inline-block; background: #9a3412; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
-          Open Portal &amp; Upload Document &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Administration",
+            header_title="ACTION REQUIRED",
+            header_subtitle="Additional Documentation Needed",
+            header_gradient="linear-gradient(135deg, #7c2d12 0%, #9a3412 100%)",
+            header_kicker_color="#fed7aa",
+            header_subtitle_color="#ffedd5",
+            body_content=body_html,
+        )
 
         _send_mail_async(
             subject=subject,
@@ -501,40 +655,34 @@ Regards,
 PORTIDE Notification System
 """
 
-        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Select reference code to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Administration</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">APPLICATION RESUBMITTED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Updated Documentation Ready for Review</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello Port Administrator,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            <strong>{company_name}</strong> has resubmitted their registration application with the requested replacement documentation.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello Port Administrator,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        <strong>{company_name}</strong> has resubmitted their registration application with the requested replacement documentation.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{frontend_url}" class="btn-action" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px; max-width: 100%; box-sizing: border-box;">
+              Review Application in Admin Portal &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{frontend_url}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 8px;">
-          Review Application in Admin Portal &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Administration",
+            header_title="APPLICATION RESUBMITTED",
+            header_subtitle="Updated Documentation Ready for Review",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            header_kicker_color="#38bdf8",
+            header_subtitle_color="#94a3b8",
+            body_content=body_html,
+            footer_text="PORTIDE &bull; Maritime Port Operations Intelligence Platform"
+        )
 
         _send_mail_async(
             subject=subject,
@@ -584,64 +732,57 @@ Regards,
 PORTIDE Administration
 """
 
-        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Select reference code to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #a7f3d0; text-transform: uppercase;">PORTIDE Official Approval</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">WELCOME TO PORTIDE</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Registration Approved &amp; Account Activated</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Congratulations <strong>{applicant_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Your Shipping Company registration for <strong>{company_name}</strong> has been officially approved by Port Administration. Your account is now fully active.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Congratulations <strong>{applicant_name}</strong>,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Your Shipping Company registration for <strong>{company_name}</strong> has been officially approved by Port Administration. Your account is now fully active.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Company</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{company_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Portal Email</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-all; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{email}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Account Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">ACTIVE &bull; APPROVED</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Company</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{company_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Portal Email</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{email}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Account Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">ACTIVE &bull; APPROVED</td>
-        </tr>
-      </table>
+          <div class="alert-box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #166534; line-height: 1.5; box-sizing: border-box;">
+            <div style="font-weight: 700; margin-bottom: 4px;">🚀 Unlocked Operational Capabilities:</div>
+            <ul style="margin: 0; padding-left: 20px;">
+              <li>Vessel Arrival Notification submission &amp; tracking</li>
+              <li>Digital Cargo Manifests &amp; Customs document uploads</li>
+              <li>Berth schedule monitoring and real-time container tracking</li>
+            </ul>
+          </div>
 
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #166534; line-height: 1.5;">
-        <div style="font-weight: 700; margin-bottom: 4px;">🚀 Unlocked Operational Capabilities:</div>
-        <ul style="margin: 0; padding-left: 20px;">
-          <li>Vessel Arrival Notification submission &amp; tracking</li>
-          <li>Digital Cargo Manifests &amp; Customs document uploads</li>
-          <li>Berth schedule monitoring and real-time container tracking</li>
-        </ul>
-      </div>
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{login_url}" class="btn-action" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3); max-width: 100%; box-sizing: border-box;">
+              Sign In to PORTIDE &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{login_url}" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">
-          Sign In to PORTIDE &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Official Approval",
+            header_title="WELCOME TO PORTIDE",
+            header_subtitle="Registration Approved &amp; Account Activated",
+            header_gradient="linear-gradient(135deg, #064e3b 0%, #047857 100%)",
+            header_kicker_color="#a7f3d0",
+            header_subtitle_color="#d1fae5",
+            body_content=body_html,
+        )
 
         _send_mail_async(
             subject=subject,
@@ -689,47 +830,41 @@ Regards,
 PORTIDE Administration
 """
 
-        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Click to select & copy reference code")
+        copy_box = _render_copyable_code_box(req_code, "Registration Reference Code", "Select reference code to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #881337 0%, #9f1239 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fecdd3; text-transform: uppercase;">PORTIDE Administration</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">APPLICATION REJECTED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #ffe4e6;">Registration Request Decision</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Thank you for your interest in the PORTIDE Maritime Intelligence Platform. After reviewing the application for <strong>{company_name}</strong>, Port Administration has decided not to approve this registration at this time.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{applicant_name}</strong>,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Thank you for your interest in the PORTIDE Maritime Intelligence Platform. After reviewing the application for <strong>{company_name}</strong>, Port Administration has decided not to approve this registration at this time.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <div class="alert-box" style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 20px 0; box-sizing: border-box;">
+            <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+              Reason for Decision:
+            </div>
+            <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5; word-break: break-word;">
+              "{rejection_reason}"
+            </div>
+          </div>
 
-      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 20px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
-          Reason for Decision:
-        </div>
-        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
-          "{rejection_reason}"
-        </div>
-      </div>
+          <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
+            If you have questions regarding this decision or wish to submit a new application with verified credentials, please contact the Port Administration Office.
+          </p>
+        """
 
-      <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
-        If you have questions regarding this decision or wish to submit a new application with verified credentials, please contact the Port Administration Office.
-      </p>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Administration",
+            header_title="APPLICATION REJECTED",
+            header_subtitle="Registration Request Decision",
+            header_gradient="linear-gradient(135deg, #881337 0%, #9f1239 100%)",
+            header_kicker_color="#fecdd3",
+            header_subtitle_color="#ffe4e6",
+            body_content=body_html,
+            footer_text="PORTIDE &bull; Maritime Port Operations Intelligence Platform"
+        )
 
         _send_mail_async(
             subject=subject,
@@ -747,7 +882,8 @@ PORTIDE Administration
 
 def send_staff_account_created_email(user_obj, temp_password: str) -> bool:
     """
-    Sends credential notification email to newly created internal staff member with modern Gmail design & 1-click copyable password.
+    Sends credential notification email to newly created internal staff member with responsive Gmail/mobile layout.
+    Password is selectable text in highlighted box with simple manual-copy instructions.
     The temporary password is NEVER logged or saved elsewhere.
     """
     ROLE_DISPLAY_MAP = {
@@ -799,68 +935,61 @@ PORTIDE Administration
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(temp_password, "Temporary Access Password", "Click or tap password to select & copy")
+        copy_box = _render_copyable_code_box(temp_password, "Temporary Access Password", "Select password to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Security &amp; Access</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">STAFF ACCOUNT CREATED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Welcome to Maritime Operations Intelligence</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{full_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            An internal operational staff account has been provisioned for you. Use the temporary credentials below to sign in to the PORTIDE platform.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{full_name}</strong>,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        An internal operational staff account has been provisioned for you. Use the temporary credentials below to sign in to the PORTIDE platform.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Employee ID</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{employee_id}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Assigned Role</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{role_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Department</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{department}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Portal Email</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-all; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{recipient_email}</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Employee ID</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace;">{employee_id}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Assigned Role</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{role_display}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Department</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{department}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Portal Email</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{recipient_email}</td>
-        </tr>
-      </table>
+          <div class="alert-box" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #92400e; line-height: 1.5; box-sizing: border-box;">
+            <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+              🔒 Mandatory First-Login Security Policy:
+            </div>
+            <div>
+              This temporary password was generated automatically by PORTIDE. Upon signing in for the first time, you will be prompted to choose a permanent, private password.
+            </div>
+          </div>
 
-      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #92400e; line-height: 1.5;">
-        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          🔒 Mandatory First-Login Security Policy:
-        </div>
-        <div>
-          This temporary password was generated automatically by PORTIDE. Upon signing in for the first time, you will be prompted to choose a permanent, private password.
-        </div>
-      </div>
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{login_url}" class="btn-action" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3); max-width: 100%; box-sizing: border-box;">
+              Sign In to Portal &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{login_url}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3);">
-          Sign In to Portal &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Security &amp; Access",
+            header_title="STAFF ACCOUNT CREATED",
+            header_subtitle="Welcome to Maritime Operations Intelligence",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            header_kicker_color="#38bdf8",
+            header_subtitle_color="#94a3b8",
+            body_content=body_html,
+        )
 
         send_mail(
             subject=subject,
@@ -879,7 +1008,7 @@ Maritime Port Operations Intelligence Platform
 
 def send_password_reset_email(login_obj, plain_token: str, reset_link: str) -> bool:
     """
-    Sends responsive HTML password reset email with 1-click copyable security token and direct reset CTA.
+    Sends responsive HTML password reset email with selectable security token and direct reset CTA.
     """
     try:
         email = login_obj.login_email
@@ -906,54 +1035,47 @@ PORTIDE Security & Administration
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(plain_token, "Password Reset Security Token", "Click or tap token to select & copy")
+        copy_box = _render_copyable_code_box(plain_token, "Password Reset Security Token", "Select token to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Security &amp; Access</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">PASSWORD RESET REQUEST</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Secure Account Recovery</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{recipient_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            A request was submitted to reset the password for your PORTIDE account (<strong>{email}</strong>). Click the button below to choose a new password:
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello <strong>{recipient_name}</strong>,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        A request was submitted to reset the password for your PORTIDE account (<strong>{email}</strong>). Click the button below to choose a new password:
-      </p>
+          <div style="text-align: center; margin: 24px 0 20px 0;">
+            <a href="{reset_link}" class="btn-action" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 34px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3); max-width: 100%; box-sizing: border-box;">
+              Reset Password &rarr;
+            </a>
+          </div>
 
-      <div style="text-align: center; margin: 24px 0 20px 0;">
-        <a href="{reset_link}" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 34px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.3);">
-          Reset Password &rarr;
-        </a>
-      </div>
+          {copy_box}
 
-      {copy_box}
+          <div class="alert-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin: 20px 0; font-size: 11px; color: #64748b; word-break: break-all; box-sizing: border-box;">
+            <span style="font-weight: 700; color: #334155;">Direct Reset Link:</span><br/>
+            <span style="font-family: monospace; color: #0284c7; user-select: all; -webkit-user-select: all; font-size: 12px; word-break: break-all;">{reset_link}</span>
+          </div>
 
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin: 20px 0; font-size: 11px; color: #64748b; word-break: break-all;">
-        <span style="font-weight: 700; color: #334155;">Direct Reset Link:</span><br/>
-        <span style="font-family: monospace; color: #0284c7; user-select: all; -webkit-user-select: all; font-size: 12px;">{reset_link}</span>
-      </div>
+          <div class="alert-box" style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #92400e; line-height: 1.5; box-sizing: border-box;">
+            <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+              ⏱️ Security Notice:
+            </div>
+            <div>
+              This link and token are valid for <strong>30 minutes</strong> and can only be used once. If you did not request this change, please disregard this email — your account remains completely secure.
+            </div>
+          </div>
+        """
 
-      <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 13px; color: #92400e; line-height: 1.5;">
-        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          ⏱️ Security Notice:
-        </div>
-        <div>
-          This link and token are valid for <strong>30 minutes</strong> and can only be used once. If you did not request this change, please disregard this email — your account remains completely secure.
-        </div>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Security &amp; Access",
+            header_title="PASSWORD RESET REQUEST",
+            header_subtitle="Secure Account Recovery",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            header_kicker_color="#f59e0b",
+            header_subtitle_color="#94a3b8",
+            body_content=body_html,
+        )
 
         _send_mail_async(
             subject=subject,
@@ -1003,64 +1125,57 @@ PORTIDE Security & Administration
 Maritime Port Operations Intelligence Platform
 """
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #86efac; text-transform: uppercase;">PORTIDE Security Alert</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">PASSWORD UPDATED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Security Credentials Successfully Changed</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Hello,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            The password for your PORTIDE account (<strong>{email}</strong>) was successfully updated.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Hello,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        The password for your PORTIDE account (<strong>{email}</strong>) was successfully updated.
-      </p>
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Account Email</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-all; overflow-wrap: anywhere;">{email}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Account Role</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{role_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Updated At</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; border-top: 1px solid #e2e8f0;">{time_str}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Security Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">ACTIVE &bull; SECURED</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Account Email</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{email}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Account Role</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{role_display}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Updated At</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0; font-family: monospace;">{time_str}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Security Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">ACTIVE &bull; SECURED</td>
-        </tr>
-      </table>
+          <div class="alert-box" style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #9f1239; line-height: 1.5; box-sizing: border-box;">
+            <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+              ⚠️ Did not make this change?
+            </div>
+            <div>
+              If you did NOT initiate this password change, your account may be compromised. Please contact Port Administration and the PORTIDE Security Team immediately to lock the account and restore access.
+            </div>
+          </div>
 
-      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin-bottom: 24px; font-size: 13px; color: #9f1239; line-height: 1.5;">
-        <div style="font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          ⚠️ Did not make this change?
-        </div>
-        <div>
-          If you did NOT initiate this password change, your account may be compromised. Please contact Port Administration and the PORTIDE Security Team immediately to lock the account and restore access.
-        </div>
-      </div>
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{login_url}" class="btn-action" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3); max-width: 100%; box-sizing: border-box;">
+              Sign In to PORTIDE &rarr;
+            </a>
+          </div>
+        """
 
-      <div style="text-align: center; margin: 24px 0 10px 0;">
-        <a href="{login_url}" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">
-          Sign In to PORTIDE &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Security Alert",
+            header_title="PASSWORD UPDATED",
+            header_subtitle="Security Credentials Successfully Changed",
+            header_gradient="linear-gradient(135deg, #064e3b 0%, #047857 100%)",
+            header_kicker_color="#86efac",
+            header_subtitle_color="#d1fae5",
+            body_content=body_html,
+        )
 
         _send_mail_async(
             subject=subject,
@@ -1079,7 +1194,7 @@ Maritime Port Operations Intelligence Platform
 def send_customs_cleared_notification(container, officer_name: str = None) -> bool:
     """
     Sends notification email when a container is cleared by Customs.
-    Notifies the linked shipping company with copyable container number.
+    Notifies the linked shipping company with selectable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -1111,61 +1226,55 @@ PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Select container number to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #064e3b 0%, #047857 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #a7f3d0; text-transform: uppercase;">PORTIDE Customs &amp; Border Clearance</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CONTAINER CLEARED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #d1fae5;">Cargo Verification Approved</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Customs inspection has been successfully completed for container <strong>#{container.container_number}</strong>. The container has been granted customs clearance.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Customs inspection has been successfully completed for container <strong>#{container.container_number}</strong>. The container has been granted customs clearance.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Container Type</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{container_type_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Gross Weight</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Cargo</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{cargo_desc}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Carrying Vessel</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Customs Officer</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{officer}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Customs Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">CLEARED</td>
+            </tr>
+          </table>
+        """
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Container Type</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{container_type_display}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gross Weight</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Cargo</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{cargo_desc}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Carrying Vessel</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Officer</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; border-top: 1px solid #e2e8f0;">CLEARED</td>
-        </tr>
-      </table>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Customs &amp; Border Clearance",
+            header_title="CONTAINER CLEARED",
+            header_subtitle="Cargo Verification Approved",
+            header_gradient="linear-gradient(135deg, #064e3b 0%, #047857 100%)",
+            header_kicker_color="#a7f3d0",
+            header_subtitle_color="#d1fae5",
+            body_content=body_html,
+            footer_text="PORTIDE &bull; Maritime Port Operations Intelligence Platform"
+        )
 
         _send_mail_async(
             subject=subject,
@@ -1184,7 +1293,7 @@ Maritime Port Operations Intelligence Platform
 def send_customs_hold_notification(container, hold_reason: str = None, officer_name: str = None) -> bool:
     """
     Sends notification email when a container is placed on Customs Hold.
-    Notifies the linked shipping company with copyable container number.
+    Notifies the linked shipping company with selectable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -1220,66 +1329,60 @@ PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Select container number to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #fecaca; text-transform: uppercase;">PORTIDE Customs &amp; Border Clearance</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CUSTOMS HOLD ALERT</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #fee2e2;">Inspection or Documentation Discrepancy</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Container <strong>#{container.container_number}</strong> has been placed on <strong>Customs Hold</strong> by Port Customs Control. Terminal release and gate movement are paused pending resolution.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Container <strong>#{container.container_number}</strong> has been placed on <strong>Customs Hold</strong> by Port Customs Control. Terminal release and gate movement are paused pending resolution.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <div class="alert-box" style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 18px 0; box-sizing: border-box;">
+            <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+              Hold Reason / Discrepancy:
+            </div>
+            <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5; word-break: break-word;">
+              "{reason}"
+            </div>
+          </div>
 
-      <div style="background: #fff1f2; border: 1.5px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 18px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          Hold Reason / Discrepancy:
-        </div>
-        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
-          "{reason}"
-        </div>
-      </div>
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Cargo</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{cargo_desc}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Vessel</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Customs Officer</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{officer}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Current Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #dc2626; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">CUSTOMS HOLD</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Cargo</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right;">{cargo_desc}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Vessel</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{vessel_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Customs Officer</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Current Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #dc2626; text-align: right; border-top: 1px solid #e2e8f0;">CUSTOMS HOLD</td>
-        </tr>
-      </table>
+          <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0;">
+            Please log in to your PORTIDE Shipping Portal to inspect required documents or submit clarifications to Customs Control.
+          </p>
+        """
 
-      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0;">
-        Please log in to your PORTIDE Shipping Portal to inspect required documents or submit clarifications to Customs Control.
-      </p>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Customs &amp; Border Clearance",
+            header_title="CUSTOMS HOLD ALERT",
+            header_subtitle="Inspection or Documentation Discrepancy",
+            header_gradient="linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)",
+            header_kicker_color="#fecaca",
+            header_subtitle_color="#fee2e2",
+            body_content=body_html,
+            footer_text="PORTIDE &bull; Maritime Port Operations Intelligence Platform"
+        )
 
         _send_mail_async(
             subject=subject,
@@ -1298,7 +1401,7 @@ Maritime Port Operations Intelligence Platform
 def send_container_released_notification(container, truck_number: str = '', officer_name: str = None) -> bool:
     """
     Sends notification email when a container is released through the gate.
-    Notifies the linked shipping company with copyable container number.
+    Notifies the linked shipping company with selectable container number.
     """
     try:
         shipping_company = container.shipping_company
@@ -1332,57 +1435,51 @@ PORTIDE Gate & Truck Operations
 Maritime Port Operations Intelligence Platform
 """
 
-        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Click to select & copy container number")
+        copy_box = _render_copyable_code_box(container.container_number, "Container Number", "Select container number to copy")
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>{subject}</title></head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%); padding: 26px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">PORTIDE Gate &amp; Terminal Operations</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">CONTAINER RELEASED</h1>
-      <div style="margin-top: 8px; font-size: 13px; color: #94a3b8;">Gate Outbound Verification Complete</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Container <strong>#{container.container_number}</strong> has successfully completed physical and digital gate verification and has exited the port terminal.
+          </p>
 
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{shipping_company.shipping_company_name}</strong>,</p>
-      <p style="margin: 0 0 16px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Container <strong>#{container.container_number}</strong> has successfully completed physical and digital gate verification and has exited the port terminal.
-      </p>
+          {copy_box}
 
-      {copy_box}
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Transport Truck</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{assigned_truck}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Container Type</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{container_type_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Gross Weight</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Gate Officer</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{officer}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Gate Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">RELEASED &bull; OUTBOUND</td>
+            </tr>
+          </table>
+        """
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Transport Truck</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace;">{assigned_truck}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Container Type</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container_type_display}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gross Weight</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{container.container_gross_weight} T</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gate Officer</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">{officer}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Gate Status</td>
-          <td style="padding: 10px 16px; font-size: 13px; font-weight: 800; color: #0284c7; text-align: right; border-top: 1px solid #e2e8f0;">RELEASED &bull; OUTBOUND</td>
-        </tr>
-      </table>
-    </div>
-
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Gate &amp; Terminal Operations",
+            header_title="CONTAINER RELEASED",
+            header_subtitle="Gate Outbound Verification Complete",
+            header_gradient="linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%)",
+            header_kicker_color="#38bdf8",
+            header_subtitle_color="#94a3b8",
+            body_content=body_html,
+            footer_text="PORTIDE &bull; Maritime Port Operations Intelligence Platform"
+        )
 
         _send_mail_async(
             subject=subject,
@@ -1396,9 +1493,6 @@ Maritime Port Operations Intelligence Platform
     except Exception as e:
         logger.error(f"Failed to queue container released notification: {str(e)}", exc_info=True)
         return False
-
-
-from authentication.qr_service import generate_qr_png_base64
 
 
 def send_gate_pass_driver_email(gate_pass) -> tuple[bool, str | None]:
@@ -1428,10 +1522,9 @@ def send_gate_pass_driver_email(gate_pass) -> tuple[bool, str | None]:
         qr_payload = gate_pass.gate_pass_qr_code or f"PORTIDE-GP:{pass_number}:{gate_pass.gate_pass_verification_code}"
         qr_png_bytes = generate_qr_png_bytes(qr_payload, scale=8, border=4)
 
-        # Build public high-res HTTPS QR image URL (loads 100% reliably in Gmail, Outlook, Apple Mail)
-        import urllib.parse
+        # Build public high-res HTTPS QR image URL (loads reliably in Gmail, Outlook, Apple Mail)
         encoded_payload = urllib.parse.quote(qr_payload)
-        qr_image_url = f"https://quickchart.io/qr?text={encoded_payload}&size=300&margin=2"
+        qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_payload}"
 
         frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
         pass_view_url = f"{frontend_url.rstrip('/')}/?view=gate-pass&pass={pass_number}"
@@ -1492,113 +1585,105 @@ PORTIDE Gate & Truck Operations
 Maritime Port Operations Intelligence Platform
 """
 
+        # Build responsive container cards for authorized containers
         html_container_rows = "".join([
-            f"""<tr>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #0f172a;">{c.container_number}</td>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #475569;">{c.get_container_type_display()}</td>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #475569;">{c.container_gross_weight} T</td>
-                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; color: #059669; font-weight: 600;">CLEARED &bull; AUTHORIZED</td>
-            </tr>"""
+            f"""<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-sizing: border-box;">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: auto;">
+                  <tr>
+                    <td style="font-family: monospace; font-size: 14px; font-weight: 800; color: #0f172a; word-break: break-all; vertical-align: top;">
+                      {c.container_number}
+                    </td>
+                    <td style="text-align: right; vertical-align: top; padding-left: 8px;">
+                      <span style="display: inline-block; background-color: #ecfdf5; color: #059669; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #a7f3d0; text-transform: uppercase;">CLEARED</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding-top: 6px; font-size: 12px; color: #475569; word-break: break-word;">
+                      <span style="font-weight: 600; color: #64748b;">Type:</span> {c.get_container_type_display()} &bull; <span style="font-weight: 600; color: #64748b;">Weight:</span> {c.container_gross_weight} T
+                    </td>
+                  </tr>
+                </table>
+            </div>"""
             for c in containers
         ])
+        if not html_container_rows:
+            html_container_rows = """<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 13px; color: #64748b; text-align: center;">No containers associated.</div>"""
 
         copy_box = _render_copyable_code_box(
             gate_pass.gate_pass_verification_code,
             "Verification Reference Code",
-            "Click or tap code to select & copy"
+            "Select verification code to copy"
         )
 
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>PORTIDE Digital Gate Pass {pass_number}</title>
-</head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
-      <div style="font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Intelligence Platform</div>
-      <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">DIGITAL GATE PASS</h1>
-      <div style="margin-top: 8px; font-size: 16px; font-family: monospace; font-weight: 700; color: #38bdf8; user-select: all; -webkit-user-select: all; cursor: pointer;">{pass_number}</div>
-    </div>
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Dear <strong>{driver.driver_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Your Digital Gate Pass has been authorized and generated for the port outbound gate movement.
+          </p>
 
-    <div style="padding: 24px;">
-      <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Dear <strong>{driver.driver_name}</strong>,</p>
-      <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
-        Your Digital Gate Pass has been authorized and generated for the port outbound gate movement.
-      </p>
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Truck Number</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{truck_number}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Driver</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{driver.driver_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Driver License / ID</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{driver_license}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Assigned Gate</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{gate_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Valid Until</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #b45309; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; border-top: 1px solid #e2e8f0;">{valid_until_str}</td>
+            </tr>
+          </table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">Truck Number</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace;">{truck_number}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Driver</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{driver.driver_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Driver License / ID</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; font-family: monospace; border-top: 1px solid #e2e8f0;">{driver_license}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Assigned Gate</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #0f172a; text-align: right; border-top: 1px solid #e2e8f0;">{gate_name}</td>
-        </tr>
-        <tr>
-          <td style="padding: 10px 16px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; border-top: 1px solid #e2e8f0;">Valid Until</td>
-          <td style="padding: 10px 16px; font-size: 14px; font-weight: 700; color: #b45309; text-align: right; font-family: monospace; border-top: 1px solid #e2e8f0;">{valid_until_str}</td>
-        </tr>
-      </table>
-
-      <div style="font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Authorized Containers</div>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px;">
-        <thead>
-          <tr style="background-color: #f1f5f9; text-align: left;">
-            <th style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #475569; font-size: 11px; text-transform: uppercase;">Container #</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #475569; font-size: 11px; text-transform: uppercase;">Type</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #475569; font-size: 11px; text-transform: uppercase;">Weight</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #cbd5e1; color: #475569; font-size: 11px; text-transform: uppercase;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
+          <div style="font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">Authorized Containers</div>
           {html_container_rows}
-        </tbody>
-      </table>
 
-      <!-- High-Visibility Scannable QR Code Section -->
-      <div style="text-align: center; padding: 26px 20px; background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 14px; margin-bottom: 24px;">
-        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
-          📱 Scan at Port Gate Terminal
-        </div>
-        <div style="font-size: 13px; color: #475569; margin-bottom: 18px; line-height: 1.5; max-width: 460px; margin-left: auto; margin-right: auto;">
-          Present this QR code on your phone screen to the Gate &amp; Truck Operations Officer to verify vehicle and cargo release.
-        </div>
+          <!-- High-Visibility Scannable QR Code Section -->
+          <div class="alert-box" style="text-align: center; padding: 22px 16px; background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 14px; margin-top: 20px; margin-bottom: 20px; box-sizing: border-box; max-width: 100%;">
+            <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
+              📱 Scan at Port Gate Terminal
+            </div>
+            <div style="font-size: 13px; color: #475569; margin-bottom: 16px; line-height: 1.5; max-width: 460px; margin-left: auto; margin-right: auto; word-break: break-word;">
+              Present this QR code on your mobile device to the Gate &amp; Truck Operations Officer to verify vehicle and cargo release.
+            </div>
 
-        <!-- Prominent High-Contrast Scannable QR Image -->
-        <div style="display: inline-block; padding: 14px; background-color: #ffffff; border: 2px solid #0284c7; border-radius: 16px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12); margin-bottom: 10px;">
-          <a href="{qr_image_url}" target="_blank" style="display: block; text-decoration: none;">
-            <img src="{qr_image_url}" alt="PORTIDE Digital Gate Pass QR Code - {pass_number}" width="220" height="220" style="display: block; width: 220px; height: 220px; margin: 0 auto; border: 0; background-color: #ffffff;" />
-          </a>
-        </div>
-        <div style="font-size: 11px; color: #64748b; margin-bottom: 16px;">
-          (Tap or click QR code to view full-screen)
-        </div>
+            <!-- Prominent High-Contrast Scannable QR Image -->
+            <div class="qr-wrapper" style="display: inline-block; padding: 12px; background-color: #ffffff; border: 2px solid #0284c7; border-radius: 16px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12); margin-bottom: 10px; max-width: 100%; box-sizing: border-box;">
+              <a href="{qr_image_url}" target="_blank" style="display: block; text-decoration: none;">
+                <img class="qr-img" src="{qr_image_url}" alt="PORTIDE Digital Gate Pass QR Code - {pass_number}" width="200" height="200" style="display: block; width: 200px; height: 200px; max-width: 100%; height: auto; margin: 0 auto; border: 0; background-color: #ffffff;" />
+              </a>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-bottom: 16px;">
+              <a href="{qr_image_url}" target="_blank" style="color: #0284c7; text-decoration: underline; font-weight: 600;">(View high-resolution QR code)</a>
+            </div>
 
-        {copy_box}
+            {copy_box}
 
-        <div style="font-size: 11px; color: #64748b; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 12px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto;">
-          This pass is valid only for the assigned driver, truck, authorized container(s), designated gate and validity period. Do not share or reuse this pass.
-        </div>
-      </div>
-    </div>
+            <div style="font-size: 11px; color: #64748b; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 12px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto; word-break: break-word;">
+              This pass is valid only for the assigned driver, truck, authorized container(s), designated gate and validity period. Do not share or reuse this pass.
+            </div>
+          </div>
+        """
 
-    <div style="padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE &bull; Maritime Port Operations Intelligence Platform &bull; Automated Dispatch System
-    </div>
-  </div>
-</body>
-</html>"""
+        html_body = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Intelligence Platform",
+            header_title="DIGITAL GATE PASS",
+            header_subtitle=f"Pass #{pass_number}",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            header_kicker_color="#f59e0b",
+            header_subtitle_color="#38bdf8",
+            body_content=body_html,
+        )
 
         send_mail(
             subject=subject,
@@ -1611,7 +1696,6 @@ Maritime Port Operations Intelligence Platform
         )
         logger.info(f"Successfully sent digital gate pass email to driver {driver.driver_name} ({recipient_email}) for pass {pass_number}")
         return True, None
-
 
     except Exception as e:
         err_msg = str(e)
@@ -1680,77 +1764,69 @@ Regards,
 PORTIDE Customs & Border Clearance Division
 Maritime Port Operations Intelligence Platform
 """
-            html_message = f"""<!DOCTYPE html>
-<html>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px;">
-  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #be123c, #9f1239); padding: 24px; color: #ffffff;">
-      <h2 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.025em;">PORTIDE CUSTOMS ALERT</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Action Required: Supporting Document Rejected</p>
-    </div>
-    
-    <div style="padding: 24px; color: #1e293b;">
-      <p style="font-size: 14px; margin-top: 0;">Dear <strong>{company_name}</strong>,</p>
-      
-      <p style="font-size: 13px; color: #475569; line-height: 1.6;">
-        A customs supporting document submitted for container <strong>#{container.container_number}</strong> has been 
-        <span style="color: #be123c; font-weight: bold; background: #ffe4e6; padding: 2px 8px; border-radius: 4px;">REJECTED</span> 
-        by Port Customs Control. Corrective action is required before cargo inspection can proceed.
-      </p>
+            body_html = f"""
+              <p style="font-size: 14px; margin-top: 0;">Dear <strong>{company_name}</strong>,</p>
+              
+              <p style="font-size: 13px; color: #475569; line-height: 1.6;">
+                A customs supporting document submitted for container <strong>#{container.container_number}</strong> has been 
+                <span style="color: #be123c; font-weight: bold; background: #ffe4e6; padding: 2px 8px; border-radius: 4px;">REJECTED</span> 
+                by Port Customs Control. Corrective action is required before cargo inspection can proceed.
+              </p>
 
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 16px 0; font-size: 13px;">
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Container:</td>
-            <td style="padding: 6px 0; font-weight: 700; font-family: monospace; color: #0f172a;">{container.container_number}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Document:</td>
-            <td style="padding: 6px 0; font-weight: 700; color: #0f172a;">{doc_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px;">v{document.document_version}</span></td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Document Type:</td>
-            <td style="padding: 6px 0; color: #0f172a;">{doc_type_display}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Customs Officer:</td>
-            <td style="padding: 6px 0; color: #0f172a;">{officer}</td>
-          </tr>
-        </table>
-      </div>
+              <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Container</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{container.container_number}</td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Document</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight: 600;">v{document.document_version}</span></td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Document Type</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_type_display}</td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Customs Officer</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{officer}</td>
+                </tr>
+              </table>
 
-      <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 16px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          Rejection Remarks & Reason:
-        </div>
-        <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5;">
-          "{remarks or 'Document does not satisfy customs regulatory criteria or exhibits discrepancy.'}"
-        </div>
-      </div>
+              <div class="alert-box" style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 12px; padding: 16px; margin: 16px 0; box-sizing: border-box;">
+                <div style="font-size: 11px; font-weight: 800; color: #9f1239; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+                  Rejection Remarks &amp; Reason:
+                </div>
+                <div style="font-size: 13px; color: #881337; font-weight: 600; line-height: 1.5; word-break: break-word;">
+                  "{remarks or 'Document does not satisfy customs regulatory criteria or exhibits discrepancy.'}"
+                </div>
+              </div>
 
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0;">
-        <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
-          Required Carrier Action:
-        </div>
-        <p style="font-size: 12px; color: #14532d; margin: 0; line-height: 1.5;">
-          Log in to your PORTIDE portal, review the officer's remarks above, and click <strong>"Resubmit Correction"</strong> to upload the corrected replacement document.
-        </p>
-      </div>
+              <div class="alert-box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0; box-sizing: border-box;">
+                <div style="font-size: 11px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">
+                  Required Carrier Action:
+                </div>
+                <p style="font-size: 12px; color: #14532d; margin: 0; line-height: 1.5; word-break: break-word;">
+                  Log in to your PORTIDE portal, review the officer's remarks above, and click <strong>"Resubmit Correction"</strong> to upload the corrected replacement document.
+                </p>
+              </div>
 
-      <div style="text-align: center; margin: 24px 0 12px 0;">
-        <a href="https://portide.vercel.app" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px;">
-          Open Portal & Resubmit Document &rarr;
-        </a>
-      </div>
-    </div>
-
-    <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE Customs & Border Clearance Division • Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>
-"""
+              <div style="text-align: center; margin: 24px 0 12px 0;">
+                <a href="https://portide.vercel.app" class="btn-action" style="display: inline-block; background: #064e43; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px; max-width: 100%; box-sizing: border-box;">
+                  Open Portal &amp; Resubmit Document &rarr;
+                </a>
+              </div>
+            """
+            html_message = _render_responsive_email_layout(
+                subject=subject,
+                header_kicker="PORTIDE Customs Alert",
+                header_title="DOCUMENT REJECTED",
+                header_subtitle="Action Required: Supporting Document Discrepancy",
+                header_gradient="linear-gradient(135deg, #881337 0%, #9f1239 100%)",
+                header_kicker_color="#fecdd3",
+                header_subtitle_color="#ffe4e6",
+                body_content=body_html,
+                footer_text="PORTIDE Customs & Border Clearance Division &bull; Maritime Port Operations Intelligence Platform"
+            )
         else:  # VERIFIED
             subject = f"PORTIDE Notice: Customs Document Verified - Container {container.container_number}"
             plain_message = f"""Dear {company_name},
@@ -1762,31 +1838,52 @@ Review Remarks: {remarks or 'Verified and compliant with customs regulations.'}
 Regards,
 PORTIDE Customs & Border Clearance Division
 """
-            html_message = f"""<!DOCTYPE html>
-<html>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px;">
-  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-    <div style="background: linear-gradient(135deg, #059669, #047857); padding: 24px; color: #ffffff;">
-      <h2 style="margin: 0; font-size: 20px; font-weight: 800;">PORTIDE CUSTOMS NOTIFICATION</h2>
-      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Document Verification Approved</p>
-    </div>
-    <div style="padding: 24px; color: #1e293b; font-size: 13px; line-height: 1.6;">
-      <p>Dear <strong>{company_name}</strong>,</p>
-      <p>The following supporting document for container <strong>#{container.container_number}</strong> has been <strong style="color: #059669;">VERIFIED</strong> by Customs Officer <strong>{officer}</strong>:</p>
-      <ul>
-        <li><strong>Document:</strong> {doc_name} (v{document.document_version})</li>
-        <li><strong>Category:</strong> {doc_type_display}</li>
-        <li><strong>Customs Remarks:</strong> {remarks or 'Verified and compliant.'}</li>
-      </ul>
-      <p>Thank you for your cooperation in maintaining swift port compliance.</p>
-    </div>
-    <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; font-size: 11px; color: #94a3b8; text-align: center;">
-      PORTIDE Customs & Border Clearance Division • Maritime Port Operations Intelligence Platform
-    </div>
-  </div>
-</body>
-</html>
-"""
+            body_html = f"""
+              <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{company_name}</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+                The following supporting document for container <strong>#{container.container_number}</strong> has been <strong style="color: #059669;">VERIFIED</strong> and approved by Customs Officer <strong>{officer}</strong>:
+              </p>
+
+              <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Container</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{container.container_number}</td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Document</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight: 600;">v{document.document_version}</span></td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Category</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_type_display}</td>
+                </tr>
+                <tr>
+                  <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Customs Remarks</td>
+                  <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #059669; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{remarks or 'Verified and compliant.'}</td>
+                </tr>
+              </table>
+
+              <div class="alert-box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #166534; line-height: 1.5; box-sizing: border-box;">
+                ✅ Thank you for your cooperation in maintaining swift port customs compliance.
+              </div>
+
+              <div style="text-align: center; margin: 24px 0 10px 0;">
+                <a href="https://portide.vercel.app" class="btn-action" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px; max-width: 100%; box-sizing: border-box;">
+                  Open Portal &amp; Track Status &rarr;
+                </a>
+              </div>
+            """
+            html_message = _render_responsive_email_layout(
+                subject=subject,
+                header_kicker="PORTIDE Customs Notification",
+                header_title="DOCUMENT VERIFIED",
+                header_subtitle="Document Verification Approved",
+                header_gradient="linear-gradient(135deg, #059669 0%, #047857 100%)",
+                header_kicker_color="#a7f3d0",
+                header_subtitle_color="#d1fae5",
+                body_content=body_html,
+                footer_text="PORTIDE Customs & Border Clearance Division &bull; Maritime Port Operations Intelligence Platform"
+            )
 
         _send_mail_async(
             subject=subject,
@@ -1850,17 +1947,72 @@ Port Customs Control has been alerted to review the new file.
 Regards,
 PORTIDE Customs & Border Clearance Division
 """
+
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Dear <strong>{company_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            Your corrected customs supporting document has been successfully received and submitted for Customs Officer review.
+          </p>
+
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Container</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{container.container_number}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Replacement File</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight: 600;">v{new_document.document_version}</span></td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Superseded File</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #64748b; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{old_document.document_name} <span style="font-size: 11px; background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight: 600;">v{old_document.document_version}</span></td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Document Type</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{doc_type_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Amendment Reason</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{reason or 'Resubmission per customs request'}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Review Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #d97706; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">PENDING REVIEW</td>
+            </tr>
+          </table>
+
+          <div class="alert-box" style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #1e40af; line-height: 1.5; box-sizing: border-box;">
+            🔍 <strong>Status Notice:</strong> Port Customs Control has been alerted to review the new file. You will receive an automated notification once reviewed.
+          </div>
+
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="https://portide.vercel.app" class="btn-action" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px; max-width: 100%; box-sizing: border-box;">
+              Open Portal &amp; Track Status &rarr;
+            </a>
+          </div>
+        """
+
+        html_message = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Customs Division",
+            header_title="DOCUMENT RESUBMITTED",
+            header_subtitle=f"Corrected Document Received for Container {container.container_number}",
+            header_gradient="linear-gradient(135deg, #0f172a 0%, #0369a1 100%)",
+            header_kicker_color="#38bdf8",
+            header_subtitle_color="#bae6fd",
+            body_content=body_html,
+            footer_text="PORTIDE Customs & Border Clearance Division &bull; Maritime Port Operations Intelligence Platform"
+        )
+
         _send_mail_async(
             subject=subject,
             message=plain_message,
             from_email=get_from_email(),
             recipient_list=recipient_list,
+            html_message=html_message
         )
         logger.info(f"Queued customs document resubmitted confirmation for doc #{new_document.document_id} to {recipient_list}")
         return True
     except Exception as e:
         logger.error(f"Failed to queue customs document resubmission email: {str(e)}", exc_info=True)
         return False
-
-
-
