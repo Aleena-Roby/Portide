@@ -150,7 +150,7 @@ from authentication.email_service import (
     send_customs_document_review_notification,
     send_customs_document_resubmitted_notification
 )
-from authentication.qr_service import generate_verification_payload, generate_qr_svg
+from authentication.qr_service import generate_verification_payload, generate_qr_svg, generate_qr_png_bytes
 from authentication.permissions import (
     IsPortAdministrator,
     IsPortAdministratorOrCustomsOfficer,
@@ -6888,6 +6888,26 @@ class GatePassGenerateAPIView(APIView):
             "email_dispatched": email_sent,
             "email_warning": None if email_sent else f"Driver email could not be sent: {email_err}. Gate pass is saved; you can retry sending the email."
         }, status=status.HTTP_201_CREATED)
+
+
+class PublicGatePassQRView(APIView):
+    """
+    Public API Endpoint to render the Digital Gate Pass QR code as a high-fidelity PNG image.
+    Endpoint: GET /api/gate/passes/<str:pass_number>/qr/
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, pass_number):
+        clean_num = pass_number.strip()
+        try:
+            gate_pass = GatePass.objects.get(gate_pass_pass_number__iexact=clean_num)
+        except GatePass.DoesNotExist:
+            return Response({"status": "error", "message": f"Gate Pass '{clean_num}' not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        qr_payload = gate_pass.gate_pass_qr_code or f"PORTIDE-GP:{gate_pass.gate_pass_pass_number}:{gate_pass.gate_pass_verification_code}"
+        png_bytes = generate_qr_png_bytes(qr_payload, scale=8, border=4)
+        from django.http import HttpResponse
+        return HttpResponse(png_bytes, content_type="image/png")
 
 
 class GatePassVerifyAPIView(APIView):

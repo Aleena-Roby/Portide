@@ -1424,9 +1424,17 @@ def send_gate_pass_driver_email(gate_pass) -> tuple[bool, str | None]:
             if getattr(gate_pass, 'gate_pass_valid_until', None) else 'N/A'
         )
 
-        # Generate actual embedded QR code image
+        # Generate actual embedded QR code image bytes
         qr_payload = gate_pass.gate_pass_qr_code or f"PORTIDE-GP:{pass_number}:{gate_pass.gate_pass_verification_code}"
         qr_png_bytes = generate_qr_png_bytes(qr_payload, scale=8, border=4)
+
+        # Build public high-res HTTPS QR image URL (loads 100% reliably in Gmail, Outlook, Apple Mail)
+        import urllib.parse
+        encoded_payload = urllib.parse.quote(qr_payload)
+        qr_image_url = f"https://quickchart.io/qr?text={encoded_payload}&size=300&margin=2"
+
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        pass_view_url = f"{frontend_url.rstrip('/')}/?view=gate-pass&pass={pass_number}"
 
         # Gather associated containers
         containers = [
@@ -1469,12 +1477,15 @@ Valid Until:
 Authorized Containers:
 {container_lines}
 
-Present this QR code at the designated port gate.
-The Gate & Truck Operations Officer will scan the QR code and verify the gate pass before authorizing vehicle exit.
-This pass is valid only for the assigned driver, truck, authorized container(s), designated gate and validity period. Do not share or reuse this pass.
-
 Verification Reference:
 {gate_pass.gate_pass_verification_code}
+
+QR Code Link (High Resolution):
+{qr_image_url}
+
+Present this QR code or verification reference at the designated port gate.
+The Gate & Truck Operations Officer will scan the QR code and verify the gate pass before authorizing vehicle exit.
+This pass is valid only for the assigned driver, truck, authorized container(s), designated gate and validity period. Do not share or reuse this pass.
 
 Regards,
 PORTIDE Gate & Truck Operations
@@ -1491,6 +1502,12 @@ Maritime Port Operations Intelligence Platform
             for c in containers
         ])
 
+        copy_box = _render_copyable_code_box(
+            gate_pass.gate_pass_verification_code,
+            "Verification Reference Code",
+            "Click or tap code to select & copy"
+        )
+
         html_body = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1502,7 +1519,7 @@ Maritime Port Operations Intelligence Platform
     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px 24px; text-align: center; color: #ffffff;">
       <div style="font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #f59e0b; text-transform: uppercase;">PORTIDE Intelligence Platform</div>
       <h1 style="margin: 6px 0 0 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">DIGITAL GATE PASS</h1>
-      <div style="margin-top: 8px; font-size: 16px; font-family: monospace; font-weight: 700; color: #38bdf8;">{pass_number}</div>
+      <div style="margin-top: 8px; font-size: 16px; font-family: monospace; font-weight: 700; color: #38bdf8; user-select: all; -webkit-user-select: all; cursor: pointer;">{pass_number}</div>
     </div>
 
     <div style="padding: 24px;">
@@ -1549,21 +1566,28 @@ Maritime Port Operations Intelligence Platform
         </tbody>
       </table>
 
-      <!-- Actual QR Code Image Section -->
-      <div style="text-align: center; padding: 24px 20px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
-        <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
-          Present this QR Code at the designated port gate
+      <!-- High-Visibility Scannable QR Code Section -->
+      <div style="text-align: center; padding: 26px 20px; background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 14px; margin-bottom: 24px;">
+        <div style="font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
+          📱 Scan at Port Gate Terminal
         </div>
-        <div style="font-size: 12px; color: #475569; margin-bottom: 16px; line-height: 1.5; max-width: 480px; margin-left: auto; margin-right: auto;">
-          The Gate &amp; Truck Operations Officer will scan the QR code and verify the gate pass before authorizing vehicle exit.
+        <div style="font-size: 13px; color: #475569; margin-bottom: 18px; line-height: 1.5; max-width: 460px; margin-left: auto; margin-right: auto;">
+          Present this QR code on your phone screen to the Gate &amp; Truck Operations Officer to verify vehicle and cargo release.
         </div>
-        <div style="display: inline-block; padding: 12px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 14px;">
-          <img src="cid:gate_pass_qr_code" alt="PORTIDE Digital Gate Pass QR Code" width="180" height="180" style="display: block; width: 180px; height: 180px; margin: 0 auto; border: 0;" />
+
+        <!-- Prominent High-Contrast Scannable QR Image -->
+        <div style="display: inline-block; padding: 14px; background-color: #ffffff; border: 2px solid #0284c7; border-radius: 16px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12); margin-bottom: 10px;">
+          <a href="{qr_image_url}" target="_blank" style="display: block; text-decoration: none;">
+            <img src="{qr_image_url}" alt="PORTIDE Digital Gate Pass QR Code - {pass_number}" width="220" height="220" style="display: block; width: 220px; height: 220px; margin: 0 auto; border: 0; background-color: #ffffff;" />
+          </a>
         </div>
-        <div style="font-size: 13px; font-weight: 700; font-family: monospace; color: #0284c7; letter-spacing: 0.5px; margin-bottom: 8px;">
-          Verification Reference: {gate_pass.gate_pass_verification_code}
+        <div style="font-size: 11px; color: #64748b; margin-bottom: 16px;">
+          (Tap or click QR code to view full-screen)
         </div>
-        <div style="font-size: 11px; color: #64748b; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 10px; max-width: 480px; margin-left: auto; margin-right: auto;">
+
+        {copy_box}
+
+        <div style="font-size: 11px; color: #64748b; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 12px; margin-top: 14px; max-width: 480px; margin-left: auto; margin-right: auto;">
           This pass is valid only for the assigned driver, truck, authorized container(s), designated gate and validity period. Do not share or reuse this pass.
         </div>
       </div>

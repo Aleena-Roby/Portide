@@ -65,6 +65,7 @@ from authentication.views import (
     GatePassReleaseAPIView,
     GatePassCancelAPIView,
     GatePassResendEmailAPIView,
+    PublicGatePassQRView,
     DeliveryContainerListAPIView,
     DeliveryContainerDetailAPIView,
     DeliveryConfirmDepartureAPIView,
@@ -207,6 +208,8 @@ urlpatterns = [
     path('gate/passes/<int:pk>/cancel', GatePassCancelAPIView.as_view(), name='gate_pass_cancel_noslash'),
     path('gate/passes/<int:pk>/resend-email/', GatePassResendEmailAPIView.as_view(), name='gate_pass_resend_email'),
     path('gate/passes/<int:pk>/resend-email', GatePassResendEmailAPIView.as_view(), name='gate_pass_resend_email_noslash'),
+    path('gate/passes/<str:pass_number>/qr/', PublicGatePassQRView.as_view(), name='public_gate_pass_qr'),
+    path('gate/passes/<str:pass_number>/qr', PublicGatePassQRView.as_view(), name='public_gate_pass_qr_noslash'),
 
     # Customs Officer Inspection & Clearance Endpoints
     path('customs/containers/', CustomsContainersListAPIView.as_view(), name='customs_containers_list'),
