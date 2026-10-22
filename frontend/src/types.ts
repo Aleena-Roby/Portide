@@ -1230,6 +1230,7 @@ export interface ManifestUnloadingContainer {
   cargo_id: number;
   cargo_description: string;
   customs_status_display: string;
+  trade_direction?: 'IMPORT' | 'EXPORT' | 'TRANSSHIPMENT';
   container_created_at: string;
 }
 
@@ -1313,6 +1314,9 @@ export interface YardLoadingContainer {
   yard_code: string;
   location_display: string;
   customs_status_display: string;
+  trade_direction?: 'IMPORT' | 'EXPORT' | 'TRANSSHIPMENT';
+  vessel_schedule_id?: number | null;
+  vessel_name?: string | null;
   container_created_at: string;
 }
 

@@ -12326,26 +12326,45 @@ class LoadingActiveCranesAPIView(APIView):
 
 class LoadingYardContainersAPIView(APIView):
     """
-    API Endpoint to list containers currently stored in the yard available for vessel loading.
-    Selects containers with an active YardAllocation, lifecycle status in ['AT_TERMINAL', 'CLEARED'],
-    and not committed to an active Direct Transfer or Gate Pass.
+    API Endpoint to list export containers currently stored in the yard available for vessel loading.
+    Filters strictly for eligible Export containers:
+    - Has an active YardAllocation
+    - Lifecycle status in ['AT_TERMINAL', 'CLEARED']
+    - Excludes Import containers (those with YardMovementHistory 'DISCHARGE')
+    - Excludes containers committed to truck transfers, gate passes, or delivery tracking
+    - If vessel_schedule_id is provided, filters for containers assigned to that vessel's arrival request
     Endpoint: GET /api/terminal/loading/yard-containers/?vessel_schedule_id=<id>
     """
     permission_classes = [IsUnloadingOperationsAuthorized]
 
     def get(self, request):
         search_query = request.query_params.get('search', '').strip()
+        schedule_id = request.query_params.get('vessel_schedule_id')
 
         # Containers currently allocated to active yard slots
         allocated_container_ids = YardAllocation.objects.filter(
             yard_allocation_status='ACTIVE'
         ).values_list('yard_allocation_container_id_id', flat=True)
 
+        # Discharged containers are IMPORT containers - exclude them completely from Loading
+        discharged_container_ids = YardMovementHistory.objects.filter(
+            yard_movement_movement_type='DISCHARGE'
+        ).values_list('yard_movement_container_id_id', flat=True)
+
         queryset = Container.objects.select_related(
-            'container_cargo_id'
+            'container_cargo_id',
+            'container_cargo_id__cargo_arrival_request_id',
+            'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id'
         ).filter(
             container_id__in=allocated_container_ids,
             container_status__in=['AT_TERMINAL', 'CLEARED']
+        ).exclude(
+            container_id__in=discharged_container_ids
+        ).exclude(
+            container_delivery_status__in=[
+                'RELEASED', 'GATE_PASS_GENERATED', 'PICKED_UP',
+                'DEPARTED_PORT', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'
+            ]
         )
 
         # Exclude containers in active truck transfers or active gate passes
@@ -12353,6 +12372,21 @@ class LoadingYardContainersAPIView(APIView):
             transfer_status__in=['INITIATED', 'IN_PROGRESS', 'TRANSFERRED_TO_TRUCK', 'AWAITING_GATE_EXIT']
         ).values_list('transfer_container_id_id', flat=True)
         queryset = queryset.exclude(container_id__in=active_transfer_container_ids)
+
+        # If vessel_schedule_id is specified, filter exclusively for containers assigned to that vessel schedule
+        if schedule_id and str(schedule_id).isdigit():
+            try:
+                schedule = VesselSchedule.objects.get(pk=int(schedule_id))
+                arrival_req = schedule.vessel_schedule_arrival_request_id
+                if arrival_req:
+                    queryset = queryset.filter(container_cargo_id__cargo_arrival_request_id=arrival_req)
+                else:
+                    queryset = queryset.none()
+            except VesselSchedule.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": f"Vessel schedule #{schedule_id} not found."
+                }, status=status.HTTP_404_NOT_FOUND)
 
         if search_query:
             queryset = queryset.filter(
@@ -12505,6 +12539,52 @@ class LoadingExecuteAPIView(APIView):
                 return Response({
                     "status": "error",
                     "message": f"Container '{container.container_number}' is already loaded onto a vessel."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validate container is an Export container, not an Import container
+            if YardMovementHistory.objects.filter(yard_movement_container_id=container, yard_movement_movement_type='DISCHARGE').exists():
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' is an import container discharged from a vessel "
+                        f"and cannot be loaded onto an outbound vessel."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_delivery_status in [
+                'RELEASED', 'GATE_PASS_GENERATED', 'PICKED_UP',
+                'DEPARTED_PORT', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'
+            ]:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' is committed to the local delivery/gate-out pipeline "
+                        f"and cannot be loaded onto a vessel."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validate container belongs to selected vessel schedule's arrival request
+            arrival_req = vessel_schedule.vessel_schedule_arrival_request_id
+            if not arrival_req:
+                return Response({
+                    "status": "error",
+                    "message": f"Vessel schedule #{vessel_schedule_id} has no linked arrival request."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if not container.container_cargo_id or not container.container_cargo_id.cargo_arrival_request_id:
+                return Response({
+                    "status": "error",
+                    "message": f"Container '{container.container_number}' is not associated with any vessel cargo request."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_cargo_id.cargo_arrival_request_id_id != arrival_req.vessel_arrival_request_id:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' is assigned to arrival request "
+                        f"#{container.container_cargo_id.cargo_arrival_request_id_id}, not the selected vessel schedule "
+                        f"#{vessel_schedule_id} ('{vessel_name}'). Only eligible export containers assigned to this carrier voyage can be loaded."
+                    )
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # 4. Fetch & lock origin yard slot & active allocation

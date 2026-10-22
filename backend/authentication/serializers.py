@@ -4154,6 +4154,7 @@ class ManifestUnloadingContainerSerializer(serializers.ModelSerializer):
     cargo_id = serializers.IntegerField(source='container_cargo_id.cargo_id', read_only=True)
     cargo_description = serializers.CharField(source='container_cargo_id.cargo_description', read_only=True)
     customs_status_display = serializers.SerializerMethodField()
+    trade_direction = serializers.CharField(default='IMPORT', read_only=True)
 
     class Meta:
         model = Container
@@ -4169,6 +4170,7 @@ class ManifestUnloadingContainerSerializer(serializers.ModelSerializer):
             'cargo_id',
             'cargo_description',
             'customs_status_display',
+            'trade_direction',
             'container_created_at',
         ]
 
@@ -4765,10 +4767,24 @@ class EligibleLoadingVesselSerializer(serializers.ModelSerializer):
         ).count()
 
     def get_yard_containers_count(self, obj):
-        # Count containers with active yard allocation available for loading
+        # Count eligible export containers with active yard allocation assigned to THIS vessel schedule
+        arrival_req = obj.vessel_schedule_arrival_request_id
+        if not arrival_req:
+            return 0
+        discharged_ids = YardMovementHistory.objects.filter(
+            yard_movement_movement_type='DISCHARGE'
+        ).values_list('yard_movement_container_id_id', flat=True)
         return YardAllocation.objects.filter(
             yard_allocation_status='ACTIVE',
+            yard_allocation_container_id__container_cargo_id__cargo_arrival_request_id=arrival_req,
             yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED']
+        ).exclude(
+            yard_allocation_container_id_id__in=discharged_ids
+        ).exclude(
+            yard_allocation_container_id__container_delivery_status__in=[
+                'RELEASED', 'GATE_PASS_GENERATED', 'PICKED_UP',
+                'DEPARTED_PORT', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'
+            ]
         ).count()
 
 
@@ -4815,7 +4831,7 @@ class ActiveLoadingCraneSerializer(serializers.ModelSerializer):
 
 class YardLoadingContainerSerializer(serializers.ModelSerializer):
     """
-    Serializer for yard-allocated containers available for loading onto a berthed vessel.
+    Serializer for yard-allocated export containers available for loading onto a berthed vessel.
     """
     container_type_display = serializers.CharField(source='get_container_type_display', read_only=True)
     container_status_display = serializers.CharField(source='get_container_status_display', read_only=True)
@@ -4828,6 +4844,9 @@ class YardLoadingContainerSerializer(serializers.ModelSerializer):
     yard_code = serializers.SerializerMethodField()
     location_display = serializers.SerializerMethodField()
     customs_status_display = serializers.SerializerMethodField()
+    trade_direction = serializers.CharField(default='EXPORT', read_only=True)
+    vessel_schedule_id = serializers.SerializerMethodField()
+    vessel_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Container
@@ -4848,6 +4867,9 @@ class YardLoadingContainerSerializer(serializers.ModelSerializer):
             'yard_code',
             'location_display',
             'customs_status_display',
+            'trade_direction',
+            'vessel_schedule_id',
+            'vessel_name',
             'container_created_at',
         ]
 
@@ -4891,6 +4913,16 @@ class YardLoadingContainerSerializer(serializers.ModelSerializer):
     def get_customs_status_display(self, obj):
         insp = obj.latest_customs_inspection
         return insp.get_customs_inspection_status_display() if insp else obj.get_container_customs_status_display()
+
+    def get_vessel_schedule_id(self, obj):
+        req = obj.arrival_request
+        if req and hasattr(req, 'schedule') and req.schedule:
+            return req.schedule.vessel_schedule_id
+        return None
+
+    def get_vessel_name(self, obj):
+        v = obj.vessel
+        return v.vessel_name if v else None
 
 
 

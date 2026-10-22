@@ -182,19 +182,21 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
   // Initial load
   useEffect(() => {
     fetchEligibleVessels();
-    fetchYardContainers();
     fetchHistory();
-  }, [fetchEligibleVessels, fetchYardContainers, fetchHistory]);
+  }, [fetchEligibleVessels, fetchHistory]);
 
-  // Re-fetch cranes when selected vessel changes
+  // Re-fetch cranes and yard containers when selected vessel changes
   useEffect(() => {
     if (selectedVessel) {
       fetchActiveCranes(selectedVessel.vessel_schedule_id);
+      fetchYardContainers(selectedVessel.vessel_schedule_id);
     } else {
       setCranes([]);
       setSelectedCrane(null);
+      setContainers([]);
+      setSelectedContainer(null);
     }
-  }, [selectedVessel?.vessel_schedule_id, fetchActiveCranes]);
+  }, [selectedVessel?.vessel_schedule_id, fetchActiveCranes, fetchYardContainers]);
 
   // Filtered containers
   const filteredContainers = useMemo(() => {
@@ -556,10 +558,10 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
                     </div>
                     <div>
                       <h3 className="text-base font-black text-slate-900 dark:text-white">
-                        Select Yard Container to Load
+                        Select Export Container to Load
                       </h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Export/transshipment container currently positioned in a terminal yard slot.
+                        Outbound export containers assigned to '{selectedVessel.vessel_name}' currently in yard slots.
                       </p>
                     </div>
                   </div>
@@ -588,9 +590,9 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
                 ) : filteredContainers.length === 0 ? (
                   <div className="p-5 text-center rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700">
                     <Boxes className="w-6 h-6 text-slate-400 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No Containers in Yard Available for Loading</p>
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No Export Containers in Yard for {selectedVessel.vessel_name}</p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Containers must be currently positioned in active yard coordinates to be loaded aboard vessels.
+                      Only outbound export containers assigned to this vessel's cargo manifest and positioned in yard slots are eligible for loading. Discharged import containers are strictly excluded.
                     </p>
                   </div>
                 ) : (
@@ -615,6 +617,9 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
                                 </span>
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                                   {c.container_type} ({c.teu_equivalent} TEU)
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                  <span>📤</span> EXPORT
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -696,8 +701,11 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
                   <div className="font-bold text-slate-900 dark:text-white text-sm font-mono">
                     {selectedContainer.container_number}
                   </div>
-                  <div className="text-slate-500 text-[11px]">
-                    {selectedContainer.container_type} • {selectedContainer.container_gross_weight} MT
+                  <div className="text-slate-500 text-[11px] flex items-center gap-1.5 mt-0.5">
+                    <span>{selectedContainer.container_type} • {selectedContainer.container_gross_weight} MT</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                      📤 EXPORT
+                    </span>
                   </div>
                 </div>
 

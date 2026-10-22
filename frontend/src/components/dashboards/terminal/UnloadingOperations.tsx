@@ -749,6 +749,9 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                                 <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                                   {c.container_type} ({c.teu_equivalent} TEU)
                                 </span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                  <span>📥</span> IMPORT
+                                </span>
                               </div>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                                 Weight: {c.container_gross_weight} MT • {c.cargo_description || 'General Cargo'}
@@ -937,8 +940,11 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                   <div className="font-mono font-black text-slate-900 dark:text-white text-sm">
                     {selectedContainer.container_number}
                   </div>
-                  <div className="text-slate-500 text-[11px]">
-                    {selectedContainer.container_type} • {selectedContainer.container_gross_weight} MT
+                  <div className="text-slate-500 text-[11px] flex items-center gap-1.5 mt-0.5">
+                    <span>{selectedContainer.container_type} • {selectedContainer.container_gross_weight} MT</span>
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                      📥 IMPORT
+                    </span>
                   </div>
                 </div>
 

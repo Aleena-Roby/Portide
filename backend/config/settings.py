@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 import socket
 from pathlib import Path
 from dotenv import load_dotenv
@@ -174,6 +175,14 @@ else:
                 'NAME': BASE_DIR / 'db.sqlite3',
             }
         }
+
+if 'test' in sys.argv:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
 
 
 # Password validation
