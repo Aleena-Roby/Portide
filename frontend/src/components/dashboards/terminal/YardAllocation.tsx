@@ -712,7 +712,14 @@ export const YardAllocation: React.FC = () => {
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                     >
                       <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
-                        {container.container_number}
+                        <div>{container.container_number}</div>
+                        <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                          container.trade_direction === 'EXPORT'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                        }`}>
+                          {container.trade_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
+                        </span>
                       </td>
 
                       <td className="p-3.5">
@@ -879,9 +886,18 @@ export const YardAllocation: React.FC = () => {
                     >
                       <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
                         <span className="block">{alloc.container_number}</span>
-                        <span className="text-[10px] text-slate-400 font-sans font-normal">
-                          {alloc.container_type_display || alloc.container_type}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-slate-400 font-sans font-normal">
+                            {alloc.container_type_display || alloc.container_type}
+                          </span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                            alloc.trade_direction === 'EXPORT'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                          }`}>
+                            {alloc.trade_direction === 'EXPORT' ? '📤 EXP' : '📥 IMP'}
+                          </span>
+                        </div>
                       </td>
 
                       <td className="p-3.5">
@@ -967,11 +983,21 @@ export const YardAllocation: React.FC = () => {
         <div className="space-y-5">
           {/* Container Information Card */}
           {selectedPendingContainer && (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Container</span>
                 <span className="font-mono font-black text-slate-900 dark:text-white text-sm">
                   {selectedPendingContainer.container_number}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Trade Direction</span>
+                <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
+                  selectedPendingContainer.trade_direction === 'EXPORT'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                }`}>
+                  {selectedPendingContainer.trade_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
                 </span>
               </div>
               <div>
@@ -1279,6 +1305,13 @@ export const YardAllocation: React.FC = () => {
                 </span>
                 <span className="text-slate-400 block text-[11px]">
                   {selectedAllocationDetail.container_type_display || selectedAllocationDetail.container_type}
+                </span>
+                <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                  selectedAllocationDetail.trade_direction === 'EXPORT'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                }`}>
+                  {selectedAllocationDetail.trade_direction === 'EXPORT' ? '📤 OUTBOUND EXPORT' : '📥 INBOUND IMPORT'}
                 </span>
               </div>
               <div className="text-right">

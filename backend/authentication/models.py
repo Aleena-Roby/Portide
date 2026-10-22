@@ -583,6 +583,11 @@ class Cargo(models.Model):
         ('PACKAGES', 'Packages'),
     )
 
+    CARGO_DIRECTION_CHOICES = (
+        ('IMPORT', 'Import (Inbound)'),
+        ('EXPORT', 'Export (Outbound)'),
+    )
+
     cargo_id = models.BigAutoField(primary_key=True)
     cargo_arrival_request_id = models.ForeignKey(
         VesselArrivalRequest,
@@ -591,6 +596,13 @@ class Cargo(models.Model):
         related_name='cargoes'
     )
     cargo_description = models.CharField(max_length=255)
+    cargo_direction = models.CharField(
+        max_length=20,
+        choices=CARGO_DIRECTION_CHOICES,
+        default='IMPORT',
+        db_index=True,
+        help_text="Trade direction: IMPORT for inbound ocean cargo, EXPORT for outbound carrier vessel loading"
+    )
     cargo_type = models.CharField(max_length=50, choices=CARGO_TYPE_CHOICES, default='CONTAINERIZED')
     cargo_quantity = models.DecimalField(max_digits=12, decimal_places=2)
     cargo_unit = models.CharField(max_length=30, choices=CARGO_UNIT_CHOICES, default='TEU')
@@ -750,6 +762,10 @@ class Container(models.Model):
     @property
     def shipping_company(self):
         return self.cargo.shipping_company if self.cargo else None
+
+    @property
+    def trade_direction(self) -> str:
+        return self.cargo.cargo_direction if self.cargo else 'IMPORT'
 
     @property
     def teu_equivalent(self) -> float:
@@ -1629,6 +1645,7 @@ class YardMovementHistory(models.Model):
         ('DISCHARGE', 'Vessel Discharge'),
         ('RELOCATION', 'Yard Relocation'),
         ('LOADING', 'Vessel Loading'),
+        ('YARD_ALLOCATION', 'Yard Placement'),
     )
 
     yard_movement_id = models.BigAutoField(primary_key=True)
@@ -1718,7 +1735,9 @@ class YardMovementHistory(models.Model):
             return f"{y.yard_code} / {b.yard_block_code} / {self.from_slot.yard_slot_code}"
         if self.yard_movement_movement_type == 'DISCHARGE':
             return "Vessel (Discharge)"
-        return "Unknown"
+        if self.yard_movement_movement_type == 'YARD_ALLOCATION':
+            return "Gate-In / Yard Receiving"
+        return "Initial Placement"
 
     @property
     def to_location_display(self) -> str:

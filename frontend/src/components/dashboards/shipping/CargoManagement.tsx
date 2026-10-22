@@ -93,6 +93,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
   const [selectedArrivalRequestId, setSelectedArrivalRequestId] = useState<string>('');
   const [cargoDescription, setCargoDescription] = useState<string>('');
   const [cargoType, setCargoType] = useState<string>('CONTAINERIZED');
+  const [cargoDirection, setCargoDirection] = useState<'IMPORT' | 'EXPORT'>('IMPORT');
   const [cargoQuantity, setCargoQuantity] = useState<string>('500');
   const [cargoUnit, setCargoUnit] = useState<string>('TEU');
   const [cargoWeight, setCargoWeight] = useState<string>('6000');
@@ -262,6 +263,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
 
     setCargoDescription('');
     setCargoType('CONTAINERIZED');
+    setCargoDirection('IMPORT');
     setCargoQuantity('500');
     setCargoUnit('TEU');
     setCargoWeight('6000');
@@ -290,6 +292,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     setSelectedArrivalRequestId(String(cargo.cargo_arrival_request_id));
     setCargoDescription(cargo.cargo_description);
     setCargoType(cargo.cargo_type);
+    setCargoDirection(cargo.cargo_direction || 'IMPORT');
     setCargoQuantity(String(cargo.cargo_quantity));
     setCargoUnit(cargo.cargo_unit);
     setCargoWeight(String(cargo.cargo_weight));
@@ -355,6 +358,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
         cargo_arrival_request_id: parseInt(selectedArrivalRequestId, 10),
         cargo_description: cargoDescription.trim(),
         cargo_type: cargoType,
+        cargo_direction: cargoDirection,
         cargo_quantity: qtyNum,
         cargo_unit: cargoUnit,
         cargo_weight: weightNum,
@@ -414,6 +418,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
       const desc = (c.cargo_description || '').toLowerCase();
       const origin = (c.cargo_origin || '').toLowerCase();
       const dest = (c.cargo_destination || '').toLowerCase();
+      const direction = (c.cargo_direction || 'IMPORT').toLowerCase();
       const vessel = (c.arrival_request_summary?.vessel_name || '').toLowerCase();
       const imo = (c.arrival_request_summary?.vessel_imo_number || '').toLowerCase();
       const cargoId = `crg-${c.cargo_id}`.toLowerCase();
@@ -423,6 +428,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
         desc.includes(q) || 
         origin.includes(q) || 
         dest.includes(q) || 
+        direction.includes(q) ||
         vessel.includes(q) || 
         imo.includes(q) || 
         cargoId.includes(q) || 
@@ -682,8 +688,15 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                         <div className="font-bold text-slate-900 dark:text-white truncate max-w-xs group-hover:text-[#D49A24] transition-colors" title={cargo.cargo_description}>
                           {cargo.cargo_description}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                          {cargo.cargo_type_display || cargo.cargo_type}
+                        <div className="text-[10px] text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span>{cargo.cargo_type_display || cargo.cargo_type}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                            cargo.cargo_direction === 'EXPORT'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                          }`}>
+                            {cargo.cargo_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
+                          </span>
                         </div>
                       </td>
 
@@ -970,6 +983,36 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
               </select>
             </div>
 
+            <div>
+              <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                Trade Direction *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCargoDirection('IMPORT')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    cargoDirection === 'IMPORT'
+                      ? 'bg-blue-50 dark:bg-blue-900/40 border-blue-500 text-blue-700 dark:text-blue-300 shadow-sm ring-2 ring-blue-500/20'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>📥</span> Inbound (Import)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCargoDirection('EXPORT')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    cargoDirection === 'EXPORT'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-sm ring-2 ring-emerald-500/20'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>📤</span> Outbound (Export)
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
@@ -1149,6 +1192,19 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                 <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Classification</span>
                 <div className="font-bold text-slate-900 dark:text-white mt-1">
                   {selectedCargoDetail.cargo_type_display || selectedCargoDetail.cargo_type}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Trade Direction</span>
+                <div className="font-bold text-slate-900 dark:text-white mt-1">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    selectedCargoDetail.cargo_direction === 'EXPORT'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                      : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                  }`}>
+                    {selectedCargoDetail.cargo_direction === 'EXPORT' ? '📤 OUTBOUND EXPORT' : '📥 INBOUND IMPORT'}
+                  </span>
                 </div>
               </div>
 

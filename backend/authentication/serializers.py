@@ -1104,6 +1104,7 @@ class CargoSerializer(serializers.ModelSerializer):
     arrival_request_summary = serializers.SerializerMethodField()
     cargo_type_display = serializers.CharField(source='get_cargo_type_display', read_only=True)
     cargo_unit_display = serializers.CharField(source='get_cargo_unit_display', read_only=True)
+    cargo_direction_display = serializers.CharField(source='get_cargo_direction_display', read_only=True)
     cargo_status_display = serializers.CharField(source='get_cargo_status_display', read_only=True)
     origin_port = PortSerializer(source='cargo_origin_port_id', read_only=True)
     destination_port = PortSerializer(source='cargo_destination_port_id', read_only=True)
@@ -1118,6 +1119,8 @@ class CargoSerializer(serializers.ModelSerializer):
             'cargo_description',
             'cargo_type',
             'cargo_type_display',
+            'cargo_direction',
+            'cargo_direction_display',
             'cargo_quantity',
             'cargo_unit',
             'cargo_unit_display',
@@ -1168,6 +1171,7 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
         queryset=Port.objects.filter(port_is_active=True),
         required=True
     )
+    cargo_direction = serializers.CharField(required=False, default='IMPORT')
 
     class Meta:
         model = Cargo
@@ -1175,6 +1179,7 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
             'cargo_arrival_request_id',
             'cargo_description',
             'cargo_type',
+            'cargo_direction',
             'cargo_quantity',
             'cargo_unit',
             'cargo_weight',
@@ -1182,6 +1187,21 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
             'cargo_destination_port_id',
             'cargo_status'
         ]
+
+    def validate_cargo_direction(self, value):
+        if not value:
+            return 'IMPORT'
+        val = str(value).strip().upper()
+        if val in ('EXPORT', 'OUTBOUND', 'OUT'):
+            return 'EXPORT'
+        if val in ('IMPORT', 'INBOUND', 'IN'):
+            return 'IMPORT'
+        valid_directions = [c[0] for c in Cargo.CARGO_DIRECTION_CHOICES]
+        if val not in valid_directions:
+            raise serializers.ValidationError(
+                f"Invalid cargo direction '{value}'. Allowed directions: IMPORT, EXPORT."
+            )
+        return val
 
     def validate_cargo_description(self, value):
         if not value or not str(value).strip():
@@ -1383,6 +1403,7 @@ class ContainerSerializer(serializers.ModelSerializer):
     container_type_display = serializers.CharField(source='get_container_type_display', read_only=True)
     container_status_display = serializers.CharField(source='get_container_status_display', read_only=True)
     teu_equivalent = serializers.FloatField(read_only=True)
+    trade_direction = serializers.CharField(read_only=True)
     cargo_context = serializers.SerializerMethodField()
     customs_inspection = serializers.SerializerMethodField()
     customs_documents = serializers.SerializerMethodField()
@@ -1403,6 +1424,7 @@ class ContainerSerializer(serializers.ModelSerializer):
             'container_type',
             'container_type_display',
             'container_gross_weight',
+            'trade_direction',
             'container_status',
             'container_status_display',
             'container_customs_status',
@@ -1435,6 +1457,8 @@ class ContainerSerializer(serializers.ModelSerializer):
             'cargo_description': cargo.cargo_description,
             'cargo_type': cargo.cargo_type,
             'cargo_type_display': cargo.get_cargo_type_display(),
+            'cargo_direction': cargo.cargo_direction,
+            'cargo_direction_display': cargo.get_cargo_direction_display(),
             'cargo_quantity': str(cargo.cargo_quantity),
             'cargo_unit': cargo.cargo_unit,
             'cargo_weight': str(cargo.cargo_weight),
@@ -1615,12 +1639,13 @@ CONTAINER_NUMBER_REGEX = re.compile(r'^[A-Z]{4}\d{7}$')
 VALID_CONTAINER_TRANSITIONS = {
     'REGISTERED': ['ARRIVED'],
     'ARRIVED': ['AT_TERMINAL'],
-    'AT_TERMINAL': ['AWAITING_CUSTOMS', 'UNDER_INSPECTION'],
+    'AT_TERMINAL': ['AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'LOADED'],
     'AWAITING_CUSTOMS': ['UNDER_INSPECTION'],
     'UNDER_INSPECTION': ['CLEARED', 'CUSTOMS_HOLD'],
     'CUSTOMS_HOLD': ['UNDER_INSPECTION'],
-    'CLEARED': ['RELEASED'],
-    'RELEASED': []
+    'CLEARED': ['RELEASED', 'LOADED'],
+    'RELEASED': [],
+    'LOADED': []
 }
 
 
@@ -3076,6 +3101,7 @@ class PendingContainerSerializer(serializers.ModelSerializer):
     container_type_display = serializers.CharField(source='get_container_type_display', read_only=True)
     container_status_display = serializers.CharField(source='get_container_status_display', read_only=True)
     teu_equivalent = serializers.FloatField(read_only=True)
+    trade_direction = serializers.CharField(read_only=True)
     vessel_name = serializers.SerializerMethodField()
     vessel_imo_number = serializers.SerializerMethodField()
     arrival_request_id = serializers.SerializerMethodField()
@@ -3093,6 +3119,7 @@ class PendingContainerSerializer(serializers.ModelSerializer):
             'container_type_display',
             'container_gross_weight',
             'teu_equivalent',
+            'trade_direction',
             'container_status',
             'container_status_display',
             'vessel_name',
@@ -3200,6 +3227,7 @@ class YardAllocationSerializer(serializers.ModelSerializer):
     container_gross_weight = serializers.DecimalField(source='yard_allocation_container_id.container_gross_weight', max_digits=10, decimal_places=2, read_only=True)
     container_status = serializers.CharField(source='yard_allocation_container_id.container_status', read_only=True)
     container_status_display = serializers.CharField(source='yard_allocation_container_id.get_container_status_display', read_only=True)
+    trade_direction = serializers.CharField(source='yard_allocation_container_id.trade_direction', read_only=True)
     vessel_name = serializers.SerializerMethodField()
     slot_id = serializers.IntegerField(source='yard_allocation_slot_id.yard_slot_id', read_only=True)
     slot_code = serializers.CharField(source='yard_allocation_slot_id.yard_slot_code', read_only=True)
@@ -3228,6 +3256,7 @@ class YardAllocationSerializer(serializers.ModelSerializer):
             'container_type',
             'container_type_display',
             'container_gross_weight',
+            'trade_direction',
             'container_status',
             'container_status_display',
             'vessel_name',
@@ -4777,6 +4806,7 @@ class EligibleLoadingVesselSerializer(serializers.ModelSerializer):
         return YardAllocation.objects.filter(
             yard_allocation_status='ACTIVE',
             yard_allocation_container_id__container_cargo_id__cargo_arrival_request_id=arrival_req,
+            yard_allocation_container_id__container_cargo_id__cargo_direction='EXPORT',
             yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED']
         ).exclude(
             yard_allocation_container_id_id__in=discharged_ids

@@ -9163,7 +9163,7 @@ class YardAllocationListCreateAPIView(APIView):
                 yard_movement_container_id=container,
                 yard_movement_from_slot_id=None,
                 yard_movement_to_slot_id=slot,
-                yard_movement_movement_type='DISCHARGE',
+                yard_movement_movement_type='YARD_ALLOCATION',
                 yard_movement_moved_by_id=user_obj,
                 yard_movement_timestamp=now,
                 yard_movement_remarks=remarks or f"Initial yard allocation to slot {slot.yard_slot_code}."
@@ -12357,7 +12357,8 @@ class LoadingYardContainersAPIView(APIView):
             'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id'
         ).filter(
             container_id__in=allocated_container_ids,
-            container_status__in=['AT_TERMINAL', 'CLEARED']
+            container_status__in=['AT_TERMINAL', 'CLEARED'],
+            container_cargo_id__cargo_direction='EXPORT'
         ).exclude(
             container_id__in=discharged_container_ids
         ).exclude(
@@ -12542,6 +12543,24 @@ class LoadingExecuteAPIView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate container is an Export container, not an Import container
+            if container.trade_direction != 'EXPORT':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' is an inbound Import container "
+                        f"and cannot be loaded onto an outbound vessel. Only eligible outbound Export containers can be loaded."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_status not in ['AT_TERMINAL', 'CLEARED']:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Container '{container.container_number}' has status '{container.get_container_status_display()}'. "
+                        f"Container must be in 'AT_TERMINAL' or 'CLEARED' status with an active yard slot to be loaded."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             if YardMovementHistory.objects.filter(yard_movement_container_id=container, yard_movement_movement_type='DISCHARGE').exists():
                 return Response({
                     "status": "error",

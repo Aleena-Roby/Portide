@@ -171,6 +171,7 @@ class LoadingOperationsTestCase(TestCase):
         self.cargo = Cargo.objects.create(
             cargo_arrival_request_id=self.arrival_request,
             cargo_type="CONTAINERIZED",
+            cargo_direction="EXPORT",
             cargo_description="Electronic Components Export",
             cargo_quantity=Decimal("1.00"),
             cargo_unit="TEU",
@@ -462,6 +463,7 @@ class LoadingOperationsTestCase(TestCase):
         cargo_other = Cargo.objects.create(
             cargo_arrival_request_id=req_other,
             cargo_type="CONTAINERIZED",
+            cargo_direction="EXPORT",
             cargo_description="Other Export Goods",
             cargo_quantity=Decimal("1.00"),
             cargo_unit="TEU",
@@ -508,3 +510,298 @@ class LoadingOperationsTestCase(TestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("not the selected vessel schedule", res.data['message'])
+
+    def test_09_initial_yard_allocation_logs_yard_allocation_not_discharge(self):
+        """Fix verification: Initial yard allocation must record movement_type='YARD_ALLOCATION' (not 'DISCHARGE') and container remains eligible for loading."""
+        new_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="EXPU2233445",
+            container_type="20FT",
+            container_gross_weight=Decimal("20.00"),
+            container_status="AT_TERMINAL",
+            container_customs_status="CLEARED"
+        )
+        new_slot = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T5",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=5,
+            yard_slot_status="AVAILABLE"
+        )
+
+        alloc_payload = {
+            "container_id": new_container.container_id,
+            "slot_id": new_slot.yard_slot_id,
+            "remarks": "Initial yard placement for export container"
+        }
+        res_alloc = self.client.post(
+            '/api/terminal/yard-allocations/',
+            data=json.dumps(alloc_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_alloc.status_code, status.HTTP_201_CREATED)
+
+        # Check movement history
+        movement = YardMovementHistory.objects.filter(
+            yard_movement_container_id=new_container
+        ).first()
+        self.assertIsNotNone(movement)
+        self.assertEqual(movement.yard_movement_movement_type, 'YARD_ALLOCATION')
+        self.assertNotEqual(movement.yard_movement_movement_type, 'DISCHARGE')
+        self.assertEqual(movement.from_location_display, 'Gate-In / Yard Receiving')
+
+        # Check loading yard containers eligibility
+        res_loading = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_loading.status_code, status.HTTP_200_OK)
+        nums = [c['container_number'] for c in res_loading.data['data']]
+        self.assertIn("EXPU2233445", nums)
+
+    def test_10_inbound_import_container_rejected_for_loading(self):
+        """Negative check: Inbound Import container (trade_direction='IMPORT') cannot be loaded onto an outbound vessel."""
+        cargo_import = Cargo.objects.create(
+            cargo_arrival_request_id=self.arrival_request,
+            cargo_type="CONTAINERIZED",
+            cargo_direction="IMPORT",
+            cargo_description="Inbound Electronics",
+            cargo_quantity=Decimal("1.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("20.00"),
+            cargo_origin_port_id=self.port_origin,
+            cargo_destination_port_id=self.port_dest,
+            cargo_status="IN_PORT"
+        )
+        import_container = Container.objects.create(
+            container_cargo_id=cargo_import,
+            container_number="IMPU5566778",
+            container_type="20FT",
+            container_gross_weight=Decimal("20.00"),
+            container_status="AT_TERMINAL",
+            container_customs_status="CLEARED"
+        )
+        self.assertEqual(import_container.trade_direction, 'IMPORT')
+
+        slot_imp = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T6",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=6,
+            yard_slot_status="OCCUPIED"
+        )
+        YardAllocation.objects.create(
+            yard_allocation_container_id=import_container,
+            yard_allocation_slot_id=slot_imp,
+            yard_allocation_allocated_by_id=self.user_tlo,
+            yard_allocation_status="ACTIVE"
+        )
+
+        # Ensure excluded from eligible yard containers
+        res_list = self.client.get('/api/terminal/loading/yard-containers/', **self.headers_tlo)
+        nums = [c['container_number'] for c in res_list.data['data']]
+        self.assertNotIn("IMPU5566778", nums)
+
+        # Attempt to load onto vessel -> Rejected
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": import_container.container_id,
+            "slot_id": slot_imp.yard_slot_id
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Import container", res_load.data['message'])
+
+    def test_11_loading_rejected_when_no_active_yard_allocation(self):
+        """Negative check: Loading fails if container has no active yard slot allocation."""
+        # Release the active allocation
+        self.allocation.yard_allocation_status = 'RELEASED'
+        self.allocation.save()
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("no active yard slot allocation", res.data['message'])
+
+    def test_12_loading_rejected_for_crane_operation_unloading_only(self):
+        """Negative check: Loading fails if crane allocation is dedicated to UNLOADING only."""
+        self.crane_allocation.crane_allocation_operation_type = 'UNLOADING'
+        self.crane_allocation.save()
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Operation type must permit Loading", res.data['message'])
+
+    def test_13_loading_rejected_for_inactive_or_maintenance_crane(self):
+        """Negative check: Loading fails if assigned crane is in MAINTENANCE or INACTIVE status."""
+        self.crane_sts.crane_status = 'MAINTENANCE'
+        self.crane_sts.save()
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("not operational", res.data['message'])
+
+    def test_14_loading_rejected_for_duplicate_loading(self):
+        """Negative check: Loading fails if container is already in LOADED status."""
+        self.container.container_status = 'LOADED'
+        self.container.save()
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already loaded", res.data['message'])
+
+    def test_15_non_regression_unloading_records_discharge_and_customs_workflow(self):
+        """Regression check: Unloading an import container from vessel creates genuine DISCHARGE history and preserves customs workflow."""
+        cargo_in = Cargo.objects.create(
+            cargo_arrival_request_id=self.arrival_request,
+            cargo_type="CONTAINERIZED",
+            cargo_direction="IMPORT",
+            cargo_description="Inbound Components",
+            cargo_quantity=Decimal("1.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("20.00"),
+            cargo_origin_port_id=self.port_origin,
+            cargo_destination_port_id=self.port_dest,
+            cargo_status="IN_PORT"
+        )
+        container_in = Container.objects.create(
+            container_cargo_id=cargo_in,
+            container_number="INBD1234567",
+            container_type="20FT",
+            container_gross_weight=Decimal("20.00"),
+            container_status="ARRIVED",
+            container_customs_status="NOT_SUBMITTED"
+        )
+        slot_dest = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T7",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=7,
+            yard_slot_status="AVAILABLE"
+        )
+        crane_unload = CraneAllocation.objects.create(
+            crane_allocation_crane_id=self.crane_sts,
+            crane_allocation_vessel_schedule_id=self.vessel_schedule,
+            crane_allocation_berth_id=self.berth,
+            crane_allocation_operation_type="BOTH",
+            crane_allocation_status="ACTIVE",
+            crane_allocation_planned_start_at=timezone.now() - timedelta(hours=1),
+            crane_allocation_planned_end_at=timezone.now() + timedelta(hours=5)
+        )
+
+        unload_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": crane_unload.crane_allocation_id,
+            "container_id": container_in.container_id,
+            "slot_id": slot_dest.yard_slot_id,
+            "remarks": "Inbound discharge operation"
+        }
+        res_unload = self.client.post(
+            '/api/terminal/unloading/discharge/',
+            data=json.dumps(unload_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_unload.status_code, status.HTTP_201_CREATED)
+
+        # Verify container status transitioned to AT_TERMINAL
+        container_in.refresh_from_db()
+        self.assertEqual(container_in.container_status, 'AT_TERMINAL')
+
+        # Verify YardMovementHistory has genuine DISCHARGE movement
+        discharge_movement = YardMovementHistory.objects.filter(
+            yard_movement_container_id=container_in,
+            yard_movement_movement_type='DISCHARGE'
+        ).first()
+        self.assertIsNotNone(discharge_movement)
+        self.assertEqual(discharge_movement.from_location_display, 'Vessel (Discharge)')
+
+        # Verify Customs Officer can inspect and clear this unloaded import container
+        login_customs = Login.objects.create(
+            login_email="customs_officer@portide.com",
+            login_password="pbkdf2_sha256$hashedpassword",
+            login_role="customs_officer",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        user_customs = User.objects.create(
+            login_id=login_customs,
+            user_full_name="Customs Officer",
+            user_phone="+919876543499",
+            user_status="ACTIVE"
+        )
+        headers_customs = {
+            'HTTP_X_USER_EMAIL': 'customs_officer@portide.com',
+            'HTTP_X_USER_ROLE': 'customs_officer',
+            'HTTP_X_USER_ID': str(user_customs.user_id)
+        }
+
+        # Transition to UNDER_INSPECTION and then CLEARED
+        container_in.container_status = 'UNDER_INSPECTION'
+        container_in.container_customs_status = 'UNDER_INSPECTION'
+        container_in.save()
+
+        customs_res = self.client.post(
+            f'/api/containers/{container_in.container_id}/status/',
+            data=json.dumps({"status": "CLEARED"}),
+            content_type='application/json',
+            **headers_customs
+        )
+        self.assertEqual(customs_res.status_code, status.HTTP_200_OK)
+        container_in.refresh_from_db()
+        self.assertEqual(container_in.container_status, 'CLEARED')
+        self.assertEqual(container_in.container_customs_status, 'CLEARED')
+

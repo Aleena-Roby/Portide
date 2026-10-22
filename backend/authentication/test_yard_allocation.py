@@ -878,14 +878,14 @@ class YardAllocationTestCase(TestCase):
     # Test 24: Manual allocation advances registered container and creates movement
     # =========================================================================
     def test_24_manual_allocation_advances_registered_status_and_creates_movement_history(self):
-        """Manual allocation advances REGISTERED/ARRIVED to AT_TERMINAL and logs DISCHARGE movement."""
+        """Manual allocation advances REGISTERED/ARRIVED to AT_TERMINAL and logs YARD_ALLOCATION movement."""
         self.container2.container_status = 'REGISTERED'
         self.container2.save()
 
         payload = {
             "container_id": self.container2.container_id,
             "slot_id": self.slot2.yard_slot_id,
-            "remarks": "Manual quay discharge allocation"
+            "remarks": "Manual initial yard placement"
         }
         res = self.client.post('/api/terminal/yard-allocations/', payload, format='json', **self.headers_tlo)
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
@@ -896,11 +896,11 @@ class YardAllocationTestCase(TestCase):
         # Check movement history record
         movement = YardMovementHistory.objects.filter(
             yard_movement_container_id=self.container2,
-            yard_movement_movement_type='DISCHARGE'
+            yard_movement_movement_type='YARD_ALLOCATION'
         ).first()
         self.assertIsNotNone(movement)
         self.assertIsNone(movement.yard_movement_from_slot_id)
-        self.assertEqual(movement.from_location_display, 'Vessel (Discharge)')
+        self.assertEqual(movement.from_location_display, 'Gate-In / Yard Receiving')
         self.assertEqual(movement.yard_movement_to_slot_id, self.slot2)
         self.assertEqual(movement.yard_movement_moved_by_id, self.user_tlo)
 

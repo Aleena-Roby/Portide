@@ -171,6 +171,8 @@ export interface BackendCargo {
   cargo_description: string;
   cargo_type: 'CONTAINERIZED' | 'GENERAL_CARGO' | 'BULK_CARGO';
   cargo_type_display?: string;
+  cargo_direction?: 'IMPORT' | 'EXPORT';
+  cargo_direction_display?: string;
   cargo_quantity: number | string;
   cargo_unit: 'TEU' | 'FEU' | 'TONNES' | 'KG' | 'UNITS' | 'PACKAGES' | string;
   cargo_unit_display?: string;
@@ -200,7 +202,7 @@ export interface BackendCargo {
 }
 
 export type ContainerType = '20FT' | '40FT' | '40FT_HC';
-export type ContainerStatus = 'REGISTERED' | 'ARRIVED' | 'AT_TERMINAL' | 'AWAITING_CUSTOMS' | 'UNDER_INSPECTION' | 'CUSTOMS_HOLD' | 'CLEARED' | 'RELEASED';
+export type ContainerStatus = 'REGISTERED' | 'ARRIVED' | 'AT_TERMINAL' | 'AWAITING_CUSTOMS' | 'UNDER_INSPECTION' | 'CUSTOMS_HOLD' | 'CLEARED' | 'RELEASED' | 'LOADED';
 
 export interface CustomsInspectionData {
   customs_inspection_id: number;
@@ -311,6 +313,7 @@ export interface BackendContainer {
   container_type: ContainerType;
   container_type_display?: string;
   container_gross_weight: number | string;
+  trade_direction?: 'IMPORT' | 'EXPORT';
   container_status: ContainerStatus;
   container_status_display?: string;
   container_customs_status?: string;
@@ -882,6 +885,7 @@ export interface PendingContainerItem {
   container_type_display: string;
   container_gross_weight: string;
   teu_equivalent: number;
+  trade_direction?: 'IMPORT' | 'EXPORT';
   container_status: string;
   container_status_display: string;
   vessel_name: string;
@@ -925,6 +929,7 @@ export interface YardAllocationItem {
   container_type: string;
   container_type_display: string;
   container_gross_weight: string;
+  trade_direction?: 'IMPORT' | 'EXPORT';
   container_status: string;
   container_status_display: string;
   vessel_name: string;
