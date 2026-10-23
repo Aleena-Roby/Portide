@@ -15,7 +15,7 @@ interface TerminalDashboardProps {
 
 export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab = 'overview', onNavigate }) => {
   if (activeTab === 'direct-transfer' || activeTab === 'direct_transfer' || activeTab === 'ship-to-truck') {
-    return <UnloadingOperations initialTab="direct_transfer" onNavigate={onNavigate} />;
+    return <UnloadingOperations initialTab="discharge" onNavigate={onNavigate} />;
   }
 
   if (activeTab === 'unloading-operations' || activeTab === 'unloading' || activeTab === 'discharge') {
@@ -100,21 +100,6 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             Hoist export containers from yard storage coordinates and stow aboard berthed carrier vessels via quay cranes.
-          </p>
-        </div>
-
-        <div 
-          onClick={() => onNavigate?.('direct-transfer')}
-          className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#D49A24]/60 hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-[#D49A24] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-            <span className="font-bold text-lg">🚛</span>
-          </div>
-          <h3 className="font-black text-base text-slate-900 dark:text-white mb-1 group-hover:text-[#D49A24] transition-colors">
-            Direct Ship-to-Truck
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Quayside vessel-to-truck discharge for pre-cleared containers with delivery orders, bypassing terminal yard slots.
           </p>
         </div>
 

@@ -48,8 +48,10 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
 }) => {
   const { addToast } = useApp();
 
-  // Navigation tab: 'discharge' | 'direct_transfer' | 'history'
-  const [activeTab, setActiveTab] = useState<'discharge' | 'direct_transfer' | 'history'>(initialTab);
+  // Navigation tab: 'discharge' | 'history' (direct_transfer hidden from navigation)
+  const [activeTab, setActiveTab] = useState<'discharge' | 'direct_transfer' | 'history'>(
+    initialTab === 'direct_transfer' ? 'discharge' : initialTab
+  );
 
   // Operational State
   const [vessels, setVessels] = useState<EligibleUnloadingVessel[]>([]);
@@ -446,17 +448,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
               }`}
             >
               Discharge Workflow
-            </button>
-            <button
-              onClick={() => setActiveTab('direct_transfer')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'direct_transfer'
-                  ? 'bg-white dark:bg-slate-900 text-[#D49A24] shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Truck className="w-3.5 h-3.5" />
-              Direct Ship-to-Truck
             </button>
             <button
               onClick={() => setActiveTab('history')}
