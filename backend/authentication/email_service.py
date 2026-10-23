@@ -1594,7 +1594,7 @@ Maritime Port Operations Intelligence Platform
                       {c.container_number}
                     </td>
                     <td style="text-align: right; vertical-align: top; padding-left: 8px;">
-                      <span style="display: inline-block; background-color: #ecfdf5; color: #059669; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #a7f3d0; text-transform: uppercase;">CLEARED</span>
+                      <span style="display: inline-block; background-color: #ecfdf5; color: #059669; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #a7f3d0; text-transform: uppercase;">CLEARED &bull; AUTHORIZED</span>
                     </td>
                   </tr>
                   <tr>
@@ -1653,13 +1653,13 @@ Maritime Port Operations Intelligence Platform
               📱 Scan at Port Gate Terminal
             </div>
             <div style="font-size: 13px; color: #475569; margin-bottom: 16px; line-height: 1.5; max-width: 460px; margin-left: auto; margin-right: auto; word-break: break-word;">
-              Present this QR code on your mobile device to the Gate &amp; Truck Operations Officer to verify vehicle and cargo release.
+              Present this QR Code at the designated port gate. The Gate &amp; Truck Operations Officer will scan the QR code to verify vehicle and cargo release.
             </div>
 
             <!-- Prominent High-Contrast Scannable QR Image -->
             <div class="qr-wrapper" style="display: inline-block; padding: 12px; background-color: #ffffff; border: 2px solid #0284c7; border-radius: 16px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12); margin-bottom: 10px; max-width: 100%; box-sizing: border-box;">
               <a href="{qr_image_url}" target="_blank" style="display: block; text-decoration: none;">
-                <img class="qr-img" src="{qr_image_url}" alt="PORTIDE Digital Gate Pass QR Code - {pass_number}" width="200" height="200" style="display: block; width: 200px; height: 200px; max-width: 100%; height: auto; margin: 0 auto; border: 0; background-color: #ffffff;" />
+                <img src="cid:gate_pass_qr_code" class="qr-img" alt="PORTIDE Digital Gate Pass QR Code - {pass_number}" width="200" height="200" style="display: block; width: 200px; height: 200px; max-width: 100%; height: auto; margin: 0 auto; border: 0; background-color: #ffffff;" />
               </a>
             </div>
             <div style="font-size: 11px; color: #64748b; margin-bottom: 16px;">
