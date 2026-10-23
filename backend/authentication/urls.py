@@ -55,6 +55,9 @@ from authentication.views import (
     GateContainersListAPIView,
     GateContainerDetailAPIView,
     ContainerReleaseAPIView,
+    ExportGateInEligibleContainersAPIView,
+    ExportGateInAPIView,
+    GateInHistoryAPIView,
     GateTruckListCreateAPIView,
     GateDriverListCreateAPIView,
     GateListAPIView,
@@ -186,6 +189,12 @@ urlpatterns = [
     path('gate/containers/<int:pk>', GateContainerDetailAPIView.as_view(), name='gate_container_detail_noslash'),
     path('gate/containers/<int:pk>/release/', ContainerReleaseAPIView.as_view(), name='gate_container_release'),
     path('gate/containers/<int:pk>/release', ContainerReleaseAPIView.as_view(), name='gate_container_release_noslash'),
+    path('gate/export/containers/', ExportGateInEligibleContainersAPIView.as_view(), name='gate_export_containers_list'),
+    path('gate/export/containers', ExportGateInEligibleContainersAPIView.as_view(), name='gate_export_containers_list_noslash'),
+    path('gate/export-gate-in/', ExportGateInAPIView.as_view(), name='gate_export_gate_in'),
+    path('gate/export-gate-in', ExportGateInAPIView.as_view(), name='gate_export_gate_in_noslash'),
+    path('gate/gate-in-history/', GateInHistoryAPIView.as_view(), name='gate_in_history'),
+    path('gate/gate-in-history', GateInHistoryAPIView.as_view(), name='gate_in_history_noslash'),
 
     # Digital Gate Pass & QR Verification Endpoints
     path('gate/trucks/', GateTruckListCreateAPIView.as_view(), name='gate_trucks_list_create'),

@@ -27,7 +27,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   BarChart3,
-  Sliders
+  Sliders,
+  ArrowDownRight
 } from 'lucide-react';
 
 interface NavChildItem {
@@ -152,7 +153,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             children: [
               { id: 'worklist', label: 'Container Release Worklist', icon: Boxes, path: `${basePath}/gate-operations` },
               { id: 'gate-passes', label: 'Digital Gate Passes', icon: QrCode, path: `${basePath}/gate-passes` },
-              { id: 'release-desk', label: 'QR Verification & Release Desk', icon: ShieldCheck, path: `${basePath}/release-desk` }
+              { id: 'release-desk', label: 'QR Verification & Release Desk', icon: ShieldCheck, path: `${basePath}/release-desk` },
+              { id: 'export-gate-in', label: 'Export Truck Gate-In', icon: ArrowDownRight, path: `${basePath}/export-gate-in` }
             ]
           }
         ];

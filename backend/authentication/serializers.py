@@ -23,6 +23,7 @@ from authentication.models import (
     CustomsInspection,
     CustomsDocument,
     GateRelease,
+    GateIn,
     Truck,
     Driver,
     Gate,
@@ -1408,6 +1409,7 @@ class ContainerSerializer(serializers.ModelSerializer):
     customs_inspection = serializers.SerializerMethodField()
     customs_documents = serializers.SerializerMethodField()
     gate_release = serializers.SerializerMethodField()
+    gate_in = serializers.SerializerMethodField()
     gate_pass = serializers.SerializerMethodField()
     yard_location = serializers.SerializerMethodField()
     container_customs_status_display = serializers.CharField(source='get_container_customs_status_display', read_only=True)
@@ -1439,6 +1441,7 @@ class ContainerSerializer(serializers.ModelSerializer):
             'customs_documents',
             'direct_transfer',
             'gate_release',
+            'gate_in',
             'gate_pass',
             'yard_location'
         ]
@@ -1520,6 +1523,32 @@ class ContainerSerializer(serializers.ModelSerializer):
             'officer_name': officer.user_full_name if officer else None,
             'officer_email': officer.login_id.login_email if officer and officer.login_id else None,
             'release_time': release.gate_release_time.isoformat() if release.gate_release_time else None
+        }
+
+    def get_gate_in(self, obj):
+        gate_in = obj.latest_gate_in
+        if not gate_in:
+            return None
+        officer = gate_in.gate_in_officer_id
+        gate = gate_in.gate_in_gate_id
+        return {
+            'gate_in_id': gate_in.gate_in_id,
+            'previous_status': gate_in.gate_in_previous_status,
+            'new_status': gate_in.gate_in_new_status,
+            'truck_number': gate_in.gate_in_truck_number,
+            'driver_name': gate_in.gate_in_driver_name,
+            'driver_license': gate_in.gate_in_driver_license,
+            'driver_phone': gate_in.gate_in_driver_phone,
+            'entry_point': gate_in.gate_in_entry_point,
+            'seal_number': gate_in.gate_in_seal_number,
+            'gate_id': gate.gate_id if gate else None,
+            'gate_name': gate.gate_name if gate else gate_in.gate_in_entry_point,
+            'gate_code': gate.gate_code if gate else None,
+            'remarks': gate_in.gate_in_remarks or '',
+            'officer_id': officer.user_id if officer else None,
+            'officer_name': officer.user_full_name if officer else None,
+            'officer_email': officer.login_id.login_email if officer and officer.login_id else None,
+            'gate_in_time': gate_in.gate_in_time.isoformat() if gate_in.gate_in_time else None
         }
 
     def get_gate_pass(self, obj):
@@ -1926,6 +1955,118 @@ class GateReleaseSubmitSerializer(serializers.Serializer):
         if not val:
             raise serializers.ValidationError("Gate / Exit point is required.")
         return val
+
+
+class GateInSerializer(serializers.ModelSerializer):
+    officer_name = serializers.SerializerMethodField()
+    officer_email = serializers.SerializerMethodField()
+    container_number = serializers.CharField(source='gate_in_container_id.container_number', read_only=True)
+    container_type = serializers.CharField(source='gate_in_container_id.container_type', read_only=True)
+    container_type_display = serializers.CharField(source='gate_in_container_id.get_container_type_display', read_only=True)
+    container_gross_weight = serializers.DecimalField(source='gate_in_container_id.container_gross_weight', max_digits=10, decimal_places=2, read_only=True)
+    gate_name = serializers.CharField(source='gate_in_gate_id.gate_name', read_only=True)
+    gate_code = serializers.CharField(source='gate_in_gate_id.gate_code', read_only=True)
+    cargo_description = serializers.CharField(source='gate_in_container_id.container_cargo_id.cargo_description', read_only=True)
+    vessel_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GateIn
+        fields = [
+            'gate_in_id',
+            'gate_in_container_id',
+            'container_number',
+            'container_type',
+            'container_type_display',
+            'container_gross_weight',
+            'cargo_description',
+            'vessel_name',
+            'gate_in_truck_id',
+            'gate_in_driver_id',
+            'gate_in_gate_id',
+            'gate_name',
+            'gate_code',
+            'gate_in_officer_id',
+            'officer_name',
+            'officer_email',
+            'gate_in_previous_status',
+            'gate_in_new_status',
+            'gate_in_truck_number',
+            'gate_in_driver_name',
+            'gate_in_driver_license',
+            'gate_in_driver_phone',
+            'gate_in_entry_point',
+            'gate_in_seal_number',
+            'gate_in_remarks',
+            'gate_in_time',
+            'gate_in_created_at',
+            'gate_in_updated_at'
+        ]
+
+    def get_officer_name(self, obj):
+        if obj.gate_in_officer_id:
+            return obj.gate_in_officer_id.user_full_name
+        return None
+
+    def get_officer_email(self, obj):
+        if obj.gate_in_officer_id and obj.gate_in_officer_id.login_id:
+            return obj.gate_in_officer_id.login_id.login_email
+        return None
+
+    def get_vessel_name(self, obj):
+        container = obj.gate_in_container_id
+        if container and container.vessel:
+            return container.vessel.vessel_name
+        return None
+
+
+class ExportGateInSubmitSerializer(serializers.Serializer):
+    container_id = serializers.IntegerField(required=False, allow_null=True)
+    container_number = serializers.CharField(required=False, allow_blank=True, max_length=30)
+    truck_number = serializers.CharField(required=True, max_length=50)
+    truck_company = serializers.CharField(required=False, allow_blank=True, max_length=150, default='')
+    driver_name = serializers.CharField(required=True, max_length=150)
+    driver_license = serializers.CharField(required=True, max_length=100)
+    driver_phone = serializers.CharField(required=False, allow_blank=True, max_length=50, default='')
+    gate_id = serializers.IntegerField(required=False, allow_null=True)
+    entry_point = serializers.CharField(required=False, allow_blank=True, max_length=100, default='')
+    seal_number = serializers.CharField(required=False, allow_blank=True, max_length=100, default='')
+    remarks = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_truck_number(self, value):
+        val = str(value).strip().upper()
+        if not val:
+            raise serializers.ValidationError("Truck / Registration number is required.")
+        return val
+
+    def validate_driver_name(self, value):
+        val = str(value).strip()
+        if not val:
+            raise serializers.ValidationError("Driver name is required.")
+        return val
+
+    def validate_driver_license(self, value):
+        val = str(value).strip().upper()
+        if not val:
+            raise serializers.ValidationError("Driver identification / license reference is required.")
+        return val
+
+    def validate(self, data):
+        container_id = data.get('container_id')
+        container_number = (data.get('container_number') or '').strip().upper()
+        if not container_id and not container_number:
+            raise serializers.ValidationError({
+                "container": "Either container_id or container_number must be provided."
+            })
+        if container_number:
+            data['container_number'] = container_number
+
+        gate_id = data.get('gate_id')
+        entry_point = (data.get('entry_point') or '').strip()
+        if not gate_id and not entry_point:
+            raise serializers.ValidationError({
+                "gate": "Either gate_id or entry_point must be specified."
+            })
+        return data
 
 
 class TruckSerializer(serializers.ModelSerializer):

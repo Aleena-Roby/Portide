@@ -8,6 +8,7 @@ import { DigitalGatePassModal } from '../common/DigitalGatePassModal';
 import { GenerateGatePassModal } from './gate/GenerateGatePassModal';
 import { GatePassDirectory } from './gate/GatePassDirectory';
 import { GatePassVerificationDesk } from './gate/GatePassVerificationDesk';
+import { ExportGateInDesk } from './gate/ExportGateInDesk';
 import {
   Truck,
   CheckCircle2,
@@ -31,7 +32,8 @@ import {
   QrCode,
   CheckSquare,
   Square,
-  Plus
+  Plus,
+  ArrowDownRight
 } from 'lucide-react';
 
 interface LifecycleStep {
@@ -57,7 +59,7 @@ const PREDEFINED_GATES = [
   'Central Logistics Exit Gate'
 ];
 
-type GateOperationsSubView = 'manifest' | 'directory' | 'verify';
+type GateOperationsSubView = 'manifest' | 'directory' | 'verify' | 'export-gate-in';
 
 interface GateDashboardProps {
   activeTab?: string;
@@ -74,6 +76,7 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
   const getSubViewFromTab = (tab: string): GateOperationsSubView => {
     if (tab === 'gate-passes' || tab === 'directory' || tab === 'passes') return 'directory';
     if (tab === 'release-desk' || tab === 'verify' || tab === 'verification') return 'verify';
+    if (tab === 'export-gate-in' || tab === 'gate-in' || tab === 'export') return 'export-gate-in';
     return 'manifest';
   };
 
@@ -87,9 +90,12 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
     routeTab === 'verify' || 
     routeTab === 'verification' || 
     routeTab === 'worklist' ||
-    routeTab === 'manifest';
+    routeTab === 'manifest' ||
+    routeTab === 'export-gate-in' ||
+    routeTab === 'gate-in' ||
+    routeTab === 'export';
 
-  // Sub-view within Gate Operations: 'manifest' | 'directory' | 'verify'
+  // Sub-view within Gate Operations: 'manifest' | 'directory' | 'verify' | 'export-gate-in'
   const [operationsView, setOperationsView] = useState<GateOperationsSubView>(() => getSubViewFromTab(routeTab));
 
   useEffect(() => {
@@ -119,12 +125,16 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
       ? 'gate-passes' 
       : subView === 'verify' 
         ? 'release-desk' 
-        : 'gate-operations';
+        : subView === 'export-gate-in'
+          ? 'export-gate-in'
+          : 'gate-operations';
     const targetPath = subView === 'directory' 
       ? '/gate/gate-passes' 
       : subView === 'verify' 
         ? '/gate/release-desk' 
-        : '/gate/gate-operations';
+        : subView === 'export-gate-in'
+          ? '/gate/export-gate-in'
+          : '/gate/gate-operations';
 
     if (onNavigate) {
       onNavigate(targetTab);
@@ -606,7 +616,7 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
             OPERATIONAL MODULES & DISPATCH DESKS
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {/* Card 1: Gate Operations & Worklist */}
             <div
               onClick={() => navigateToGateOperations('manifest')}
@@ -678,6 +688,31 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
               </div>
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-4">
                 <span>Open Verification Desk</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
+
+            {/* Card 4: Export Truck Gate-In */}
+            <div
+              onClick={() => navigateToGateOperations('export-gate-in')}
+              className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between hover:border-amber-500/60 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 shadow-xs cursor-pointer h-full group"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                    <ArrowDownRight className="w-5 h-5 group-hover:scale-105 transition-transform" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-500 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
+                </div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-amber-600 transition-colors mb-1">
+                  Export Truck Gate-In
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                  Record actual physical arrival of drayage trucks delivering outbound export containers before yard staging and vessel loading.
+                </p>
+              </div>
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-4">
+                <span>Open Gate-In Desk</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </div>
@@ -870,6 +905,18 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
             <ShieldCheck className="w-4 h-4" />
             <span>QR Verification & Release Desk</span>
           </button>
+
+          <button
+            onClick={() => navigateToGateOperations('export-gate-in')}
+            className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 shadow-2xs ${
+              operationsView === 'export-gate-in'
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <ArrowDownRight className="w-4 h-4" />
+            <span>Export Truck Gate-In</span>
+          </button>
         </div>
       </div>
 
@@ -891,6 +938,16 @@ export const GateDashboard: React.FC<GateDashboardProps> = ({
           onReleaseSuccess={() => {
             fetchContainers();
             addToast('success', 'Gate Movement Authorized', 'Gate release authorized and container(s) released successfully.');
+          }}
+        />
+      )}
+
+      {/* SUB-VIEW 4: EXPORT TRUCK GATE-IN */}
+      {operationsView === 'export-gate-in' && (
+        <ExportGateInDesk
+          onGateInSuccess={() => {
+            fetchContainers();
+            addToast('success', 'Gate-In Recorded', 'Export container recorded as ARRIVED at terminal gate.');
           }}
         />
       )}

@@ -34,6 +34,8 @@ const DashboardLayout: React.FC = () => {
       subPath = 'gate-passes';
     } else if (pathParts[2] === 'verify' || pathParts[2] === 'verification' || pathParts[2] === 'release-desk') {
       subPath = 'release-desk';
+    } else if (pathParts[2] === 'export-gate-in' || pathParts[2] === 'gate-in') {
+      subPath = 'export-gate-in';
     }
   }
   const activeTab = (subPath === 'dashboard' || !subPath) 
@@ -245,6 +247,22 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
             <Navigate to="/gate/release-desk" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/export-gate-in"
+        element={
+          <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
+            <Navigate to="/gate/export-gate-in" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/gate-in"
+        element={
+          <ProtectedRoute allowedRoles={['gate_officer', 'gate_truck_officer']}>
+            <Navigate to="/gate/export-gate-in" replace />
           </ProtectedRoute>
         }
       />

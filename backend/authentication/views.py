@@ -30,6 +30,7 @@ from authentication.models import (
     CustomsInspection,
     CustomsDocument,
     GateRelease,
+    GateIn,
     Truck,
     Driver,
     Gate,
@@ -80,6 +81,8 @@ from authentication.serializers import (
     CustomsInspectionSubmitSerializer,
     GateReleaseSerializer,
     GateReleaseSubmitSerializer,
+    GateInSerializer,
+    ExportGateInSubmitSerializer,
     TruckSerializer,
     DriverSerializer,
     GateSerializer,
@@ -6423,6 +6426,468 @@ class ContainerReleaseAPIView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+
+
+# =============================================================================
+# EXPORT TRUCK GATE-IN WORKFLOW API VIEWS (PHASE 2)
+# =============================================================================
+
+class ExportGateInEligibleContainersAPIView(APIView):
+    """
+    Export Gate-In Worklist API View.
+    GET: Retrieves export containers awaiting gate-in (trade_direction=EXPORT, status=REGISTERED).
+         Ensures voyage arrival request is approved and voyage is active.
+    """
+    permission_classes = [IsGateTruckOfficer]
+
+    def get(self, request):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        if user_obj and getattr(user_obj, 'user_must_change_password', False):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Password change required before accessing platform features."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        search_query = request.query_params.get('search', '').strip()
+
+        base_queryset = Container.objects.filter(
+            container_cargo_id__cargo_direction='EXPORT',
+            container_status='REGISTERED',
+            container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_status='APPROVED'
+        ).exclude(
+            container_cargo_id__cargo_arrival_request_id__schedule__vessel_schedule_status__in=['DEPARTED', 'CANCELLED']
+        ).select_related(
+            'container_cargo_id',
+            'container_cargo_id__cargo_arrival_request_id',
+            'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id',
+            'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id__vessel_shipping_company_id',
+            'container_cargo_id__cargo_arrival_request_id__schedule',
+            'container_cargo_id__cargo_origin_port_id',
+            'container_cargo_id__cargo_destination_port_id'
+        ).prefetch_related('gate_ins').order_by('-container_created_at', '-container_id')
+
+        if search_query:
+            q = search_query
+            base_queryset = base_queryset.filter(
+                models.Q(container_number__icontains=q) |
+                models.Q(container_cargo_id__cargo_description__icontains=q) |
+                models.Q(container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id__vessel_name__icontains=q) |
+                models.Q(container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_id__icontains=q)
+            ).distinct()
+
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        gated_in_today = GateIn.objects.filter(gate_in_time__gte=today_start).count()
+        total_gated_in = GateIn.objects.count()
+
+        summary = {
+            'awaiting_gate_in': base_queryset.count(),
+            'gated_in_today': gated_in_today,
+            'total_gated_in': total_gated_in
+        }
+
+        serializer = ContainerSerializer(base_queryset, many=True)
+        return Response(
+            {
+                "status": "success",
+                "counts": summary,
+                "data": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class ExportGateInAPIView(APIView):
+    """
+    Export Truck Gate-In API View (Phase 2).
+    POST: Records the physical arrival of an external drayage truck delivering an
+          export container into the port terminal prior to yard allocation.
+          Validates container eligibility, active voyage association, truck and driver details,
+          and advances container status from REGISTERED to ARRIVED.
+    """
+    permission_classes = [IsGateTruckOfficer]
+
+    def post(self, request):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        if user_obj and getattr(user_obj, 'user_must_change_password', False):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Password change required before accessing platform features."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = ExportGateInSubmitSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Export gate-in validation failed.",
+                    "errors": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = serializer.validated_data
+        cid = data.get('container_id')
+        cnum = data.get('container_number')
+
+        with transaction.atomic():
+            c_filter = models.Q(container_id=cid) if cid else models.Q(container_number__iexact=cnum)
+            try:
+                container = Container.objects.select_for_update().select_related(
+                    'container_cargo_id',
+                    'container_cargo_id__cargo_arrival_request_id',
+                    'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id',
+                    'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id__vessel_shipping_company_id',
+                    'container_cargo_id__cargo_arrival_request_id__schedule'
+                ).get(c_filter)
+            except Container.DoesNotExist:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {cnum or cid} not found."
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 1. Enforce export trade direction
+            if container.trade_direction != 'EXPORT':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Container {container.container_number} is not an export container "
+                            f"(trade direction: {container.trade_direction}). Gate-In workflow is strictly reserved for outbound export cargo."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 2. Enforce approved vessel arrival / booking request
+            arrival_req = container.arrival_request
+            if not arrival_req:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {container.container_number} has no associated vessel arrival or booking request."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if arrival_req.vessel_arrival_request_status != 'APPROVED':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Associated voyage arrival request ({arrival_req.vessel_arrival_request_id}) is in "
+                            f"'{arrival_req.get_vessel_arrival_request_status_display()}' status. "
+                            f"An approved voyage request is required before export gate-in can proceed."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            schedule = getattr(arrival_req, 'schedule', None)
+            if schedule and schedule.vessel_schedule_status in ['DEPARTED', 'CANCELLED']:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"The scheduled vessel voyage (Schedule #{schedule.vessel_schedule_id}) is already "
+                            f"'{schedule.get_vessel_schedule_status_display()}'. Cannot gate in cargo for departed or cancelled voyages."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 3. Enforce lifecycle transition and prevent duplicate gate-in
+            current_status = container.container_status
+
+            if current_status == 'ARRIVED':
+                latest_gi = container.latest_gate_in
+                gi_time_str = latest_gi.gate_in_time.strftime('%Y-%m-%d %H:%M UTC') if latest_gi and latest_gi.gate_in_time else 'earlier'
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Duplicate Gate-In: Container {container.container_number} has already been gated into the port "
+                            f"(status: ARRIVED on {gi_time_str})."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if current_status == 'AT_TERMINAL':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {container.container_number} is already at terminal and allocated in the storage yard."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if current_status == 'LOADED':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {container.container_number} has already been loaded onto the vessel."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if current_status == 'RELEASED':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {container.container_number} has already been released from the port terminal."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if current_status != 'REGISTERED':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Cannot perform export gate-in for container {container.container_number}: "
+                            f"Container is currently in '{container.get_container_status_display()}' status. "
+                            f"Gate-in is only permitted for export containers in 'REGISTERED' status awaiting physical arrival."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 4. Check active direct transfer conflict
+            if container.active_direct_transfer:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Container {container.container_number} is currently engaged in an active ship-to-truck direct transfer."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 5. Validate Gate
+            gate_id = data.get('gate_id')
+            entry_point = (data.get('entry_point') or '').strip()
+            gate_obj = None
+
+            if gate_id:
+                try:
+                    gate_obj = Gate.objects.get(gate_id=gate_id, gate_is_active=True)
+                except Gate.DoesNotExist:
+                    return Response(
+                        {
+                            "status": "error",
+                            "message": f"Active Gate #{gate_id} not found."
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            elif entry_point:
+                gate_obj = Gate.objects.filter(
+                    models.Q(gate_name__iexact=entry_point) | models.Q(gate_code__iexact=entry_point),
+                    gate_is_active=True
+                ).first()
+
+            if not gate_obj:
+                # Default to an active inbound or bidirectional gate if available
+                gate_obj = (
+                    Gate.objects.filter(gate_type__in=['INBOUND', 'BIDIRECTIONAL'], gate_is_active=True).first() or
+                    Gate.objects.filter(gate_is_active=True).first()
+                )
+
+            if not gate_obj:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "A valid active port gate is required for export gate-in."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 6. Validate / Resolve Truck
+            truck_number = data['truck_number']
+            truck_obj, _ = Truck.objects.get_or_create(
+                truck_number=truck_number,
+                defaults={
+                    'truck_company_name': data.get('truck_company') or 'Drayage Haulier',
+                    'truck_status': 'ACTIVE'
+                }
+            )
+            if truck_obj.truck_status == 'MAINTENANCE':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Truck {truck_number} is currently under maintenance and cannot enter the terminal."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 7. Validate / Resolve Driver
+            driver_license = data['driver_license']
+            driver_name = data['driver_name']
+            driver_phone = data.get('driver_phone') or '+919876543210'
+            driver_obj = Driver.objects.filter(driver_license_number__iexact=driver_license).first()
+            if not driver_obj:
+                clean_lic = driver_license.lower().replace('-', '').replace(' ', '')[:15]
+                driver_obj = Driver.objects.create(
+                    driver_name=driver_name,
+                    driver_license_number=driver_license,
+                    driver_phone=driver_phone,
+                    driver_email=f"driver.{clean_lic}@drayage.portide.com",
+                    driver_status='ACTIVE'
+                )
+            if driver_obj.driver_status == 'SUSPENDED':
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Driver {driver_name} ({driver_license}) is suspended and access is denied."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 8. Update Container Status: Advance from REGISTERED -> ARRIVED
+            # Note: Do NOT set AT_TERMINAL here. AT_TERMINAL is set during yard slot allocation (Phase 3).
+            prev_status = container.container_status
+            container.container_status = 'ARRIVED'
+            container.save(update_fields=['container_status', 'container_updated_at'])
+
+            officer_name = (
+                user_obj.user_full_name if user_obj else
+                (login_obj.login_email if login_obj else 'Gate & Truck Operations Officer')
+            )
+
+            # 9. Create GateIn Record
+            gate_in_record = GateIn.objects.create(
+                gate_in_container_id=container,
+                gate_in_truck_id=truck_obj,
+                gate_in_driver_id=driver_obj,
+                gate_in_gate_id=gate_obj,
+                gate_in_officer_id=user_obj,
+                gate_in_previous_status=prev_status,
+                gate_in_new_status='ARRIVED',
+                gate_in_truck_number=truck_number,
+                gate_in_driver_name=driver_name,
+                gate_in_driver_license=driver_license,
+                gate_in_driver_phone=data.get('driver_phone', ''),
+                gate_in_entry_point=gate_obj.gate_name,
+                gate_in_seal_number=data.get('seal_number', ''),
+                gate_in_remarks=data.get('remarks', ''),
+                gate_in_time=timezone.now()
+            )
+
+            # 10. Record Container Tracking Event
+            tracking_desc = (
+                f"Export container arrived and gated into port terminal via {gate_obj.gate_name} ({gate_obj.gate_code}). "
+                f"Transport: Truck {truck_number}, Driver {driver_name} (License: {driver_license}). "
+                f"Physical seal: {gate_in_record.gate_in_seal_number or 'Verified'}. "
+                f"Container status updated to ARRIVED. Awaiting yard slot allocation."
+            )
+            ContainerTrackingEvent.objects.create(
+                tracking_event_container_id=container,
+                tracking_event_status='GATE_IN',
+                tracking_event_location=f"{gate_obj.gate_name} ({gate_obj.gate_code})",
+                tracking_event_description=tracking_desc,
+                tracking_event_updated_by=user_obj,
+                tracking_event_timestamp=timezone.now()
+            )
+
+            # 11. Create Audit Log
+            remarks_str = f" Remarks: {data.get('remarks')}" if data.get('remarks') else ""
+            create_audit_log(
+                user=user_obj or login_obj,
+                actor_name=officer_name,
+                role='Gate & Truck Operations Officer',
+                action='EXPORT_GATE_IN',
+                category='GATE_OPERATIONS',
+                target_type='Container',
+                target_id=str(container.container_id),
+                description=(
+                    f"Export Container {container.container_number} physically gated in at {gate_obj.gate_name} "
+                    f"by Officer {officer_name}. Truck: {truck_number}, Driver: {driver_name} "
+                    f"(License: {driver_license}), Seal: {gate_in_record.gate_in_seal_number or 'N/A'}. "
+                    f"Transition: {prev_status} -> ARRIVED.{remarks_str}"
+                ),
+                status='SUCCESS',
+                request=request
+            )
+
+            return Response(
+                {
+                    "status": "success",
+                    "message": (
+                        f"Export Container {container.container_number} successfully gated in at {gate_obj.gate_name}. "
+                        f"Container status updated to ARRIVED."
+                    ),
+                    "data": ContainerSerializer(container).data,
+                    "gate_in": GateInSerializer(gate_in_record).data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+
+class GateInHistoryAPIView(APIView):
+    """
+    Gate-In Audit History API View.
+    GET: Retrieves chronological history of export container gate-in events.
+    """
+    permission_classes = [IsGateTruckOfficer]
+
+    def get(self, request):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        if user_obj and getattr(user_obj, 'user_must_change_password', False):
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Password change required before accessing platform features."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        search_query = request.query_params.get('search', '').strip()
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 200)
+        except (ValueError, TypeError):
+            limit = 50
+
+        queryset = GateIn.objects.select_related(
+            'gate_in_container_id',
+            'gate_in_container_id__container_cargo_id',
+            'gate_in_container_id__container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id',
+            'gate_in_truck_id',
+            'gate_in_driver_id',
+            'gate_in_gate_id',
+            'gate_in_officer_id'
+        ).order_by('-gate_in_time', '-gate_in_id')
+
+        if search_query:
+            q = search_query
+            queryset = queryset.filter(
+                models.Q(gate_in_container_id__container_number__icontains=q) |
+                models.Q(gate_in_truck_number__icontains=q) |
+                models.Q(gate_in_driver_name__icontains=q) |
+                models.Q(gate_in_driver_license__icontains=q) |
+                models.Q(gate_in_entry_point__icontains=q) |
+                models.Q(gate_in_seal_number__icontains=q)
+            ).distinct()
+
+        total_count = queryset.count()
+        records = queryset[:limit]
+        serializer = GateInSerializer(records, many=True)
+
+        return Response(
+            {
+                "status": "success",
+                "total": total_count,
+                "count": len(records),
+                "data": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 # =============================================================================

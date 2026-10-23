@@ -243,6 +243,57 @@ export interface GateReleaseData {
   release_time?: string | null;
 }
 
+export interface GateInData {
+  gate_in_id: number;
+  previous_status: string;
+  new_status: string;
+  truck_number: string;
+  driver_name: string;
+  driver_license: string;
+  driver_phone?: string;
+  entry_point: string;
+  seal_number?: string;
+  gate_id?: number | null;
+  gate_name?: string;
+  gate_code?: string;
+  remarks?: string;
+  officer_id?: number | null;
+  officer_name?: string | null;
+  officer_email?: string | null;
+  gate_in_time?: string | null;
+}
+
+export interface BackendGateIn {
+  gate_in_id: number;
+  gate_in_container_id: number;
+  container_number?: string;
+  container_type?: string;
+  container_type_display?: string;
+  container_gross_weight?: string | number;
+  cargo_description?: string;
+  vessel_name?: string | null;
+  gate_in_truck_id?: number | null;
+  gate_in_driver_id?: number | null;
+  gate_in_gate_id?: number | null;
+  gate_name?: string;
+  gate_code?: string;
+  gate_in_officer_id?: number | null;
+  officer_name?: string | null;
+  officer_email?: string | null;
+  gate_in_previous_status: string;
+  gate_in_new_status: string;
+  gate_in_truck_number: string;
+  gate_in_driver_name: string;
+  gate_in_driver_license: string;
+  gate_in_driver_phone?: string;
+  gate_in_entry_point: string;
+  gate_in_seal_number?: string;
+  gate_in_remarks?: string | null;
+  gate_in_time: string;
+  gate_in_created_at: string;
+  gate_in_updated_at: string;
+}
+
 export type CustomsDocumentType =
   | 'BILL_OF_LADING'
   | 'COMMERCIAL_INVOICE'
@@ -346,6 +397,7 @@ export interface BackendContainer {
     completed_at?: string | null;
   } | null;
   gate_release?: GateReleaseData | null;
+  gate_in?: GateInData | null;
   gate_pass?: {
     gate_pass_id: number;
     id?: number;

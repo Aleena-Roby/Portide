@@ -799,6 +799,10 @@ class Container(models.Model):
         ).first()
 
     @property
+    def latest_gate_in(self):
+        return self.gate_ins.order_by('-gate_in_time', '-gate_in_id').first()
+
+    @property
     def latest_gate_release(self):
         return self.gate_releases.order_by('-gate_release_time', '-gate_release_id').first()
 
@@ -1214,8 +1218,106 @@ class GateRelease(models.Model):
         return f"Gate Release #{self.gate_release_id} for Container {self.gate_release_container_id.container_number} (Truck: {self.gate_release_truck_number})"
 
 
+
+class GateIn(models.Model):
+    """
+    Physical Export Gate-In Record.
+    Captures the arrival of an external drayage truck delivering an export container
+    into the port terminal prior to yard allocation.
+    Follows 3NF architecture with tbl_gate_in and prefix gate_in_.
+    """
+    gate_in_id = models.BigAutoField(primary_key=True)
+    gate_in_container_id = models.ForeignKey(
+        Container,
+        on_delete=models.CASCADE,
+        db_column='gate_in_container_id',
+        related_name='gate_ins'
+    )
+    gate_in_truck_id = models.ForeignKey(
+        Truck,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='gate_in_truck_id',
+        related_name='gate_ins'
+    )
+    gate_in_driver_id = models.ForeignKey(
+        Driver,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='gate_in_driver_id',
+        related_name='gate_ins'
+    )
+    gate_in_gate_id = models.ForeignKey(
+        Gate,
+        on_delete=models.PROTECT,
+        db_column='gate_in_gate_id',
+        related_name='gate_ins'
+    )
+    gate_in_officer_id = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='gate_in_officer_id',
+        related_name='gate_ins'
+    )
+    gate_in_previous_status = models.CharField(
+        max_length=50,
+        default='REGISTERED'
+    )
+    gate_in_new_status = models.CharField(
+        max_length=50,
+        default='ARRIVED'
+    )
+    gate_in_truck_number = models.CharField(
+        max_length=50,
+        help_text="Truck Number / Registration Number"
+    )
+    gate_in_driver_name = models.CharField(
+        max_length=150,
+        help_text="Driver Name"
+    )
+    gate_in_driver_license = models.CharField(
+        max_length=100,
+        help_text="Driver Identification / License Reference"
+    )
+    gate_in_driver_phone = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        help_text="Driver Contact Phone"
+    )
+    gate_in_entry_point = models.CharField(
+        max_length=100,
+        help_text="Gate / Entry Point Name or Code"
+    )
+    gate_in_seal_number = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Container Physical Seal Number"
+    )
+    gate_in_remarks = models.TextField(null=True, blank=True)
+    gate_in_time = models.DateTimeField(default=timezone.now, db_index=True)
+    gate_in_created_at = models.DateTimeField(auto_now_add=True)
+    gate_in_updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'tbl_gate_in'
+        verbose_name = 'Gate In'
+        verbose_name_plural = 'Gate Ins'
+        ordering = ['-gate_in_time', '-gate_in_id']
+
+    def __str__(self):
+        return f"Gate In #{self.gate_in_id} for Container {self.gate_in_container_id.container_number} (Truck: {self.gate_in_truck_number})"
+
+
 class ContainerTrackingEvent(models.Model):
     TRACKING_STATUS_CHOICES = (
+        ('GATE_IN', 'Gate-In at Port Terminal'),
+        ('ARRIVED_AT_PORT', 'Arrived at Port Terminal'),
         ('RELEASED', 'Released'),
         ('GATE_PASS_GENERATED', 'Gate Pass Generated'),
         ('PICKED_UP', 'Picked Up'),
