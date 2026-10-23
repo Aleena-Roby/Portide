@@ -14,7 +14,7 @@ Use this skill to automatically test and push updates to GitHub.
 Run from the workspace root:
 
 ```powershell
-python .agent/skills/git-deploy/scripts/auto_deploy.py "feat(module): describe changes"
+python .agents/skills/git-deploy/scripts/auto_deploy.py "feat(module): describe changes"
 ```
 
 ### Steps Executed Automatically:

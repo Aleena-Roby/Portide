@@ -14,7 +14,7 @@ Use this skill to diagnose cloud infrastructure, verify deployment status, and t
 Execute the health check script from the workspace root:
 
 ```powershell
-python .agent/skills/cloud-monitor/scripts/check_all.py
+python .agents/skills/cloud-monitor/scripts/check_all.py
 ```
 
 ### What It Tests:

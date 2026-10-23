@@ -15,7 +15,7 @@ Use this skill whenever operational test data must be cleaned for a fresh workfl
 Run the script from the workspace root:
 
 ```powershell
-python .agent/skills/db-reset/scripts/reset_db.py
+python .agents/skills/db-reset/scripts/reset_db.py
 ```
 
 ### Safety Guarantees:

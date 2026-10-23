@@ -10,7 +10,7 @@ Applies automatically whenever code modifications, bug fixes, or new features ar
 
 Either run the automated deployment script:
 ```powershell
-python .agent/skills/git-deploy/scripts/auto_deploy.py "feat(module): description of changes"
+python .agents/skills/git-deploy/scripts/auto_deploy.py "feat(module): description of changes"
 ```
 
 Or execute the steps sequentially in PowerShell:
