@@ -870,24 +870,18 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                                   </span>
                                 </div>
                               )}
-                              {container.customs_declaration ? (
-                                <div className="mt-1">
-                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                    container.customs_declaration.declaration_status === 'CLEARED'
-                                      ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30'
-                                      : container.customs_declaration.declaration_status === 'CUSTOMS_HOLD'
-                                      ? 'bg-rose-500/10 text-rose-600 border border-rose-500/30'
-                                      : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'
-                                  }`}>
-                                    <ShieldCheck className="w-2.5 h-2.5" />
-                                    <span>Pre-Arrival: {container.customs_declaration.declaration_status_display}</span>
-                                  </span>
-                                </div>
-                              ) : container.is_customs_cleared ? (
+                              {container.is_customs_cleared || container.customs_declaration?.declaration_status === 'CLEARED' ? (
                                 <div className="mt-1">
                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
                                     <ShieldCheck className="w-2.5 h-2.5" />
                                     <span>Customs Cleared</span>
+                                  </span>
+                                </div>
+                              ) : container.customs_declaration?.declaration_status === 'CUSTOMS_HOLD' ? (
+                                <div className="mt-1">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/10 text-rose-600 border border-rose-500/30">
+                                    <ShieldCheck className="w-2.5 h-2.5" />
+                                    <span>Customs Hold</span>
                                   </span>
                                 </div>
                               ) : null}
@@ -1092,35 +1086,6 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                                   >
                                     <UploadCloud className="w-3 h-3 text-teal-600 dark:text-teal-400" />
                                     <span>Customs Docs</span>
-                                  </button>
-
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDeclaringContainer(container);
-                                    }}
-                                    className="px-2 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-bold text-[10px] transition-colors cursor-pointer inline-flex items-center gap-1 border border-purple-500/30"
-                                    title="Submit Pre-Arrival Customs Declaration"
-                                  >
-                                    <FileCheck className="w-3 h-3" />
-                                    <span>Pre-Arrival</span>
-                                  </button>
-
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDoContainer(container);
-                                      setDoNumber(`DO-${Date.now().toString().slice(-6)}`);
-                                      setDoTruckingCompany('Port Express Logistics');
-                                      setDoTruckNumber('TRK-4088');
-                                      setDoDriverName('John Smith');
-                                      setDoValidUntil(new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 16));
-                                    }}
-                                    className="px-2 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 font-bold text-[10px] transition-colors cursor-pointer inline-flex items-center gap-1 border border-blue-500/30"
-                                    title="Issue Delivery Order"
-                                  >
-                                    <Truck className="w-3 h-3" />
-                                    <span>Issue DO</span>
                                   </button>
 
                                   {container.container_status === 'REGISTERED' && (

@@ -124,7 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         return [
           { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard, path: `${basePath}/dashboard` },
           { id: 'normal-review', label: 'Normal Customs Review', icon: ShieldCheck, path: `${basePath}/normal-review` },
-          { id: 'pre-arrival', label: 'Pre-Arrival Review', icon: FileCheck, path: `${basePath}/pre-arrival` },
           { id: 'cargo-management', label: 'Cargo Manifest Oversight', icon: Boxes, path: `${basePath}/cargo-management` },
           { id: 'decision-history', label: 'Customs Decision History', icon: Clock, path: `${basePath}/decision-history` }
         ];

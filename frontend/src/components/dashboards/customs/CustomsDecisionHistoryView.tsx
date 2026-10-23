@@ -203,7 +203,6 @@ export const CustomsDecisionHistoryView: React.FC = () => {
               { id: 'CUSTOMS_HOLD', label: 'Holds' },
               { id: 'REQUEST_ADDITIONAL_INFO', label: 'Info Requests' },
               { id: 'UNDER_INSPECTION', label: 'Inspections' },
-              { id: 'REVIEW_PRE_ARRIVAL_DECLARATION', label: 'Pre-Arrival' },
               { id: 'REVIEW_CUSTOMS_DOCUMENT', label: 'Doc Reviews' }
             ].map(f => (
               <button

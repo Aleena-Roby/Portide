@@ -142,7 +142,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
   const navigate = useNavigate();
 
   const normalizedActiveTab = useMemo(() => {
-    if (activeTab === 'pre-arrival' || activeTab === 'pre_arrival') return 'pre-arrival';
+    if (activeTab === 'pre-arrival' || activeTab === 'pre_arrival') return 'normal-review';
     if (activeTab === 'cargo-management' || activeTab === 'clearance' || activeTab === 'cargo') return 'cargo-management';
     if (activeTab === 'decision-history' || activeTab === 'history') return 'decision-history';
     if (activeTab === 'normal-review' || activeTab === 'inspections') return 'normal-review';
@@ -608,12 +608,11 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
         </div>
       </div>
 
-      {/* 5 VISIBLE NAVIGATION TABS */}
+      {/* 4 VISIBLE NAVIGATION TABS */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {[
           { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard },
           { id: 'normal-review', label: 'Normal Customs Review', icon: ShieldCheck, badge: counts.pending_customs > 0 ? counts.pending_customs : undefined },
-          { id: 'pre-arrival', label: 'Pre-Arrival Review', icon: FileCheck },
           { id: 'cargo-management', label: 'Cargo Manifest Oversight', icon: Boxes },
           { id: 'decision-history', label: 'Customs Decision History', icon: Clock }
         ].map((tab) => {
@@ -652,7 +651,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
             }
             handleTabChange('normal-review');
           }}
-          onNavigateToPreArrival={() => handleTabChange('pre-arrival')}
+          onNavigateToPreArrival={() => handleTabChange('normal-review')}
         />
       )}
 
@@ -862,27 +861,6 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
               </div>
               <div className="pt-4 flex items-center gap-1 text-xs font-bold text-purple-600 group-hover:gap-2 transition-all">
                 <span>Open Worklist</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
-            </div>
-
-            <div
-              onClick={() => handleTabChange('pre-arrival')}
-              className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-indigo-500/40 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
-            >
-              <div className="space-y-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition-transform">
-                  <FileCheck className="w-5 h-5" />
-                </div>
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                  Pre-Arrival Review
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Evaluate advance declarations for direct ship-to-truck transfer submitted by Shipping Companies.
-                </p>
-              </div>
-              <div className="pt-4 flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:gap-2 transition-all">
-                <span>Review Declarations</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </div>
