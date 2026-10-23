@@ -354,12 +354,11 @@ export const YardOperations: React.FC = () => {
                 <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
                   <thead className="bg-slate-50/80 dark:bg-slate-800/50 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="py-3 px-4">Container</th>
-                      <th className="py-3 px-4">Storage Status</th>
-                      <th className="py-3 px-4">Simple Yard Position</th>
-                      <th className="py-3 px-4">Coordinates (R/B/T)</th>
-                      <th className="py-3 px-4">Vessel / Cargo</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-5 w-[25%]">Container</th>
+                      <th className="py-3.5 px-4 w-[16%]">Storage Status</th>
+                      <th className="py-3.5 px-4 w-[28%]">Simple Yard Position</th>
+                      <th className="py-3.5 px-4 w-[20%]">Vessel / Cargo</th>
+                      <th className="py-3.5 px-5 w-[11%] text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-normal">
@@ -374,9 +373,9 @@ export const YardOperations: React.FC = () => {
                           className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                         >
                           {/* Container Number & Type */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-5">
                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                              <span className="font-mono">{c.container_number}</span>
+                              <span className="font-mono text-xs sm:text-sm font-extrabold">{c.container_number}</span>
                               <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
                                 {c.container_type}
                               </span>
@@ -391,19 +390,19 @@ export const YardOperations: React.FC = () => {
                             {renderStorageStatusBadge(c.storage_status, c.storage_status_display)}
                           </td>
 
-                          {/* Simple Yard Position Code */}
+                          {/* Simple Yard Position Code with Yard Name Beside It */}
                           <td className="py-3.5 px-4">
                             {hasActiveAlloc && c.current_location ? (
                               <div className="space-y-0.5">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-2">
                                   <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-black bg-amber-500 text-slate-950 border border-amber-400 shadow-xs">
                                     {simpleCode || 'ALLOCATED'}
                                   </span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300 text-xs">
-                                    {c.current_location.yard_code}
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                    {c.current_location.yard_name || c.current_location.yard_code}
                                   </span>
                                 </div>
-                                <div className="text-[11px] text-slate-400 font-mono">
+                                <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                                   Block {c.current_location.block_code} • {c.current_location.slot_code}
                                 </div>
                               </div>
@@ -412,41 +411,22 @@ export const YardOperations: React.FC = () => {
                             )}
                           </td>
 
-                          {/* Coordinates: Row, Bay, Tier */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            {hasActiveAlloc && c.current_location ? (
-                              <div className="flex items-center gap-1.5 text-xs font-mono">
-                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                  R:{c.current_location.slot_row}
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                  B:{c.current_location.slot_bay}
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                  T:{c.current_location.slot_tier}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-
                           {/* Vessel / Cargo */}
                           <td className="py-3.5 px-4">
-                            <div className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
+                            <div className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
                               {c.vessel_name}
                             </div>
-                            <div className="text-[11px] text-slate-400 truncate max-w-[180px]">
+                            <div className="text-[11px] text-slate-400 truncate max-w-[200px]">
                               {c.cargo_description || 'General Cargo'}
                             </div>
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <td className="py-3.5 px-5 text-right whitespace-nowrap">
                             <button
                               id={`view-container-detail-btn-${c.container_id}`}
                               onClick={() => setSelectedContainerDetail(c)}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shadow-xs"
+                              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shadow-xs"
                             >
                               View Details
                             </button>
