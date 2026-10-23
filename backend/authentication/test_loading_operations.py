@@ -26,7 +26,11 @@ from authentication.models import (
     YardMovementHistory,
     ContainerTrackingEvent,
     AuditLog,
-    CustomsInspection
+    CustomsInspection,
+    Gate,
+    GateIn,
+    Truck,
+    Driver
 )
 
 
@@ -1053,5 +1057,217 @@ class LoadingOperationsTestCase(TestCase):
             audit_log_action='LOAD_CONTAINER_VESSEL',
             audit_log_target_id=str(self.container.container_id)
         ).exists())
+
+    def test_22_complete_five_step_export_lifecycle_flow(self):
+        """
+        Complete End-to-End Verification of the 5-Step Export Lifecycle:
+        Step 1: Cargo & Container Registration (Shipping Company)
+        Step 2: Customs Documentation and Clearance (Customs Officer Review)
+        Step 3: Export Truck Gate-In (Gate Officer record actual truck, driver, gate, and container)
+        Step 4: Yard Allocation (Terminal Operator assign available slot and update occupancy)
+        Step 5: Crane Allocation and Vessel Loading (Load only eligible export containers onto berthed vessel)
+        """
+        now = timezone.now()
+
+        # Step 1: Cargo and Container Registration (Shipping Company)
+        container_e2e = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="EXP-END2END-01",
+            container_type="40FT",
+            container_gross_weight=Decimal("26.50"),
+            container_status="REGISTERED",
+            container_customs_status="NOT_SUBMITTED"
+        )
+        self.assertEqual(container_e2e.trade_direction, 'EXPORT')
+        self.assertEqual(container_e2e.container_status, 'REGISTERED')
+
+        # Step 2: Customs Documentation and Clearance (Customs Officer Review)
+        CustomsInspection.objects.create(
+            customs_inspection_container_id=container_e2e,
+            customs_inspection_officer_id=self.user_tlo,
+            customs_inspection_status='COMPLETED',
+            customs_inspection_result='CLEARED',
+            customs_inspection_document_status='VERIFIED',
+            customs_inspection_started_at=now - timedelta(hours=3),
+            customs_inspection_completed_at=now - timedelta(hours=2),
+            customs_inspection_clearance_date=now - timedelta(hours=2),
+            customs_inspection_remarks='All export documents and seals verified intact'
+        )
+        container_e2e.container_customs_status = 'CLEARED'
+        container_e2e.save()
+        self.assertTrue(container_e2e.is_customs_cleared)
+
+        # Step 3: Export Truck Gate-In
+        login_gate = Login.objects.create(
+            login_email="gate_e2e@portide.com",
+            login_password="pbkdf2_sha256$hashedpassword",
+            login_role="gate_truck_officer",
+            login_status="ACTIVE",
+            login_is_active=True
+        )
+        user_gate = User.objects.create(
+            login_id=login_gate,
+            user_full_name="Gary Gate",
+            user_phone="+919876543410",
+            user_status="ACTIVE"
+        )
+        headers_gate = {
+            'HTTP_X_USER_EMAIL': 'gate_e2e@portide.com',
+            'HTTP_X_USER_ROLE': 'gate_truck_officer',
+            'HTTP_X_USER_ID': str(user_gate.user_id)
+        }
+        gate = Gate.objects.create(
+            gate_code="GT-EXP-01",
+            gate_name="Main Export Gate 01",
+            gate_type="INBOUND",
+            gate_is_active=True
+        )
+
+        # 3a. Worklist check: Verify export container appears in eligible gate-in worklist
+        res_worklist = self.client.get(
+            '/api/gate/export/containers/',
+            **headers_gate
+        )
+        self.assertEqual(res_worklist.status_code, status.HTTP_200_OK)
+        eligible_cnums = [c['container_number'] for c in res_worklist.data['data']]
+        self.assertIn("EXP-END2END-01", eligible_cnums)
+
+        # 3b. Execute gate-in
+        gate_in_payload = {
+            "container_id": container_e2e.container_id,
+            "gate_id": gate.gate_id,
+            "truck_number": "MH-04-AB-1234",
+            "truck_company": "Apex Drayage Haulage",
+            "driver_name": "Rajesh Kumar",
+            "driver_license": "DL-MH-2022-9988",
+            "driver_phone": "+919876543999",
+            "seal_number": "SEAL-998877",
+            "remarks": "Export container gated in on time"
+        }
+        res_gate_in = self.client.post(
+            '/api/gate/export-gate-in/',
+            data=json.dumps(gate_in_payload),
+            content_type='application/json',
+            **headers_gate
+        )
+        self.assertEqual(res_gate_in.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_gate_in.data['status'], 'success')
+
+        container_e2e.refresh_from_db()
+        self.assertEqual(container_e2e.container_status, 'ARRIVED')
+        self.assertTrue(GateIn.objects.filter(gate_in_container_id=container_e2e).exists())
+        self.assertTrue(ContainerTrackingEvent.objects.filter(
+            tracking_event_container_id=container_e2e,
+            tracking_event_status='GATE_IN'
+        ).exists())
+
+        # Step 4: Yard Allocation (Assign an available slot and update occupancy)
+        slot_e2e = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B2-T1",
+            yard_slot_row=1,
+            yard_slot_bay=2,
+            yard_slot_tier=1,
+            yard_slot_status="AVAILABLE"
+        )
+        initial_block_occ = self.block.yard_block_occupied
+        initial_yard_occ = self.yard.yard_occupied
+
+        # 4a. Check pending containers list includes this arrived export container
+        res_pending = self.client.get(
+            '/api/terminal/yard-allocations/pending/',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_pending.status_code, status.HTTP_200_OK)
+        pending_ids = [c['container_id'] for c in res_pending.data['data']]
+        self.assertIn(container_e2e.container_id, pending_ids)
+
+        # 4b. Execute yard allocation
+        alloc_payload = {
+            "container_id": container_e2e.container_id,
+            "slot_id": slot_e2e.yard_slot_id,
+            "remarks": "Assigned to export block for outbound voyage"
+        }
+        res_alloc = self.client.post(
+            '/api/terminal/yard-allocations/',
+            data=json.dumps(alloc_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_alloc.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_alloc.data['status'], 'success')
+
+        container_e2e.refresh_from_db()
+        slot_e2e.refresh_from_db()
+        self.block.refresh_from_db()
+        self.yard.refresh_from_db()
+
+        self.assertEqual(container_e2e.container_status, 'AT_TERMINAL')
+        self.assertEqual(slot_e2e.yard_slot_status, 'OCCUPIED')
+        self.assertEqual(self.block.yard_block_occupied, initial_block_occ + 1)
+        self.assertEqual(self.yard.yard_occupied, initial_yard_occ + 1)
+        self.assertTrue(YardAllocation.objects.filter(
+            yard_allocation_container_id=container_e2e,
+            yard_allocation_status='ACTIVE'
+        ).exists())
+        self.assertTrue(ContainerTrackingEvent.objects.filter(
+            tracking_event_container_id=container_e2e,
+            tracking_event_status='ARRIVED_AT_PORT'
+        ).exists())
+
+        # Step 5: Crane Allocation and Vessel Loading
+        # 5a. Query eligible export containers for this berthed vessel
+        res_yard_c = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_yard_c.status_code, status.HTTP_200_OK)
+        loading_eligible_ids = [c['container_id'] for c in res_yard_c.data['data']]
+        self.assertIn(container_e2e.container_id, loading_eligible_ids)
+
+        # 5b. Execute vessel loading via active quay crane
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": container_e2e.container_id,
+            "slot_id": slot_e2e.yard_slot_id,
+            "remarks": "End-to-end export loading onto Pacific Voyager"
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_load.data['status'], 'success')
+
+        container_e2e.refresh_from_db()
+        slot_e2e.refresh_from_db()
+        self.block.refresh_from_db()
+        self.yard.refresh_from_db()
+
+        # Final state verification
+        self.assertEqual(container_e2e.container_status, 'LOADED')
+        self.assertEqual(slot_e2e.yard_slot_status, 'AVAILABLE')
+        self.assertEqual(self.block.yard_block_occupied, initial_block_occ)
+        self.assertEqual(self.yard.yard_occupied, initial_yard_occ)
+        self.assertEqual(
+            YardAllocation.objects.get(yard_allocation_container_id=container_e2e).yard_allocation_status,
+            'RELEASED'
+        )
+        self.assertTrue(YardMovementHistory.objects.filter(
+            yard_movement_container_id=container_e2e,
+            yard_movement_movement_type='LOADING'
+        ).exists())
+        self.assertTrue(ContainerTrackingEvent.objects.filter(
+            tracking_event_container_id=container_e2e,
+            tracking_event_status='LOADED_ON_VESSEL'
+        ).exists())
+        self.assertTrue(AuditLog.objects.filter(
+            audit_log_action='LOAD_CONTAINER_VESSEL',
+            audit_log_target_id=str(container_e2e.container_id)
+        ).exists())
+
 
 

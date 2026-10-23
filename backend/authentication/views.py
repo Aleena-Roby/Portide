@@ -6455,8 +6455,10 @@ class ExportGateInEligibleContainersAPIView(APIView):
 
         base_queryset = Container.objects.filter(
             container_cargo_id__cargo_direction='EXPORT',
-            container_status='REGISTERED',
+            container_status__in=['REGISTERED', 'CLEARED'],
             container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_status='APPROVED'
+        ).filter(
+            gate_ins__isnull=True
         ).exclude(
             container_cargo_id__cargo_arrival_request_id__schedule__vessel_schedule_status__in=['DEPARTED', 'CANCELLED']
         ).select_related(
@@ -6648,14 +6650,14 @@ class ExportGateInAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if current_status != 'REGISTERED':
+            if current_status not in ['REGISTERED', 'CLEARED']:
                 return Response(
                     {
                         "status": "error",
                         "message": (
                             f"Cannot perform export gate-in for container {container.container_number}: "
                             f"Container is currently in '{container.get_container_status_display()}' status. "
-                            f"Gate-in is only permitted for export containers in 'REGISTERED' status awaiting physical arrival."
+                            f"Gate-in is only permitted for export containers awaiting physical arrival."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST
@@ -9348,10 +9350,15 @@ class YardAllocationPendingListAPIView(APIView):
 
         # Validate actual physical status and vessel/terminal eligibility:
         # Containers in terminal/customs statuses are physically present at terminal.
+        # Export containers that have arrived at the gate (status ARRIVED) are physically at terminal.
         # Containers in REGISTERED or ARRIVED must have an arrived/berthed vessel schedule (not SCHEDULED at sea).
         eligible_vessel_statuses = ['ARRIVED', 'AT_BERTH', 'DEPARTED']
         queryset = queryset.filter(
             models.Q(container_status__in=['AT_TERMINAL', 'AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
+            models.Q(
+                container_status='ARRIVED',
+                container_cargo_id__cargo_direction='EXPORT'
+            ) |
             models.Q(
                 container_status__in=['REGISTERED', 'ARRIVED'],
                 container_cargo_id__cargo_arrival_request_id__schedule__vessel_schedule_status__in=eligible_vessel_statuses
@@ -9543,7 +9550,14 @@ class YardAllocationListCreateAPIView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate container eligibility: carrier vessel must have arrived at port if container is in pre-arrival status
-            if container.container_status in ['REGISTERED', 'ARRIVED']:
+            # For export containers that have arrived at the terminal gate (container_status == 'ARRIVED'),
+            # the container is physically inside the port terminal, so it does not require the outbound carrier vessel to have arrived yet.
+            is_export_arrived = (
+                container.container_status == 'ARRIVED' and
+                container.container_cargo_id and
+                container.container_cargo_id.cargo_direction == 'EXPORT'
+            )
+            if not is_export_arrived and container.container_status in ['REGISTERED', 'ARRIVED']:
                 cargo = container.container_cargo_id
                 arr_req = cargo.cargo_arrival_request_id if cargo else None
                 schedule = getattr(arr_req, 'schedule', None) if arr_req else None
@@ -9612,8 +9626,8 @@ class YardAllocationListCreateAPIView(APIView):
             slot.yard_slot_status = 'OCCUPIED'
             slot.save(update_fields=['yard_slot_status', 'yard_slot_updated_at'])
 
-            # Advance container physical status to AT_TERMINAL if it was REGISTERED or ARRIVED
-            if container.container_status in ['REGISTERED', 'ARRIVED']:
+            # Advance container physical status to AT_TERMINAL if it was REGISTERED, ARRIVED, or CLEARED
+            if container.container_status in ['REGISTERED', 'ARRIVED', 'CLEARED']:
                 container.container_status = 'AT_TERMINAL'
                 container.save(update_fields=['container_status', 'container_updated_at'])
 
@@ -9632,6 +9646,19 @@ class YardAllocationListCreateAPIView(APIView):
                 yard_movement_moved_by_id=user_obj,
                 yard_movement_timestamp=now,
                 yard_movement_remarks=remarks or f"Initial yard allocation to slot {slot.yard_slot_code}."
+            )
+
+            # Record ContainerTrackingEvent for yard positioning
+            ContainerTrackingEvent.objects.create(
+                tracking_event_container_id=container,
+                tracking_event_status='ARRIVED_AT_PORT',
+                tracking_event_timestamp=now,
+                tracking_event_location=f"Yard '{yard.yard_code}', Block '{block.yard_block_code}', Slot '{slot.yard_slot_code}'",
+                tracking_event_description=(
+                    f"Container {container.container_number} allocated to yard slot '{slot.yard_slot_code}' "
+                    f"in Yard '{yard.yard_code}' ({yard.yard_name}), Block '{block.yard_block_code}'."
+                ),
+                tracking_event_updated_by=user_obj
             )
 
             operator_name = user_obj.user_full_name if user_obj else 'Operations Officer'
@@ -12822,6 +12849,11 @@ class LoadingYardContainersAPIView(APIView):
             customs_inspection_status='ON_HOLD'
         ).values_list('customs_inspection_container_id_id', flat=True)
 
+        # Containers with completed/cleared customs inspection
+        cleared_inspection_container_ids = CustomsInspection.objects.filter(
+            customs_inspection_result='CLEARED'
+        ).values_list('customs_inspection_container_id_id', flat=True)
+
         queryset = Container.objects.select_related(
             'container_cargo_id',
             'container_cargo_id__cargo_arrival_request_id',
@@ -12829,13 +12861,15 @@ class LoadingYardContainersAPIView(APIView):
         ).filter(
             container_id__in=allocated_container_ids,
             container_status__in=['AT_TERMINAL', 'CLEARED'],
-            container_customs_status='CLEARED',
             container_cargo_id__cargo_direction='EXPORT'
+        ).filter(
+            models.Q(container_customs_status='CLEARED') |
+            models.Q(container_id__in=cleared_inspection_container_ids)
         ).exclude(
-            container_status='CUSTOMS_HOLD'
+            container_status__in=['CUSTOMS_HOLD', 'UNDER_INSPECTION']
         ).exclude(
             container_customs_status__in=[
-                'NOT_SUBMITTED', 'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
+                'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
                 'UNDER_INSPECTION', 'CUSTOMS_HOLD'
             ]
         ).exclude(

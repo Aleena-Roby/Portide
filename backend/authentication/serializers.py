@@ -2,7 +2,7 @@ import re
 import datetime
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from authentication.models import (
     Login, 
@@ -3302,7 +3302,11 @@ class PendingContainerSerializer(serializers.ModelSerializer):
 
     def get_customs_status_display(self, obj):
         insp = obj.latest_customs_inspection
-        return insp.get_customs_inspection_status_display() if insp else 'Not Inspected'
+        if insp:
+            return insp.get_customs_inspection_status_display()
+        if getattr(obj, 'container_customs_status', None) and obj.container_customs_status != 'NOT_SUBMITTED':
+            return obj.get_container_customs_status_display()
+        return 'Not Inspected'
 
     def get_has_active_allocation(self, obj):
         return obj.active_yard_allocation is not None
@@ -4956,17 +4960,22 @@ class EligibleLoadingVesselSerializer(serializers.ModelSerializer):
         discharged_ids = YardMovementHistory.objects.filter(
             yard_movement_movement_type='DISCHARGE'
         ).values_list('yard_movement_container_id_id', flat=True)
+        cleared_insp_ids = CustomsInspection.objects.filter(
+            customs_inspection_result='CLEARED'
+        ).values_list('customs_inspection_container_id_id', flat=True)
         return YardAllocation.objects.filter(
             yard_allocation_status='ACTIVE',
             yard_allocation_container_id__container_cargo_id__cargo_arrival_request_id=arrival_req,
             yard_allocation_container_id__container_cargo_id__cargo_direction='EXPORT',
-            yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED'],
-            yard_allocation_container_id__container_customs_status='CLEARED'
+            yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED']
+        ).filter(
+            models.Q(yard_allocation_container_id__container_customs_status='CLEARED') |
+            models.Q(yard_allocation_container_id_id__in=cleared_insp_ids)
         ).exclude(
-            yard_allocation_container_id__container_status='CUSTOMS_HOLD'
+            yard_allocation_container_id__container_status__in=['CUSTOMS_HOLD', 'UNDER_INSPECTION']
         ).exclude(
             yard_allocation_container_id__container_customs_status__in=[
-                'NOT_SUBMITTED', 'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
+                'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
                 'UNDER_INSPECTION', 'CUSTOMS_HOLD'
             ]
         ).exclude(
