@@ -9831,6 +9831,8 @@ class YardAllocationReleaseAPIView(APIView):
 class ContainerRelocationAPIView(APIView):
     """
     API Endpoint to Relocate an Allocated Container from its Current Slot to a New Slot.
+    NOTE: Dormant / Decoupled from UI in favor of simplified code-based Yard Allocation.
+    Retained on backend for backward compatibility and non-destructive audit compliance.
     Endpoint: POST /api/terminal/yard-operations/relocate/
               POST /api/yard-operations/relocate/
     Permissions: IsYardOperationsAuthorized
@@ -10228,6 +10230,7 @@ class YardOperationsContainerLocationAPIView(APIView):
                 "block_name": block.yard_block_name,
                 "block_code": block.yard_block_code,
                 "slot_id": slot.yard_slot_id,
+                "simple_code": slot.simple_code,
                 "slot_code": slot.yard_slot_code,
                 "slot_row": slot.yard_slot_row,
                 "slot_bay": slot.yard_slot_bay,

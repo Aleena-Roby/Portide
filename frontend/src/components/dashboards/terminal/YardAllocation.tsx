@@ -511,7 +511,7 @@ export const YardAllocation: React.FC = () => {
           }`}
         >
           <Boxes className="w-4 h-4" />
-          <span>Active Allocations & Movement History</span>
+          <span>Active Allocations</span>
           <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
             {allocations.length}
           </span>
@@ -715,7 +715,7 @@ export const YardAllocation: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* 6. TAB 2: ACTIVE ALLOCATIONS & MOVEMENT HISTORY */}
+      {/* 6. TAB 2: ACTIVE ALLOCATIONS */}
       {/* ===================================================================== */}
       {activeSubTab === 'history' && (
         <div className="space-y-4">
@@ -776,7 +776,7 @@ export const YardAllocation: React.FC = () => {
                   <tr>
                     <td colSpan={6} className="p-12 text-center text-slate-400">
                       <Archive className="w-10 h-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                      <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No Allocation History Found</p>
+                      <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No Allocation Records Found</p>
                       <p className="text-xs text-slate-400 mt-1">Containers allocated to yard positions will be listed here.</p>
                     </td>
                   </tr>

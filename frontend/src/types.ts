@@ -919,6 +919,7 @@ export interface YardLocationDetail {
   block_name: string;
   block_code: string;
   slot_id: number;
+  simple_code?: string;
   slot_code: string;
   slot_row: number;
   slot_bay: number;

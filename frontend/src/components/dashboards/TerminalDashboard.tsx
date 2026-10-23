@@ -144,7 +144,7 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
             Yard Operations
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Search container locations, perform atomic slot relocations, view verified movement history, and inspect block capacity utilization.
+            Search container locations, inspect simple yard position codes (Y001, Y002), and monitor block and yard capacity utilization.
           </p>
         </div>
 
