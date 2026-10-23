@@ -36,24 +36,26 @@ interface CargoManagementProps {
 }
 
 const CARGO_TYPE_OPTIONS = [
-  { value: 'CONTAINERIZED', label: 'Containerized' },
-  { value: 'BULK_CARGO', label: 'Bulk Cargo' },
-  { value: 'GENERAL_CARGO', label: 'General Cargo' }
+  { value: 'CONTAINERIZED', label: 'Containerized Cargo (ISO Containers)' },
+  { value: 'BULK_CARGO', label: 'Bulk Cargo (Dry / Liquid Bulk)' },
+  { value: 'GENERAL_CARGO', label: 'General / Break-bulk Cargo' }
 ];
 
-const TYPE_UNIT_OPTIONS_MAP: Record<string, { value: string; label: string }[]> = {
+const TYPE_UNIT_OPTIONS_MAP: Record<string, { value: string; label: string; helper: string }[]> = {
   CONTAINERIZED: [
-    { value: 'TEU', label: 'TEU (Twenty-foot Equivalent Unit)' },
-    { value: 'FEU', label: 'FEU (Forty-foot Equivalent Unit)' }
+    { value: 'TEU', label: 'TEU (Twenty-foot Equivalent Unit)', helper: 'Standard 20ft container equivalent' },
+    { value: 'FEU', label: 'FEU (Forty-foot Equivalent Unit)', helper: 'Standard 40ft container equivalent (2 TEU)' },
+    { value: 'UNITS', label: 'Units (Physical Container Count)', helper: 'Total physical container count' }
   ],
   BULK_CARGO: [
-    { value: 'TONNES', label: 'Metric Tonnes (MT)' },
-    { value: 'KG', label: 'Kilograms (KG)' }
+    { value: 'TONNES', label: 'Metric Tonnes (MT)', helper: 'Bulk mass in metric tonnes (1 MT = 1,000 kg)' },
+    { value: 'KG', label: 'Kilograms (KG)', helper: 'Bulk mass in kilograms' }
   ],
   GENERAL_CARGO: [
-    { value: 'UNITS', label: 'Units / Pieces' },
-    { value: 'PACKAGES', label: 'Packages / Cartons' },
-    { value: 'TONNES', label: 'Metric Tonnes (MT)' }
+    { value: 'PACKAGES', label: 'Packages / Cartons', helper: 'Total count of cartons, crates, or bags' },
+    { value: 'UNITS', label: 'Pieces / Units', helper: 'Individual equipment or machinery pieces' },
+    { value: 'TONNES', label: 'Metric Tonnes (MT)', helper: 'Total consignment tonnage' },
+    { value: 'KG', label: 'Kilograms (KG)', helper: 'Total consignment mass in kilograms' }
   ]
 };
 
@@ -246,13 +248,30 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     return combined.find(r => String(r.vessel_arrival_request_id) === String(selectedArrivalRequestId)) || null;
   }, [selectedArrivalRequestId, freshArrivalRequests, arrivalRequests]);
 
-  // Handle Cargo Type Change with dynamic unit synchronization
+  // Handle Cargo Type Change with dynamic unit synchronization & sensible defaults
   const handleCargoTypeChange = (newType: string) => {
     setCargoType(newType);
     const availableUnits = TYPE_UNIT_OPTIONS_MAP[newType] || [];
     const isCurrentValid = availableUnits.some(u => u.value === cargoUnit);
     if (!isCurrentValid && availableUnits.length > 0) {
       setCargoUnit(availableUnits[0].value);
+    }
+
+    // Set sensible defaults if registering new cargo
+    if (!editingCargo) {
+      if (newType === 'CONTAINERIZED') {
+        setCargoQuantity('250');
+        setCargoUnit('TEU');
+        setCargoWeight('3500');
+      } else if (newType === 'BULK_CARGO') {
+        setCargoQuantity('5000');
+        setCargoUnit('TONNES');
+        setCargoWeight('5000');
+      } else if (newType === 'GENERAL_CARGO') {
+        setCargoQuantity('1200');
+        setCargoUnit('PACKAGES');
+        setCargoWeight('450');
+      }
     }
   };
 
@@ -371,6 +390,48 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     if (cargoOriginPortId === cargoDestinationPortId) {
       setFormError('Port of destination cannot be the same as port of origin.');
       return;
+    }
+
+    // 1. Validate unit compatibility with cargo classification
+    const allowedUnits = (TYPE_UNIT_OPTIONS_MAP[cargoType] || []).map(u => u.value);
+    if (!allowedUnits.includes(cargoUnit)) {
+      setFormError(`Unit '${cargoUnit}' is not allowed for cargo type '${cargoType}'. Allowed units: ${allowedUnits.join(', ')}.`);
+      return;
+    }
+
+    // 2. Validate physical consistency between quantity, unit, and gross weight
+    if (cargoUnit === 'TONNES') {
+      if (weightNum < qtyNum * 0.95) {
+        setFormError(`Gross weight (${weightNum} MT) cannot be less than declared cargo quantity in Metric Tonnes (${qtyNum} MT).`);
+        return;
+      }
+      if (weightNum > qtyNum * 10 && weightNum > 1000) {
+        setFormError(`Gross weight (${weightNum} MT) is disproportionately high for declared quantity (${qtyNum} MT). Please verify units.`);
+        return;
+      }
+    } else if (cargoUnit === 'KG') {
+      const netTonnes = qtyNum / 1000;
+      if (weightNum < netTonnes * 0.95) {
+        setFormError(`Gross weight (${weightNum} MT) cannot be less than declared cargo quantity (${qtyNum} KG = ${netTonnes.toFixed(2)} MT).`);
+        return;
+      }
+      if (weightNum > netTonnes * 10 && weightNum > 500) {
+        setFormError(`Gross weight (${weightNum} MT) is disproportionately high for ${qtyNum} KG (${netTonnes.toFixed(2)} MT). Please enter weight in Metric Tonnes.`);
+        return;
+      }
+    } else if (cargoType === 'CONTAINERIZED' && ['TEU', 'FEU', 'UNITS'].includes(cargoUnit)) {
+      const equivCount = cargoUnit === 'FEU' ? qtyNum * 2 : qtyNum;
+      if (equivCount > 0) {
+        const avg = weightNum / equivCount;
+        if (avg > 50) {
+          setFormError(`Gross weight (${weightNum} MT) is physically inconsistent with ${qtyNum} ${cargoUnit} (average of ${avg.toFixed(1)} MT per container exceeds physical container rating of 50 MT).`);
+          return;
+        }
+        if (avg < 0.1) {
+          setFormError(`Gross weight (${weightNum} MT) is too low for ${qtyNum} ${cargoUnit} (average of ${avg.toFixed(2)} MT per container is below container tare weight).`);
+          return;
+        }
+      }
     }
 
     setSubmitLoading(true);
@@ -1051,7 +1112,11 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Quantity *
+                  {cargoType === 'CONTAINERIZED'
+                    ? 'Container Capacity / Count *'
+                    : cargoType === 'BULK_CARGO'
+                    ? 'Bulk Cargo Quantity *'
+                    : 'Shipment Package / Piece Count *'}
                 </label>
                 <input
                   type="number"
@@ -1060,14 +1125,21 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                   required
                   value={cargoQuantity}
                   onChange={(e) => setCargoQuantity(e.target.value)}
-                  placeholder="500"
+                  placeholder={cargoType === 'BULK_CARGO' ? '5000' : cargoType === 'GENERAL_CARGO' ? '1200' : '250'}
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold focus:outline-none focus:border-[#D49A24]"
                 />
+                <span className="text-[10px] text-slate-400 mt-1 block truncate">
+                  {cargoType === 'CONTAINERIZED'
+                    ? 'ISO container count or TEU volume'
+                    : cargoType === 'BULK_CARGO'
+                    ? 'Declared bulk shipment amount'
+                    : 'Count of packages, cartons, or pieces'}
+                </span>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Unit *
+                  Quantity Unit *
                 </label>
                 <select
                   value={cargoUnit}
@@ -1078,12 +1150,15 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+                <span className="text-[10px] text-slate-400 mt-1 block truncate">
+                  {(TYPE_UNIT_OPTIONS_MAP[cargoType] || []).find(opt => opt.value === cargoUnit)?.helper || ''}
+                </span>
               </div>
             </div>
 
             <div>
               <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Gross Weight (Metric Tonnes) *
+                Total Manifest Gross Weight (Metric Tonnes) *
               </label>
               <input
                 type="number"
@@ -1092,9 +1167,23 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                 required
                 value={cargoWeight}
                 onChange={(e) => setCargoWeight(e.target.value)}
-                placeholder="6000.00"
+                placeholder={cargoType === 'BULK_CARGO' ? '5000.00' : cargoType === 'GENERAL_CARGO' ? '450.00' : '3500.00'}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold focus:outline-none focus:border-[#D49A24]"
               />
+              <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                <span>Total weight in MT (1 MT = 1,000 kg).</span>
+                {parseFloat(cargoQuantity) > 0 && parseFloat(cargoWeight) > 0 && (
+                  <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
+                    {cargoType === 'CONTAINERIZED'
+                      ? `~${(parseFloat(cargoWeight) / (cargoUnit === 'FEU' ? parseFloat(cargoQuantity) * 2 : parseFloat(cargoQuantity))).toFixed(1)} MT / container`
+                      : cargoUnit === 'KG'
+                      ? `Net: ${(parseFloat(cargoQuantity) / 1000).toFixed(2)} MT`
+                      : cargoType === 'GENERAL_CARGO' && (cargoUnit === 'PACKAGES' || cargoUnit === 'UNITS')
+                      ? `~${((parseFloat(cargoWeight) * 1000) / parseFloat(cargoQuantity)).toFixed(1)} kg / unit`
+                      : ''}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div>
@@ -1305,10 +1394,19 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                   <span>Manage Containers</span>
                 </button>
               </div>
+            ) : selectedCargoDetail.cargo_type === 'BULK_CARGO' ? (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+                <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Bulk Cargo Handling:</strong> This consignment ({selectedCargoDetail.cargo_quantity} {selectedCargoDetail.cargo_unit}) is handled via bulk handling / direct ship-to-truck and does not enter container registration, container yard allocation, or standard container loading.
+                </span>
+              </div>
             ) : (
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
                 <Info className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>Containers can only be registered for containerized cargo.</span>
+                <span>
+                  <strong>General Break-bulk Handling:</strong> Classified as General Cargo ({selectedCargoDetail.cargo_quantity} {selectedCargoDetail.cargo_unit}). Handled as packaged cargo and does not enter container registration or container yard workflows.
+                </span>
               </div>
             )}
 

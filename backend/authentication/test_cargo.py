@@ -1041,3 +1041,284 @@ class CargoRegistrationTestCase(TestCase):
         req.refresh_from_db()
         self.assertEqual(req.vessel_arrival_request_status, "APPROVED")
 
+    # =========================================================================
+    # 24. Containerized Cargo: Physical Container Counts & Workflow Access
+    # =========================================================================
+    def test_24_containerized_cargo_physical_container_counts_allowed(self):
+        """Rule 1: Containerized cargo allows TEU, FEU, and physical container counts (UNITS)."""
+        payload = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Electronics in Physical Container Units",
+            "cargo_type": "CONTAINERIZED",
+            "cargo_quantity": 100,
+            "cargo_unit": "UNITS",  # Physical container count
+            "cargo_weight": 1400.0,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res = self.client.post(
+            "/api/cargo/",
+            data=payload,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        cargo_id = res.data["data"]["cargo_id"]
+
+        # Containerized cargo CAN proceed to container registration workflow
+        container_payload = {
+            "container_cargo_id": cargo_id,
+            "container_number": "MSCU1112223",
+            "container_type": "20FT",
+            "container_gross_weight": 14.0
+        }
+        res_container = self.client.post(
+            "/api/containers/",
+            data=container_payload,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_container.status_code, status.HTTP_201_CREATED)
+
+    # =========================================================================
+    # 25. Bulk Cargo: Appropriate Units & Rejection of TEU
+    # =========================================================================
+    def test_25_bulk_cargo_allowed_units_and_rejection_of_teu(self):
+        """Rule 2: Bulk cargo accepts MT/KG and strictly rejects TEU/container units."""
+        # 1. Bulk cargo with TEU must be rejected
+        payload_teu = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Coal Bulk in TEU",
+            "cargo_type": "BULK_CARGO",
+            "cargo_quantity": 500,
+            "cargo_unit": "TEU",  # Inappropriate for bulk!
+            "cargo_weight": 5000.0,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_teu = self.client.post(
+            "/api/cargo/",
+            data=payload_teu,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_teu.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cargo_unit", res_teu.data["errors"])
+
+        # 2. Bulk cargo with TONNES (Metric Tonnes) must succeed
+        payload_tonnes = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Thermal Coal Consignment",
+            "cargo_type": "BULK_CARGO",
+            "cargo_quantity": 5000,
+            "cargo_unit": "TONNES",
+            "cargo_weight": 5000.0,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_tonnes = self.client.post(
+            "/api/cargo/",
+            data=payload_tonnes,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_tonnes.status_code, status.HTTP_201_CREATED)
+
+    # =========================================================================
+    # 26. Bulk & General Cargo Blocked from Container Workflows
+    # =========================================================================
+    def test_26_bulk_and_general_cargo_cannot_enter_container_workflows(self):
+        """Rule 2 & 6: Bulk & General cargo cannot enter container registration or manifests."""
+        bulk_cargo = Cargo.objects.create(
+            cargo_arrival_request_id=self.arrival_a,
+            cargo_description="Dry Grain Consignment",
+            cargo_type="BULK_CARGO",
+            cargo_quantity=Decimal("3000.00"),
+            cargo_unit="TONNES",
+            cargo_weight=Decimal("3000.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        general_cargo = Cargo.objects.create(
+            cargo_arrival_request_id=self.arrival_a,
+            cargo_description="Machinery Equipment",
+            cargo_type="GENERAL_CARGO",
+            cargo_quantity=Decimal("50.00"),
+            cargo_unit="PACKAGES",
+            cargo_weight=Decimal("120.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+
+        # 1. Attempt container registration for bulk cargo -> Rejected 400
+        res_bulk_cont = self.client.post(
+            "/api/containers/",
+            data={
+                "container_cargo_id": bulk_cargo.cargo_id,
+                "container_number": "MSCU3334445",
+                "container_type": "20FT",
+                "container_gross_weight": 20.0
+            },
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_bulk_cont.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("containerized", res_bulk_cont.data["message"].lower())
+
+        # 2. Attempt container registration for general cargo -> Rejected 400
+        res_gen_cont = self.client.post(
+            "/api/containers/",
+            data={
+                "container_cargo_id": general_cargo.cargo_id,
+                "container_number": "MSCU3334446",
+                "container_type": "20FT",
+                "container_gross_weight": 20.0
+            },
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_gen_cont.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("containerized", res_gen_cont.data["message"].lower())
+
+        # 3. Attempt container manifest summary for non-containerized cargo -> Rejected 400
+        res_summary = self.client.get(
+            f"/api/cargo/{bulk_cargo.cargo_id}/containers/",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_summary.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("containerized", res_summary.data["message"].lower())
+
+    # =========================================================================
+    # 27. General Cargo: Package/Piece Units & Quantity/Weight Independence
+    # =========================================================================
+    def test_27_general_cargo_units_and_quantity_weight_distinction(self):
+        """Rule 3 & 4: General cargo allows packages/pieces; quantity does NOT need to equal gross weight."""
+        # 10,000 packages weighing 50 MT (5 kg per package) is completely valid
+        payload_packages = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Packaged Textiles and Footwear",
+            "cargo_type": "GENERAL_CARGO",
+            "cargo_quantity": 10000,
+            "cargo_unit": "PACKAGES",
+            "cargo_weight": 50.0,  # 50 MT total (Quantity 10,000 != Weight 50.0)
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_pkg = self.client.post(
+            "/api/cargo/",
+            data=payload_packages,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_pkg.status_code, status.HTTP_201_CREATED)
+
+        # 25 heavy turbine generator units weighing 850 MT is completely valid
+        payload_units = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Heavy Industrial Generator Units",
+            "cargo_type": "GENERAL_CARGO",
+            "cargo_quantity": 25,
+            "cargo_unit": "UNITS",
+            "cargo_weight": 850.0,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_units = self.client.post(
+            "/api/cargo/",
+            data=payload_units,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_units.status_code, status.HTTP_201_CREATED)
+
+    # =========================================================================
+    # 28. Physical Quantity and Gross Weight Consistency Validation
+    # =========================================================================
+    def test_28_quantity_and_weight_consistency_enforcement(self):
+        """Rule 4: Inconsistent values rejected according to physical meanings and units."""
+        # 1. TONNES: Gross weight far less than net quantity (1000 MT cargo with 1 MT weight) -> Rejected
+        payload_tonnes_mismatch = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Weight Mismatch Grain",
+            "cargo_type": "BULK_CARGO",
+            "cargo_quantity": 1000,
+            "cargo_unit": "TONNES",
+            "cargo_weight": 1.0,  # 1 MT weight for 1,000 MT cargo!
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res1 = self.client.post(
+            "/api/cargo/",
+            data=payload_tonnes_mismatch,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res1.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cargo_weight", res1.data["errors"])
+
+        # 2. KG: Gross weight in MT far less than quantity in KG (50,000 KG = 50 MT, but entered 0.01 MT) -> Rejected
+        payload_kg_mismatch = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "KG Mismatch Bulk",
+            "cargo_type": "BULK_CARGO",
+            "cargo_quantity": 50000,
+            "cargo_unit": "KG",
+            "cargo_weight": 0.01,  # 10 kg weight for 50,000 kg cargo!
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res2 = self.client.post(
+            "/api/cargo/",
+            data=payload_kg_mismatch,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cargo_weight", res2.data["errors"])
+
+        # 3. CONTAINERIZED: Physically impossible weight (> 50 MT per TEU, e.g. 10 TEU weighing 5,000 MT) -> Rejected
+        payload_container_impossible = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Impossible Weight Containers",
+            "cargo_type": "CONTAINERIZED",
+            "cargo_quantity": 10,
+            "cargo_unit": "TEU",
+            "cargo_weight": 5000.0,  # 500 MT per container!
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res3 = self.client.post(
+            "/api/cargo/",
+            data=payload_container_impossible,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res3.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cargo_weight", res3.data["errors"])
+

@@ -4775,6 +4775,16 @@ class CargoContainersSummaryAPIView(APIView):
                 )
 
 
+        # Enforce that container manifest operations are only applicable to CONTAINERIZED cargo
+        if cargo.cargo_type != 'CONTAINERIZED':
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Container operations are only applicable to Containerized Cargo (current classification: {cargo.get_cargo_type_display()})."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         containers = Container.objects.filter(container_cargo_id=cargo).order_by('-container_created_at', '-container_id')
 
         total_teu = 0.0
@@ -9610,6 +9620,12 @@ class YardAllocationListCreateAPIView(APIView):
                 return Response({
                     "status": "error",
                     "message": f"Container {container.container_number} already has an active yard allocation."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_cargo_id and container.container_cargo_id.cargo_type != 'CONTAINERIZED':
+                return Response({
+                    "status": "error",
+                    "message": f"Yard slot allocation is only applicable to containerized cargo (current cargo classification: {container.container_cargo_id.get_cargo_type_display()})."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate container eligibility: carrier vessel must have arrived at port if container is in pre-arrival status

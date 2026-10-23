@@ -1304,9 +1304,15 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
                 'UNITS': 'UNITS',
                 'UNIT': 'UNITS',
                 'PIECES': 'UNITS',
+                'PIECE': 'UNITS',
+                'CONTAINER': 'UNITS',
+                'CONTAINERS': 'UNITS',
                 'PACKAGES': 'PACKAGES',
                 'PACKAGE': 'PACKAGES',
                 'CARTONS': 'PACKAGES',
+                'CARTON': 'PACKAGES',
+                'BOXES': 'PACKAGES',
+                'BOX': 'PACKAGES',
             }
             if val in unit_map:
                 val = unit_map[val]
@@ -1351,9 +1357,9 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
             cargo_unit = self.instance.cargo_unit
 
         TYPE_UNIT_MAP = {
-            'CONTAINERIZED': ['TEU', 'FEU'],
+            'CONTAINERIZED': ['TEU', 'FEU', 'UNITS'],
             'BULK_CARGO': ['TONNES', 'KG'],
-            'GENERAL_CARGO': ['UNITS', 'PACKAGES', 'TONNES']
+            'GENERAL_CARGO': ['PACKAGES', 'UNITS', 'TONNES', 'KG']
         }
 
         if cargo_type and cargo_unit:
@@ -1363,7 +1369,62 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "cargo_unit": f"Unit '{cargo_unit}' is not allowed for cargo type '{cargo_type}'. Allowed units: {allowed_str}."
                 })
-        # 3. Validate arrival request approval and arrival deadline for new cargo
+
+        # 3. Validate logical consistency between shipment quantity, unit, and total gross weight
+        qty = data.get('cargo_quantity')
+        if qty is None and self.instance:
+            qty = self.instance.cargo_quantity
+
+        weight = data.get('cargo_weight')
+        if weight is None and self.instance:
+            weight = self.instance.cargo_weight
+
+        if qty is not None and weight is not None and cargo_unit:
+            from decimal import Decimal
+            qty_dec = Decimal(str(qty))
+            weight_dec = Decimal(str(weight))
+
+            # Case A: Unit is Metric Tonnes (TONNES) - Quantity is declared tonnage, weight is gross tonnage
+            if cargo_unit == 'TONNES':
+                if weight_dec < qty_dec * Decimal('0.95'):
+                    raise serializers.ValidationError({
+                        "cargo_weight": f"Gross weight ({weight_dec} MT) cannot be less than declared cargo quantity in Metric Tonnes ({qty_dec} MT)."
+                    })
+                if weight_dec > qty_dec * Decimal('10.0') and weight_dec > Decimal('1000.0'):
+                    raise serializers.ValidationError({
+                        "cargo_weight": f"Gross weight ({weight_dec} MT) is disproportionately high for declared quantity ({qty_dec} MT). Please verify units."
+                    })
+
+            # Case B: Unit is Kilograms (KG) - Quantity is in KG, gross weight is in MT (1 MT = 1,000 KG)
+            elif cargo_unit == 'KG':
+                net_tonnes = qty_dec / Decimal('1000')
+                if weight_dec < net_tonnes * Decimal('0.95'):
+                    raise serializers.ValidationError({
+                        "cargo_weight": f"Gross weight ({weight_dec} MT) cannot be less than declared cargo quantity ({qty_dec} KG = {net_tonnes:.2f} MT)."
+                    })
+                if weight_dec > net_tonnes * Decimal('10.0') and weight_dec > Decimal('500.0'):
+                    raise serializers.ValidationError({
+                        "cargo_weight": f"Gross weight ({weight_dec} MT) is disproportionately high for {qty_dec} KG ({net_tonnes:.2f} MT). Please ensure gross weight is entered in Metric Tonnes."
+                    })
+
+            # Case C: Containerized Cargo (TEU, FEU, UNITS)
+            elif cargo_type == 'CONTAINERIZED' and cargo_unit in ['TEU', 'FEU', 'UNITS']:
+                equiv_count = qty_dec * Decimal('2.0') if cargo_unit == 'FEU' else qty_dec
+                if equiv_count > 0:
+                    avg_weight_per_container = weight_dec / equiv_count
+                    if avg_weight_per_container > Decimal('50.0'):
+                        raise serializers.ValidationError({
+                            "cargo_weight": f"Gross weight of {weight_dec} MT is physically inconsistent with {qty_dec} {cargo_unit} (average of {avg_weight_per_container:.2f} MT per container exceeds physical container rating of 50 MT)."
+                        })
+                    if avg_weight_per_container < Decimal('0.1'):
+                        raise serializers.ValidationError({
+                            "cargo_weight": f"Gross weight of {weight_dec} MT is too low for {qty_dec} {cargo_unit} (average of {avg_weight_per_container:.2f} MT per container is below container tare weight)."
+                        })
+
+            # Case D: General Cargo (PACKAGES, UNITS)
+            # Quantity represents packages/pieces and is not required to equal gross weight.
+
+        # 4. Validate arrival request approval and arrival deadline for new cargo
         arrival_req = data.get('cargo_arrival_request_id')
         if not self.instance or ('cargo_arrival_request_id' in data and data['cargo_arrival_request_id'] != self.instance.cargo_arrival_request_id):
             if not arrival_req:
