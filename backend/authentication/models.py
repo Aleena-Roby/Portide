@@ -361,6 +361,36 @@ class VesselArrivalRequest(models.Model):
     )
     vessel_arrival_request_remarks = models.TextField(null=True, blank=True)
 
+    def get_arrival_deadline(self):
+        """
+        Returns the approved scheduled arrival datetime if a schedule exists,
+        otherwise falls back to the requested arrival datetime.
+        Guarantees timezone-awareness.
+        """
+        if hasattr(self, 'schedule') and self.schedule and self.schedule.vessel_schedule_scheduled_arrival_at:
+            deadline = self.schedule.vessel_schedule_scheduled_arrival_at
+        else:
+            deadline = self.vessel_arrival_request_requested_arrival_at
+        if deadline and timezone.is_naive(deadline):
+            deadline = timezone.make_aware(deadline)
+        return deadline
+
+    @property
+    def is_arrival_deadline_passed(self) -> bool:
+        deadline = self.get_arrival_deadline()
+        if not deadline:
+            return False
+        return timezone.now() >= deadline
+
+    @property
+    def is_cargo_eligible(self) -> bool:
+        if self.vessel_arrival_request_status != 'APPROVED':
+            return False
+        deadline = self.get_arrival_deadline()
+        if not deadline:
+            return False
+        return timezone.now() < deadline
+
     class Meta:
         db_table = 'tbl_vessel_arrival_request'
         verbose_name = 'Vessel Arrival Request'

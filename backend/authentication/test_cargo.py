@@ -728,13 +728,13 @@ class CargoRegistrationTestCase(TestCase):
         self.assertEqual(res_post.data["data"]["cargo_arrival_request_id"], active_req.vessel_arrival_request_id)
 
     def test_17_case4_approved_request_after_departure_excluded_and_rejected(self):
-        """CASE 4: APPROVED request after departure -> Not shown -> Backend rejects registration."""
+        """CASE 4: APPROVED request after arrival deadline -> Not shown -> Backend rejects registration."""
         now = timezone.now()
         # Scheduled in the past
         expired_req = VesselArrivalRequest.objects.create(
             vessel_arrival_request_vessel_id=self.vessel_a,
-            vessel_arrival_request_requested_arrival_at=now - timezone.timedelta(days=3),
-            vessel_arrival_request_requested_departure_at=now - timezone.timedelta(days=1),
+            vessel_arrival_request_requested_arrival_at=now - timezone.timedelta(days=1),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=1),
             vessel_arrival_request_cargo_type="Container Cargo",
             vessel_arrival_request_cargo_quantity=Decimal("600.00"),
             vessel_arrival_request_status="APPROVED"
@@ -784,8 +784,7 @@ class CargoRegistrationTestCase(TestCase):
             HTTP_X_USER_ID=str(self.login_a.login_id)
         )
         self.assertEqual(res_post.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("no longer active for cargo registration", res_post.data["message"])
-        self.assertIn("scheduled departure time has passed", res_post.data["message"])
+        self.assertIn("scheduled vessel arrival time has passed", res_post.data["message"])
 
     def test_18_case5_another_shipping_company_request_rejected(self):
         """CASE 5: Approved request belonging to another Shipping Company -> Not shown -> Backend rejects."""
@@ -862,21 +861,21 @@ class CargoRegistrationTestCase(TestCase):
         # Create request expiring 1 second from now
         fast_expiring_req = VesselArrivalRequest.objects.create(
             vessel_arrival_request_vessel_id=self.vessel_a,
-            vessel_arrival_request_requested_arrival_at=now - timezone.timedelta(hours=1),
-            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(seconds=1),
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(seconds=1),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=1),
             vessel_arrival_request_cargo_type="Container Cargo",
             vessel_arrival_request_cargo_quantity=Decimal("400.00"),
             vessel_arrival_request_status="APPROVED"
         )
 
-        # Fast forward request expiration by setting departure in the past
-        fast_expiring_req.vessel_arrival_request_requested_departure_at = timezone.now() - timezone.timedelta(seconds=5)
+        # Fast forward request expiration by setting arrival in the past
+        fast_expiring_req.vessel_arrival_request_requested_arrival_at = timezone.now() - timezone.timedelta(seconds=5)
         fast_expiring_req.save()
 
         # Submit cargo registration
         payload = {
             "cargo_arrival_request_id": fast_expiring_req.vessel_arrival_request_id,
-            "cargo_description": "Late Submission After Departure",
+            "cargo_description": "Late Submission After Arrival",
             "cargo_type": "CONTAINERIZED",
             "cargo_quantity": 100,
             "cargo_unit": "TEU",
@@ -893,7 +892,7 @@ class CargoRegistrationTestCase(TestCase):
             HTTP_X_USER_ID=str(self.login_a.login_id)
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("no longer active for cargo registration", res.data["message"])
+        self.assertIn("scheduled vessel arrival time has passed", res.data["message"])
 
         # Consignment must not have been created
         self.assertFalse(Cargo.objects.filter(cargo_arrival_request_id=fast_expiring_req).exists())
@@ -903,8 +902,8 @@ class CargoRegistrationTestCase(TestCase):
         now = timezone.now()
         req = VesselArrivalRequest.objects.create(
             vessel_arrival_request_vessel_id=self.vessel_a,
-            vessel_arrival_request_requested_arrival_at=now - timezone.timedelta(hours=2),
-            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(hours=1),
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(hours=2),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(hours=5),
             vessel_arrival_request_cargo_type="Container Cargo",
             vessel_arrival_request_cargo_quantity=Decimal("400.00"),
             vessel_arrival_request_status="APPROVED"
@@ -920,8 +919,8 @@ class CargoRegistrationTestCase(TestCase):
         ids_before = [r["vessel_arrival_request_id"] for r in res_before.data["data"]]
         self.assertIn(req.vessel_arrival_request_id, ids_before)
 
-        # Expire request
-        req.vessel_arrival_request_requested_departure_at = timezone.now() - timezone.timedelta(minutes=10)
+        # Expire request by moving requested arrival to past
+        req.vessel_arrival_request_requested_arrival_at = timezone.now() - timezone.timedelta(minutes=10)
         req.save()
 
         # After refresh: no longer in eligible list
@@ -933,6 +932,110 @@ class CargoRegistrationTestCase(TestCase):
         )
         ids_after = [r["vessel_arrival_request_id"] for r in res_after.data["data"]]
         self.assertNotIn(req.vessel_arrival_request_id, ids_after)
+
+    def test_22_scheduled_arrival_time_used_over_requested_arrival_time(self):
+        """Precedence: VesselSchedule scheduled arrival takes precedence over requested arrival."""
+        now = timezone.now()
+        berth = Berth.objects.create(
+            berth_name="Test Berth 1",
+            berth_code="TB1",
+            berth_type="CONTAINER",
+            berth_max_length=Decimal("300.00"),
+            berth_max_draft=Decimal("15.00"),
+            berth_status="AVAILABLE"
+        )
+        # Requested arrival is in the future (+2 days), but scheduled arrival is in the past (-1 hour)
+        req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(days=2),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=3),
+            vessel_arrival_request_cargo_type="Container Cargo",
+            vessel_arrival_request_cargo_quantity=Decimal("300.00"),
+            vessel_arrival_request_status="APPROVED"
+        )
+        from authentication.models import VesselSchedule
+        VesselSchedule.objects.create(
+            vessel_schedule_arrival_request_id=req,
+            vessel_schedule_berth_id=berth,
+            vessel_schedule_scheduled_arrival_at=now - timezone.timedelta(hours=1),
+            vessel_schedule_scheduled_departure_at=now + timezone.timedelta(days=1),
+            vessel_schedule_status="CONFIRMED"
+        )
+
+        # Excluded from eligible requests
+        res_eligible = self.client.get(
+            "/api/arrival-requests/?eligible_for_cargo=true",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        ids = [r["vessel_arrival_request_id"] for r in res_eligible.data["data"]]
+        self.assertNotIn(req.vessel_arrival_request_id, ids)
+
+        # Registration rejected by backend
+        payload = {
+            "cargo_arrival_request_id": req.vessel_arrival_request_id,
+            "cargo_description": "Precedence Test Cargo",
+            "cargo_type": "CONTAINERIZED",
+            "cargo_quantity": 50,
+            "cargo_unit": "TEU",
+            "cargo_weight": 500.0,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_post = self.client.post(
+            "/api/cargo/",
+            data=payload,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_post.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("scheduled vessel arrival time has passed", res_post.data["message"])
+
+    def test_23_existing_cargo_update_allowed_after_arrival_deadline(self):
+        """Rule 8: Existing cargo registered before deadline can still be updated after deadline."""
+        now = timezone.now()
+        req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(days=1),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=2),
+            vessel_arrival_request_cargo_type="Container Cargo",
+            vessel_arrival_request_cargo_quantity=Decimal("300.00"),
+            vessel_arrival_request_status="APPROVED"
+        )
+        cargo = Cargo.objects.create(
+            cargo_arrival_request_id=req,
+            cargo_description="Original Cargo Consignment",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("1200.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+
+        # Now pass the arrival deadline
+        req.vessel_arrival_request_requested_arrival_at = timezone.now() - timezone.timedelta(days=1)
+        req.save()
+
+        # Update existing cargo should be permitted
+        patch_payload = {
+            "cargo_description": "Updated Cargo Consignment Description"
+        }
+        res_patch = self.client.patch(
+            f"/api/cargo/{cargo.cargo_id}/",
+            data=patch_payload,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        cargo.refresh_from_db()
+        self.assertEqual(cargo.cargo_description, "Updated Cargo Consignment Description")
 
         # Safe historical retention: original status remains APPROVED in database
         req.refresh_from_db()

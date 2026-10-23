@@ -132,6 +132,20 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     }
   };
 
+  // Helper to extract arrival deadline in ms
+  const getArrivalDeadlineMs = (req: BackendVesselArrivalRequest): number | null => {
+    if (req.arrival_deadline) {
+      return new Date(req.arrival_deadline).getTime();
+    }
+    if (req.schedule?.vessel_schedule_scheduled_arrival_at) {
+      return new Date(req.schedule.vessel_schedule_scheduled_arrival_at).getTime();
+    }
+    if (req.vessel_arrival_request_requested_arrival_at) {
+      return new Date(req.vessel_arrival_request_requested_arrival_at).getTime();
+    }
+    return null;
+  };
+
   // Filter arrival requests strictly to APPROVED and currently eligible (not expired)
   const eligibleArrivalRequests = useMemo(() => {
     const sourceList = freshArrivalRequests.length > 0 ? freshArrivalRequests : (arrivalRequests || []);
@@ -140,16 +154,17 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
       // Must have actual APPROVED status from backend
       if (req.vessel_arrival_request_status !== 'APPROVED') return false;
       // If backend evaluated is_cargo_eligible flag is present
-      if (req.is_cargo_eligible !== undefined) {
-        return req.is_cargo_eligible;
+      if (req.is_cargo_eligible !== undefined && !req.is_cargo_eligible) {
+        return false;
       }
       // If backend evaluated is_expired flag is present
       if (req.is_expired !== undefined && req.is_expired) {
         return false;
       }
-      // Departure time check (eligible while current time < requested departure)
-      if (req.vessel_arrival_request_requested_departure_at) {
-        return new Date(req.vessel_arrival_request_requested_departure_at).getTime() > nowMs;
+      // Arrival deadline check (eligible while current time < scheduled/requested arrival)
+      const deadlineMs = getArrivalDeadlineMs(req);
+      if (deadlineMs !== null) {
+        return nowMs < deadlineMs;
       }
       return true;
     });
@@ -310,6 +325,20 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     if (!selectedArrivalRequestId) {
       setFormError('Please select an APPROVED Vessel Arrival Request.');
       return;
+    }
+
+    // Pre-submission arrival deadline verification
+    if (!editingCargo && selectedArrivalRequestObj) {
+      if (selectedArrivalRequestObj.vessel_arrival_request_status !== 'APPROVED') {
+        setFormError('Cargo can only be registered for an APPROVED arrival request.');
+        return;
+      }
+      const deadlineMs = getArrivalDeadlineMs(selectedArrivalRequestObj);
+      if (deadlineMs !== null && Date.now() >= deadlineMs) {
+        setFormError('The registration deadline for this vessel arrival request has passed. Registration closes at the scheduled vessel arrival time.');
+        fetchEligibleArrivalRequests();
+        return;
+      }
     }
 
     if (!cargoDescription.trim()) {
@@ -869,10 +898,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                 <div>
-                  <p className="font-bold">No approved active arrival requests are currently available for cargo registration.</p>
-                  <p className="text-[11px] mt-0.5 text-amber-700/80 dark:text-amber-400">
-                    Cargo can only be registered for approved vessel arrival requests before their scheduled departure time has passed.
-                  </p>
+                  <p className="font-bold">No approved arrival requests are available for cargo registration. Registration closes at the scheduled vessel arrival time.</p>
                 </div>
               </div>
             ) : (
@@ -929,16 +955,25 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                 </div>
 
                 <div>
-                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Requested Arrival</span>
+                  <span className="text-[9px] uppercase font-bold text-slate-400 block">
+                    {selectedArrivalRequestObj.schedule?.vessel_schedule_scheduled_arrival_at ? 'Scheduled Arrival' : 'Requested Arrival'}
+                  </span>
                   <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
-                    {formatDateTime(selectedArrivalRequestObj.vessel_arrival_request_requested_arrival_at)}
+                    {formatDateTime(
+                      selectedArrivalRequestObj.schedule?.vessel_schedule_scheduled_arrival_at ||
+                      selectedArrivalRequestObj.vessel_arrival_request_requested_arrival_at
+                    )}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Requested Departure</span>
-                  <span className="font-mono text-slate-800 dark:text-slate-200 text-[11px] block">
-                    {formatDateTime(selectedArrivalRequestObj.vessel_arrival_request_requested_departure_at)}
+                  <span className="text-[9px] uppercase font-bold text-slate-400 block">Registration Deadline</span>
+                  <span className="font-mono text-amber-600 dark:text-amber-400 font-bold text-[11px] block">
+                    {formatDateTime(
+                      selectedArrivalRequestObj.arrival_deadline ||
+                      selectedArrivalRequestObj.schedule?.vessel_schedule_scheduled_arrival_at ||
+                      selectedArrivalRequestObj.vessel_arrival_request_requested_arrival_at
+                    )}
                   </span>
                 </div>
 

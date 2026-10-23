@@ -902,4 +902,206 @@ class ContainerManagementTestCase(TestCase):
         self.assertEqual(c.container_status, 'RELEASED')
         self.assertEqual(c.container_updated_at, original_updated_at)
 
+    # =========================================================================
+    # 33. Arrival Request Approval Enforcement
+    # =========================================================================
+    def test_33_container_registration_rejected_when_arrival_request_not_approved(self):
+        """Rule 1 & 3: Container registration rejected when linked arrival request is not APPROVED."""
+        now = timezone.now()
+        pending_req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(days=2),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=3),
+            vessel_arrival_request_cargo_type="Containerized",
+            vessel_arrival_request_cargo_quantity=500,
+            vessel_arrival_request_status="PENDING"
+        )
+        cargo_pending = Cargo.objects.create(
+            cargo_arrival_request_id=pending_req,
+            cargo_description="Pending Request Cargo",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("1200.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        payload = {
+            "container_cargo_id": cargo_pending.cargo_id,
+            "container_number": "MSCU9990001",
+            "container_type": "20FT",
+            "container_gross_weight": 19.5
+        }
+        res = self.client.post(
+            '/api/containers/',
+            data=payload,
+            format='json',
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE='shipping_company',
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("APPROVED", res.data['message'])
+
+    # =========================================================================
+    # 34. Arrival Deadline Expiration Enforcement
+    # =========================================================================
+    def test_34_container_registration_rejected_when_arrival_deadline_passed(self):
+        """Rule 2 & 3: Container registration rejected when server time >= scheduled arrival."""
+        now = timezone.now()
+        expired_req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now - timezone.timedelta(hours=2),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=1),
+            vessel_arrival_request_cargo_type="Containerized",
+            vessel_arrival_request_cargo_quantity=500,
+            vessel_arrival_request_status="APPROVED"
+        )
+        cargo_expired = Cargo.objects.create(
+            cargo_arrival_request_id=expired_req,
+            cargo_description="Expired Request Cargo",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("1200.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        payload = {
+            "container_cargo_id": cargo_expired.cargo_id,
+            "container_number": "MSCU9990002",
+            "container_type": "20FT",
+            "container_gross_weight": 19.5
+        }
+        res = self.client.post(
+            '/api/containers/',
+            data=payload,
+            format='json',
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE='shipping_company',
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("scheduled vessel arrival time has passed", res.data['message'])
+
+    # =========================================================================
+    # 35. Scheduled Arrival Override Precedence for Containers
+    # =========================================================================
+    def test_35_container_registration_uses_scheduled_arrival_precedence(self):
+        """Rule 6: VesselSchedule scheduled arrival takes precedence over requested arrival."""
+        now = timezone.now()
+        berth = Berth.objects.create(
+            berth_name="Container Berth 2",
+            berth_code="CB2",
+            berth_type="CONTAINER",
+            berth_max_length=Decimal("350.00"),
+            berth_max_draft=Decimal("16.00"),
+            berth_status="AVAILABLE"
+        )
+        sched_req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(days=2),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=3),
+            vessel_arrival_request_cargo_type="Containerized",
+            vessel_arrival_request_cargo_quantity=500,
+            vessel_arrival_request_status="APPROVED"
+        )
+        from authentication.models import VesselSchedule
+        VesselSchedule.objects.create(
+            vessel_schedule_arrival_request_id=sched_req,
+            vessel_schedule_berth_id=berth,
+            vessel_schedule_scheduled_arrival_at=now - timezone.timedelta(minutes=30),
+            vessel_schedule_scheduled_departure_at=now + timezone.timedelta(days=1),
+            vessel_schedule_status="CONFIRMED"
+        )
+        cargo_sched = Cargo.objects.create(
+            cargo_arrival_request_id=sched_req,
+            cargo_description="Scheduled Precedence Cargo",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("1200.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        payload = {
+            "container_cargo_id": cargo_sched.cargo_id,
+            "container_number": "MSCU9990003",
+            "container_type": "20FT",
+            "container_gross_weight": 19.5
+        }
+        res = self.client.post(
+            '/api/containers/',
+            data=payload,
+            format='json',
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE='shipping_company',
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("scheduled vessel arrival time has passed", res.data['message'])
+
+    # =========================================================================
+    # 36. Existing Containers Updatable and Readable After Deadline
+    # =========================================================================
+    def test_36_existing_containers_readable_and_updatable_after_arrival_deadline(self):
+        """Rule 7 & 8: Existing containers remain readable and updatable after arrival deadline passes."""
+        now = timezone.now()
+        req = VesselArrivalRequest.objects.create(
+            vessel_arrival_request_vessel_id=self.vessel_a,
+            vessel_arrival_request_requested_arrival_at=now + timezone.timedelta(days=1),
+            vessel_arrival_request_requested_departure_at=now + timezone.timedelta(days=2),
+            vessel_arrival_request_cargo_type="Containerized",
+            vessel_arrival_request_cargo_quantity=500,
+            vessel_arrival_request_status="APPROVED"
+        )
+        cargo = Cargo.objects.create(
+            cargo_arrival_request_id=req,
+            cargo_description="Cargo with Pre-Existing Containers",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("1200.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        container = Container.objects.create(
+            container_cargo_id=cargo,
+            container_number="MSCU9990004",
+            container_type="20FT",
+            container_gross_weight=Decimal("18.00"),
+            container_status="REGISTERED"
+        )
+
+        # Move arrival deadline to the past
+        req.vessel_arrival_request_requested_arrival_at = timezone.now() - timezone.timedelta(hours=5)
+        req.save()
+
+        # 1. Existing container must still be retrievable
+        res_get = self.client.get(
+            f'/api/containers/{container.container_id}/',
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE='shipping_company',
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_get.data['data']['container_number'], "MSCU9990004")
+
+        # 2. Existing container can be updated (e.g. gross weight)
+        res_patch = self.client.patch(
+            f'/api/containers/{container.container_id}/',
+            data={"container_gross_weight": 21.5},
+            format='json',
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE='shipping_company',
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        container.refresh_from_db()
+        self.assertEqual(container.container_gross_weight, Decimal("21.50"))
+
 

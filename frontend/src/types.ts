@@ -153,6 +153,7 @@ export interface BackendVesselArrivalRequest {
   duration_hours?: number;
   is_cargo_eligible?: boolean;
   is_expired?: boolean;
+  arrival_deadline?: string | null;
 }
 
 export interface BackendPort {
@@ -197,6 +198,9 @@ export interface BackendCargo {
     company_id?: number;
     requested_arrival_at?: string | null;
     requested_departure_at?: string | null;
+    scheduled_arrival_at?: string | null;
+    arrival_deadline?: string | null;
+    is_cargo_eligible?: boolean;
     status: string;
   } | null;
 }

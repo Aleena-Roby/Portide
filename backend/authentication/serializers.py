@@ -842,6 +842,7 @@ class VesselArrivalRequestSerializer(serializers.ModelSerializer):
     duration_hours = serializers.SerializerMethodField()
     is_cargo_eligible = serializers.SerializerMethodField()
     is_expired = serializers.SerializerMethodField()
+    arrival_deadline = serializers.SerializerMethodField()
 
     class Meta:
         model = VesselArrivalRequest
@@ -865,20 +866,47 @@ class VesselArrivalRequestSerializer(serializers.ModelSerializer):
             'schedule',
             'scheduling_status',
             'is_cargo_eligible',
-            'is_expired'
+            'is_expired',
+            'arrival_deadline'
         ]
 
+    def get_arrival_deadline(self, obj):
+        deadline = obj.get_arrival_deadline() if hasattr(obj, 'get_arrival_deadline') else (
+            obj.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(obj, 'schedule') and obj.schedule and obj.schedule.vessel_schedule_scheduled_arrival_at
+            else obj.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline:
+            if timezone.is_naive(deadline):
+                deadline = timezone.make_aware(deadline)
+            return deadline.isoformat()
+        return None
+
     def get_is_expired(self, obj):
-        if obj.vessel_arrival_request_requested_departure_at:
-            return timezone.now() >= obj.vessel_arrival_request_requested_departure_at
+        deadline = obj.get_arrival_deadline() if hasattr(obj, 'get_arrival_deadline') else (
+            obj.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(obj, 'schedule') and obj.schedule and obj.schedule.vessel_schedule_scheduled_arrival_at
+            else obj.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline:
+            if timezone.is_naive(deadline):
+                deadline = timezone.make_aware(deadline)
+            return timezone.now() >= deadline
         return False
 
     def get_is_cargo_eligible(self, obj):
         if obj.vessel_arrival_request_status != 'APPROVED':
             return False
-        if obj.vessel_arrival_request_requested_departure_at:
-            return timezone.now() < obj.vessel_arrival_request_requested_departure_at
-        return True
+        deadline = obj.get_arrival_deadline() if hasattr(obj, 'get_arrival_deadline') else (
+            obj.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(obj, 'schedule') and obj.schedule and obj.schedule.vessel_schedule_scheduled_arrival_at
+            else obj.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline:
+            if timezone.is_naive(deadline):
+                deadline = timezone.make_aware(deadline)
+            return timezone.now() < deadline
+        return False
 
     def get_duration_hours(self, obj):
         if obj.vessel_arrival_request_requested_arrival_at and obj.vessel_arrival_request_requested_departure_at:
@@ -1154,6 +1182,22 @@ class CargoSerializer(serializers.ModelSerializer):
             return None
         vessel = req.vessel_arrival_request_vessel_id
         shipping_company = vessel.vessel_shipping_company_id if vessel else None
+        deadline = req.get_arrival_deadline() if hasattr(req, 'get_arrival_deadline') else (
+            req.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(req, 'schedule') and req.schedule and req.schedule.vessel_schedule_scheduled_arrival_at
+            else req.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline and timezone.is_naive(deadline):
+            deadline = timezone.make_aware(deadline)
+        scheduled_arrival = (
+            req.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(req, 'schedule') and req.schedule
+            else None
+        )
+        if scheduled_arrival and timezone.is_naive(scheduled_arrival):
+            scheduled_arrival = timezone.make_aware(scheduled_arrival)
+        now = timezone.now()
+        is_cargo_eligible = (req.vessel_arrival_request_status == 'APPROVED') and (deadline is not None and now < deadline)
         return {
             'arrival_request_id': req.vessel_arrival_request_id,
             'vessel_id': vessel.vessel_id if vessel else None,
@@ -1164,6 +1208,9 @@ class CargoSerializer(serializers.ModelSerializer):
             'company_id': shipping_company.shipping_company_id if shipping_company else None,
             'requested_arrival_at': req.vessel_arrival_request_requested_arrival_at.isoformat() if req.vessel_arrival_request_requested_arrival_at else None,
             'requested_departure_at': req.vessel_arrival_request_requested_departure_at.isoformat() if req.vessel_arrival_request_requested_departure_at else None,
+            'scheduled_arrival_at': scheduled_arrival.isoformat() if scheduled_arrival else None,
+            'arrival_deadline': deadline.isoformat() if deadline else None,
+            'is_cargo_eligible': is_cargo_eligible,
             'status': req.vessel_arrival_request_status,
         }
 
@@ -1316,6 +1363,29 @@ class CargoCreateUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "cargo_unit": f"Unit '{cargo_unit}' is not allowed for cargo type '{cargo_type}'. Allowed units: {allowed_str}."
                 })
+        # 3. Validate arrival request approval and arrival deadline for new cargo
+        arrival_req = data.get('cargo_arrival_request_id')
+        if not self.instance or ('cargo_arrival_request_id' in data and data['cargo_arrival_request_id'] != self.instance.cargo_arrival_request_id):
+            if not arrival_req:
+                raise serializers.ValidationError({
+                    "cargo_arrival_request_id": "Vessel arrival request is required."
+                })
+            if arrival_req.vessel_arrival_request_status != 'APPROVED':
+                raise serializers.ValidationError({
+                    "cargo_arrival_request_id": f"Cargo can only be registered against an APPROVED arrival request (current status: {arrival_req.vessel_arrival_request_status})."
+                })
+            deadline = arrival_req.get_arrival_deadline() if hasattr(arrival_req, 'get_arrival_deadline') else (
+                arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+                if hasattr(arrival_req, 'schedule') and arrival_req.schedule and arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+                else arrival_req.vessel_arrival_request_requested_arrival_at
+            )
+            if deadline:
+                if timezone.is_naive(deadline):
+                    deadline = timezone.make_aware(deadline)
+                if timezone.now() >= deadline:
+                    raise serializers.ValidationError({
+                        "cargo_arrival_request_id": "Cargo registration is closed for this arrival request because the scheduled vessel arrival time has passed. Registration closes at the scheduled vessel arrival time."
+                    })
 
         return data
 
@@ -1711,6 +1781,28 @@ class ContainerCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Containers can only be registered for containerized cargo."
             )
+        if not self.instance:
+            arrival_req = value.cargo_arrival_request_id
+            if not arrival_req:
+                raise serializers.ValidationError(
+                    "Containers can only be registered against cargo linked to a valid arrival request."
+                )
+            if arrival_req.vessel_arrival_request_status != 'APPROVED':
+                raise serializers.ValidationError(
+                    f"Container registration requires an APPROVED vessel arrival request (current status: {arrival_req.vessel_arrival_request_status})."
+                )
+            deadline = arrival_req.get_arrival_deadline() if hasattr(arrival_req, 'get_arrival_deadline') else (
+                arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+                if hasattr(arrival_req, 'schedule') and arrival_req.schedule and arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+                else arrival_req.vessel_arrival_request_requested_arrival_at
+            )
+            if deadline:
+                if timezone.is_naive(deadline):
+                    deadline = timezone.make_aware(deadline)
+                if timezone.now() >= deadline:
+                    raise serializers.ValidationError(
+                        "Container registration is closed for this cargo consignment because the scheduled vessel arrival time has passed. Registration closes at the scheduled vessel arrival time."
+                    )
         return value
 
     def validate_container_number(self, value):

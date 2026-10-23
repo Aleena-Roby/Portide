@@ -81,6 +81,22 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
 
   const canAddContainers = isShippingCompany || (!isTerminalOperator && !isCustomsOfficer && currentUser?.role === 'port_administrator');
 
+  const isArrivalDeadlinePassed = useMemo(() => {
+    if (!cargo?.arrival_request_summary) return false;
+    const summary = cargo.arrival_request_summary;
+    if (summary.status !== 'APPROVED') return true;
+    if (summary.is_cargo_eligible !== undefined && !summary.is_cargo_eligible) {
+      return true;
+    }
+    const deadlineStr = summary.arrival_deadline || summary.scheduled_arrival_at || summary.requested_arrival_at;
+    if (deadlineStr) {
+      return Date.now() >= new Date(deadlineStr).getTime();
+    }
+    return false;
+  }, [cargo]);
+
+  const canRegisterNewContainers = canAddContainers && !isArrivalDeadlinePassed;
+
   const [containers, setContainers] = useState<BackendContainer[]>([]);
   const [summary, setSummary] = useState<ContainerSummaryStats | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -206,6 +222,10 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
   }, [isOpen, cargo]);
 
   const handleOpenAdd = () => {
+    if (isArrivalDeadlinePassed) {
+      addToast('Container registration is closed for this consignment because the scheduled vessel arrival time has passed.', 'error');
+      return;
+    }
     setEditingContainer(null);
     setContainerNumber('');
     setContainerType('20FT');
@@ -227,6 +247,12 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
     e.preventDefault();
     if (!cargo) return;
     setFormError('');
+
+    if (!editingContainer && isArrivalDeadlinePassed) {
+      setFormError('Container registration is closed for this cargo consignment because the scheduled vessel arrival time has passed. Registration closes at the scheduled vessel arrival time.');
+      return;
+    }
+
     setSubmitLoading(true);
 
     try {
@@ -515,6 +541,18 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
           </div>
 
           {/* ================================================================= */}
+          {/* ARRIVAL DEADLINE PASSED BANNER */}
+          {/* ================================================================= */}
+          {isArrivalDeadlinePassed && isContainerized && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2.5">
+              <Clock className="w-4 h-4 shrink-0 text-amber-600" />
+              <div>
+                <span className="font-bold">Container Registration Closed:</span> The vessel arrival deadline for this cargo consignment has passed. Registration closes at the scheduled vessel arrival time. Existing containers remain fully available for inspection, tracking, customs, and yard movement.
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
           {/* 2. NON-CONTAINERIZED CARGO GUARD */}
           {/* ================================================================= */}
           {!isContainerized ? (
@@ -671,13 +709,20 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                   </button>
 
                   {canAddContainers && (
-                    <button
-                      onClick={handleOpenAdd}
-                      className="px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831c] transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Container</span>
-                    </button>
+                    isArrivalDeadlinePassed ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-semibold">
+                        <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>Registration Closed</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleOpenAdd}
+                        className="px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-[#D49A24] hover:bg-[#b8831c] transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Container</span>
+                      </button>
+                    )
                   )}
                 </div>
 

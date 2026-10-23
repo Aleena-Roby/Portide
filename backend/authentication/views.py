@@ -1969,8 +1969,10 @@ class ArrivalRequestListCreateAPIView(APIView):
         if eligible_for_cargo and eligible_for_cargo.lower() in ['true', '1']:
             now = timezone.now()
             queryset = queryset.filter(
-                vessel_arrival_request_status='APPROVED',
-                vessel_arrival_request_requested_departure_at__gt=now
+                models.Q(vessel_arrival_request_status='APPROVED') & (
+                    models.Q(schedule__isnull=False, schedule__vessel_schedule_scheduled_arrival_at__gt=now) |
+                    models.Q(schedule__isnull=True, vessel_arrival_request_requested_arrival_at__gt=now)
+                )
             )
         elif status_filter and status_filter.lower() != 'all':
             queryset = queryset.filter(vessel_arrival_request_status__iexact=status_filter.strip())
@@ -3665,10 +3667,13 @@ class CargoListCreateAPIView(APIView):
 
         serializer = CargoCreateUpdateSerializer(data=request.data)
         if not serializer.is_valid():
+            err_msg = "Cargo registration validation failed."
+            if 'cargo_arrival_request_id' in serializer.errors:
+                err_msg = str(serializer.errors['cargo_arrival_request_id'][0])
             return Response(
                 {
                     "status": "error",
-                    "message": "Cargo registration validation failed.",
+                    "message": err_msg,
                     "errors": serializer.errors
                 },
                 status=status.HTTP_400_BAD_REQUEST
@@ -3695,17 +3700,24 @@ class CargoListCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Enforce server-time departure expiration
+        # Enforce server-time arrival deadline
         now = timezone.now()
-        departure_time = arrival_req.vessel_arrival_request_requested_departure_at
-        if departure_time and now >= departure_time:
-            return Response(
-                {
-                    "status": "error",
-                    "message": "This Arrival Request is no longer active for cargo registration because its scheduled departure time has passed. Please select another active approved request."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        deadline = arrival_req.get_arrival_deadline() if hasattr(arrival_req, 'get_arrival_deadline') else (
+            arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(arrival_req, 'schedule') and arrival_req.schedule and arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+            else arrival_req.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline:
+            if timezone.is_naive(deadline):
+                deadline = timezone.make_aware(deadline)
+            if now >= deadline:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Cargo registration is closed for this arrival request because the scheduled vessel arrival time has passed. Registration closes at the scheduled vessel arrival time."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         cargo = serializer.save(cargo_status='REGISTERED')
         actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
@@ -3974,10 +3986,13 @@ class ContainerListCreateAPIView(APIView):
 
         serializer = ContainerCreateUpdateSerializer(data=request.data)
         if not serializer.is_valid():
+            err_msg = "Container registration validation failed."
+            if 'container_cargo_id' in serializer.errors:
+                err_msg = str(serializer.errors['container_cargo_id'][0])
             return Response(
                 {
                     "status": "error",
-                    "message": "Container registration validation failed.",
+                    "message": err_msg,
                     "errors": serializer.errors
                 },
                 status=status.HTTP_400_BAD_REQUEST
@@ -4006,6 +4021,41 @@ class ContainerListCreateAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Enforce that arrival request must be APPROVED and arrival deadline has not passed
+        if not arrival_req:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Containers can only be registered against cargo linked to a valid arrival request."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if arrival_req.vessel_arrival_request_status != 'APPROVED':
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Container registration requires an APPROVED vessel arrival request (current status: {arrival_req.vessel_arrival_request_status})."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        now = timezone.now()
+        deadline = arrival_req.get_arrival_deadline() if hasattr(arrival_req, 'get_arrival_deadline') else (
+            arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+            if hasattr(arrival_req, 'schedule') and arrival_req.schedule and arrival_req.schedule.vessel_schedule_scheduled_arrival_at
+            else arrival_req.vessel_arrival_request_requested_arrival_at
+        )
+        if deadline:
+            if timezone.is_naive(deadline):
+                deadline = timezone.make_aware(deadline)
+            if now >= deadline:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Container registration is closed for this cargo consignment because the scheduled vessel arrival time has passed. Registration closes at the scheduled vessel arrival time."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         container = serializer.save(container_status='REGISTERED')
         actor_name = user_obj.user_full_name if user_obj else company_obj.shipping_company_name
