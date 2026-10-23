@@ -8,6 +8,7 @@ from django.utils import timezone
 import secrets
 import hashlib
 import datetime
+import re
 from django.core.mail import send_mail
 from django.conf import settings
 from django.http import FileResponse, Http404
@@ -9350,11 +9351,13 @@ class YardAllocationPendingListAPIView(APIView):
 
         # Validate actual physical status and vessel/terminal eligibility:
         # Containers in terminal/customs statuses are physically present at terminal.
+        # Successfully discharged containers (with DISCHARGE movement) awaiting allocation.
         # Export containers that have arrived at the gate (status ARRIVED) are physically at terminal.
         # Containers in REGISTERED or ARRIVED must have an arrived/berthed vessel schedule (not SCHEDULED at sea).
         eligible_vessel_statuses = ['ARRIVED', 'AT_BERTH', 'DEPARTED']
         queryset = queryset.filter(
             models.Q(container_status__in=['AT_TERMINAL', 'AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
+            models.Q(yard_movements__yard_movement_movement_type='DISCHARGE') |
             models.Q(
                 container_status='ARRIVED',
                 container_cargo_id__cargo_direction='EXPORT'
@@ -9368,7 +9371,7 @@ class YardAllocationPendingListAPIView(APIView):
                 container_cargo_id__cargo_arrival_request_id__schedule__isnull=True,
                 container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_status__in=['APPROVED', 'ARRIVED', 'BERTHED', 'COMPLETED']
             )
-        )
+        ).distinct()
 
         search = request.query_params.get('search', '').strip()
         status_filter = request.query_params.get('status', '').strip().upper()
@@ -9425,11 +9428,21 @@ class YardAllocationAvailableSlotsAPIView(APIView):
         if block_id and str(block_id).isdigit():
             slots = slots.filter(yard_slot_block_id__yard_block_id=int(block_id))
         if search:
-            slots = slots.filter(
-                models.Q(yard_slot_code__icontains=search) |
-                models.Q(yard_slot_block_id__yard_block_code__icontains=search) |
-                models.Q(yard_slot_block_id__yard_block_yard_id__yard_code__icontains=search)
-            )
+            simple_match = re.match(r'^[yY]0*(\d+)$', search)
+            if simple_match:
+                searched_id = int(simple_match.group(1))
+                slots = slots.filter(
+                    models.Q(yard_slot_id=searched_id) |
+                    models.Q(yard_slot_code__icontains=search) |
+                    models.Q(yard_slot_block_id__yard_block_code__icontains=search) |
+                    models.Q(yard_slot_block_id__yard_block_yard_id__yard_code__icontains=search)
+                )
+            else:
+                slots = slots.filter(
+                    models.Q(yard_slot_code__icontains=search) |
+                    models.Q(yard_slot_block_id__yard_block_code__icontains=search) |
+                    models.Q(yard_slot_block_id__yard_block_yard_id__yard_code__icontains=search)
+                )
 
         slots = slots.order_by(
             'yard_slot_block_id__yard_block_yard_id__yard_code',
@@ -9557,7 +9570,14 @@ class YardAllocationListCreateAPIView(APIView):
                 container.container_cargo_id and
                 container.container_cargo_id.cargo_direction == 'EXPORT'
             )
-            if not is_export_arrived and container.container_status in ['REGISTERED', 'ARRIVED']:
+            is_discharged = (
+                container.container_status == 'AT_TERMINAL' or
+                YardMovementHistory.objects.filter(
+                    yard_movement_container_id=container,
+                    yard_movement_movement_type='DISCHARGE'
+                ).exists()
+            )
+            if not is_export_arrived and not is_discharged and container.container_status in ['REGISTERED', 'ARRIVED']:
                 cargo = container.container_cargo_id
                 arr_req = cargo.cargo_arrival_request_id if cargo else None
                 schedule = getattr(arr_req, 'schedule', None) if arr_req else None
@@ -9645,7 +9665,7 @@ class YardAllocationListCreateAPIView(APIView):
                 yard_movement_movement_type='YARD_ALLOCATION',
                 yard_movement_moved_by_id=user_obj,
                 yard_movement_timestamp=now,
-                yard_movement_remarks=remarks or f"Initial yard allocation to slot {slot.yard_slot_code}."
+                yard_movement_remarks=remarks or f"Initial yard allocation to slot {slot.simple_code} ({slot.yard_slot_code})."
             )
 
             # Record ContainerTrackingEvent for yard positioning
@@ -11291,53 +11311,59 @@ class UnloadingExecuteAPIView(APIView):
                     "message": f"Container '{container.container_number}' is in invalid lifecycle status '{container.container_status}' for discharge."
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # 4. Fetch & lock destination yard slot
-            try:
-                slot = YardSlot.objects.select_for_update().get(pk=slot_id)
-            except YardSlot.DoesNotExist:
-                return Response({
-                    "status": "error",
-                    "message": f"Destination yard slot #{slot_id} not found."
-                }, status=status.HTTP_404_NOT_FOUND)
+            # 4. Fetch & lock destination yard slot (optional)
+            slot = None
+            block = None
+            yard = None
+            allocation = None
 
-            if slot.yard_slot_status != 'AVAILABLE':
-                return Response({
-                    "status": "error",
-                    "message": f"Destination slot '{slot.yard_slot_code}' is {slot.get_yard_slot_status_display()} and not available for discharge."
-                }, status=status.HTTP_400_BAD_REQUEST)
+            if slot_id:
+                try:
+                    slot = YardSlot.objects.select_for_update().get(pk=slot_id)
+                except YardSlot.DoesNotExist:
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination yard slot #{slot_id} not found."
+                    }, status=status.HTTP_404_NOT_FOUND)
 
-            if YardAllocation.objects.filter(yard_allocation_slot_id=slot, yard_allocation_status='ACTIVE').exists():
-                return Response({
-                    "status": "error",
-                    "message": f"Destination slot '{slot.yard_slot_code}' already has an active container allocated."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if slot.yard_slot_status != 'AVAILABLE':
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination slot '{slot.yard_slot_code}' is {slot.get_yard_slot_status_display()} and not available for discharge."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            block = YardBlock.objects.select_for_update().get(pk=slot.yard_slot_block_id.pk)
-            yard = Yard.objects.select_for_update().get(pk=block.yard_block_yard_id.pk)
+                if YardAllocation.objects.filter(yard_allocation_slot_id=slot, yard_allocation_status='ACTIVE').exists():
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination slot '{slot.yard_slot_code}' already has an active container allocated."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if yard.yard_status != 'ACTIVE':
-                return Response({
-                    "status": "error",
-                    "message": f"Destination Yard '{yard.yard_name}' ({yard.yard_code}) is inactive."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                block = YardBlock.objects.select_for_update().get(pk=slot.yard_slot_block_id.pk)
+                yard = Yard.objects.select_for_update().get(pk=block.yard_block_yard_id.pk)
 
-            if block.yard_block_status != 'ACTIVE':
-                return Response({
-                    "status": "error",
-                    "message": f"Destination Block '{block.yard_block_name}' ({block.yard_block_code}) is inactive."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if yard.yard_status != 'ACTIVE':
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination Yard '{yard.yard_name}' ({yard.yard_code}) is inactive."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if block.yard_block_occupied >= block.yard_block_capacity:
-                return Response({
-                    "status": "error",
-                    "message": f"Destination Block '{block.yard_block_code}' capacity limit reached."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if block.yard_block_status != 'ACTIVE':
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination Block '{block.yard_block_name}' ({block.yard_block_code}) is inactive."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if yard.yard_occupied >= yard.yard_capacity:
-                return Response({
-                    "status": "error",
-                    "message": f"Destination Yard '{yard.yard_code}' capacity limit reached."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if block.yard_block_occupied >= block.yard_block_capacity:
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination Block '{block.yard_block_code}' capacity limit reached."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                if yard.yard_occupied >= yard.yard_capacity:
+                    return Response({
+                        "status": "error",
+                        "message": f"Destination Yard '{yard.yard_code}' capacity limit reached."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
             # 5. ATOMIC EXECUTION
             now = timezone.now()
@@ -11346,28 +11372,34 @@ class UnloadingExecuteAPIView(APIView):
             container.container_status = 'AT_TERMINAL'
             container.save(update_fields=['container_status', 'container_updated_at'])
 
-            # Create YardAllocation record
-            discharge_remarks = remarks or f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' via crane '{crane.crane_code}'."
-            allocation = YardAllocation.objects.create(
-                yard_allocation_container_id=container,
-                yard_allocation_slot_id=slot,
-                yard_allocation_crane_allocation_id=crane_alloc,
-                yard_allocation_status='ACTIVE',
-                yard_allocation_allocated_at=now,
-                yard_allocation_allocated_by_id=user_obj,
-                yard_allocation_remarks=discharge_remarks
+            # Create YardAllocation record if destination slot was selected
+            discharge_remarks = remarks or (
+                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' via crane '{crane.crane_code}' into yard slot '{slot.yard_slot_code}'."
+                if slot else
+                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' via crane '{crane.crane_code}'. Container at terminal awaiting yard allocation."
             )
 
-            # Update Slot to OCCUPIED
-            slot.yard_slot_status = 'OCCUPIED'
-            slot.save(update_fields=['yard_slot_status', 'yard_slot_updated_at'])
+            if slot:
+                allocation = YardAllocation.objects.create(
+                    yard_allocation_container_id=container,
+                    yard_allocation_slot_id=slot,
+                    yard_allocation_crane_allocation_id=crane_alloc,
+                    yard_allocation_status='ACTIVE',
+                    yard_allocation_allocated_at=now,
+                    yard_allocation_allocated_by_id=user_obj,
+                    yard_allocation_remarks=discharge_remarks
+                )
 
-            # Recalculate block and yard occupancy TEU
-            block.yard_block_occupied = min(block.yard_block_capacity, block.yard_block_occupied + 1)
-            block.save(update_fields=['yard_block_occupied', 'yard_block_updated_at'])
+                # Update Slot to OCCUPIED
+                slot.yard_slot_status = 'OCCUPIED'
+                slot.save(update_fields=['yard_slot_status', 'yard_slot_updated_at'])
 
-            yard.yard_occupied = min(yard.yard_capacity, yard.yard_occupied + 1)
-            yard.save(update_fields=['yard_occupied', 'yard_updated_at'])
+                # Recalculate block and yard occupancy TEU
+                block.yard_block_occupied = min(block.yard_block_capacity, block.yard_block_occupied + 1)
+                block.save(update_fields=['yard_block_occupied', 'yard_block_updated_at'])
+
+                yard.yard_occupied = min(yard.yard_capacity, yard.yard_occupied + 1)
+                yard.save(update_fields=['yard_occupied', 'yard_updated_at'])
 
             # Record append-only YardMovementHistory for vessel discharge
             movement = YardMovementHistory.objects.create(
@@ -11383,6 +11415,16 @@ class UnloadingExecuteAPIView(APIView):
 
             # Write AuditLog event
             operator_name = user_obj.user_full_name if user_obj else 'Terminal Operator'
+            audit_description = (
+                f"Discharged Container '{container.container_number}' ({container.get_container_type_display()}) "
+                f"from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
+                f"using crane '{crane.crane_code}' into yard slot '{slot.yard_slot_code}' "
+                f"({yard.yard_code} / {block.yard_block_code})."
+                if slot else
+                f"Discharged Container '{container.container_number}' ({container.get_container_type_display()}) "
+                f"from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
+                f"using crane '{crane.crane_code}' to terminal quay apron. Awaiting yard allocation."
+            )
             create_audit_log(
                 user=user_obj or login_obj,
                 actor_name=operator_name,
@@ -11391,22 +11433,24 @@ class UnloadingExecuteAPIView(APIView):
                 category='UNLOADING_OPERATIONS',
                 target_type='Container',
                 target_id=str(container.container_id),
-                description=(
-                    f"Discharged Container '{container.container_number}' ({container.get_container_type_display()}) "
-                    f"from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
-                    f"using crane '{crane.crane_code}' into yard slot '{slot.yard_slot_code}' "
-                    f"({yard.yard_code} / {block.yard_block_code})."
-                ),
+                description=audit_description,
                 status='SUCCESS',
                 request=request
             )
 
-            allocation.refresh_from_db()
+            if allocation:
+                allocation.refresh_from_db()
             container.refresh_from_db()
+
+            msg = (
+                f"Container '{container.container_number}' successfully discharged from vessel '{vessel_name}' into yard slot '{slot.yard_slot_code}'."
+                if slot else
+                f"Container '{container.container_number}' successfully discharged from vessel '{vessel_name}'. Container is at terminal and eligible for yard allocation."
+            )
 
             return Response({
                 "status": "success",
-                "message": f"Container '{container.container_number}' successfully discharged from vessel '{vessel_name}' into yard slot '{slot.yard_slot_code}'.",
+                "message": msg,
                 "data": {
                     "container_id": container.container_id,
                     "container_number": container.container_number,
@@ -11415,11 +11459,12 @@ class UnloadingExecuteAPIView(APIView):
                     "vessel_name": vessel_name,
                     "berth_name": berth.berth_name if berth else 'N/A',
                     "crane_code": crane.crane_code,
-                    "yard_code": yard.yard_code,
-                    "block_code": block.yard_block_code,
-                    "slot_code": slot.yard_slot_code,
-                    "location_display": f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code}",
-                    "allocation_id": allocation.yard_allocation_id,
+                    "yard_code": yard.yard_code if yard else None,
+                    "block_code": block.yard_block_code if block else None,
+                    "slot_code": slot.yard_slot_code if slot else None,
+                    "simple_code": slot.simple_code if slot else None,
+                    "location_display": f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code}" if slot else "Quay Apron (Discharged - Awaiting Yard Allocation)",
+                    "allocation_id": allocation.yard_allocation_id if allocation else None,
                     "movement_id": movement.yard_movement_id,
                     "discharged_at": now.isoformat()
                 }

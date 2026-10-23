@@ -904,3 +904,150 @@ class YardAllocationTestCase(TestCase):
         self.assertEqual(movement.yard_movement_to_slot_id, self.slot2)
         self.assertEqual(movement.yard_movement_moved_by_id, self.user_tlo)
 
+    # =========================================================================
+    # Test 25: Available slots expose simple codes (Y001, Y002, etc.)
+    # =========================================================================
+    def test_25_available_slots_exposes_simple_code(self):
+        """Available operational slots expose mapped simple_code like Y001, Y002."""
+        res = self.client.get('/api/terminal/yard-allocations/available-slots/', **self.headers_tlo)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(res.data['data']), 2)
+
+        slot1_data = next((s for s in res.data['data'] if s['yard_slot_id'] == self.slot1.yard_slot_id), None)
+        self.assertIsNotNone(slot1_data)
+        self.assertEqual(slot1_data['simple_code'], f"Y{self.slot1.yard_slot_id:03d}")
+
+        # Search by simple code
+        search_res = self.client.get(
+            f"/api/terminal/yard-allocations/available-slots/?search=Y{self.slot1.yard_slot_id:03d}",
+            **self.headers_tlo
+        )
+        self.assertEqual(search_res.status_code, status.HTTP_200_OK)
+        searched_codes = [s['simple_code'] for s in search_res.data['data']]
+        self.assertIn(f"Y{self.slot1.yard_slot_id:03d}", searched_codes)
+
+    # =========================================================================
+    # Test 26: Successful allocation using simple code
+    # =========================================================================
+    def test_26_successful_allocation_using_simple_code(self):
+        """Allocate container directly by simple position code (e.g., Y001)."""
+        target_code = f"Y{self.slot1.yard_slot_id:03d}"
+        payload = {
+            "container_id": self.container1.container_id,
+            "simple_code": target_code,
+            "remarks": "Simple code allocation test"
+        }
+        res = self.client.post('/api/terminal/yard-allocations/', payload, format='json', **self.headers_tlo)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['status'], 'success')
+        self.assertEqual(res.data['data']['simple_code'], target_code)
+        self.assertEqual(res.data['data']['yard_slot_code'], self.slot1.yard_slot_code)
+
+        # Slot occupancy updated to OCCUPIED
+        self.slot1.refresh_from_db()
+        self.assertEqual(self.slot1.yard_slot_status, 'OCCUPIED')
+
+        # YardMovementHistory recorded with simple code in remarks
+        movement = YardMovementHistory.objects.filter(
+            yard_movement_container_id=self.container1,
+            yard_movement_movement_type='YARD_ALLOCATION'
+        ).first()
+        self.assertIsNotNone(movement)
+        self.assertEqual(movement.yard_movement_to_slot_id, self.slot1)
+        self.assertEqual(movement.simple_code, target_code)
+
+    # =========================================================================
+    # Test 27: Conflict and validation handling with simple codes
+    # =========================================================================
+    def test_27_conflict_validation_using_simple_code(self):
+        """Validate occupied conflict, duplicate active allocation, and invalid simple codes."""
+        target_code = f"Y{self.slot1.yard_slot_id:03d}"
+        # 1. Allocate container 1 to slot 1
+        res1 = self.client.post(
+            '/api/terminal/yard-allocations/',
+            {"container_id": self.container1.container_id, "simple_code": target_code},
+            format='json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # 2. Try to allocate container 2 to the same simple position code (should be rejected)
+        res2 = self.client.post(
+            '/api/terminal/yard-allocations/',
+            {"container_id": self.container2.container_id, "simple_code": target_code},
+            format='json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("available", res2.data.get('message', '').lower())
+
+        # 3. Try to allocate container 1 again to slot 2 (should be rejected - duplicate active)
+        slot2_code = f"Y{self.slot2.yard_slot_id:03d}"
+        res3 = self.client.post(
+            '/api/terminal/yard-allocations/',
+            {"container_id": self.container1.container_id, "simple_code": slot2_code},
+            format='json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res3.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("active", res3.data.get('message', '').lower())
+
+        # 4. Try invalid code (non-existent slot)
+        res4 = self.client.post(
+            '/api/terminal/yard-allocations/',
+            {"container_id": self.container2.container_id, "simple_code": "Y999999"},
+            format='json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res4.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("not match", res4.data.get('message', '').lower())
+
+    # =========================================================================
+    # Test 28: Discharged container eligible for simplified yard allocation
+    # =========================================================================
+    def test_28_discharged_container_eligible_for_simplified_yard_allocation(self):
+        """A successfully discharged container without a yard slot is eligible for simplified yard allocation."""
+        # Setup container as successfully discharged from vessel
+        discharged_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="DSCH8899001",
+            container_type="40FT",
+            container_gross_weight=Decimal("24.50"),
+            container_status="AT_TERMINAL"
+        )
+        YardMovementHistory.objects.create(
+            yard_movement_container_id=discharged_container,
+            yard_movement_from_slot_id=None,
+            yard_movement_to_slot_id=None,
+            yard_movement_movement_type='DISCHARGE',
+            yard_movement_moved_by_id=self.user_tlo,
+            yard_movement_remarks="Discharged from vessel to quay apron"
+        )
+
+        # 1. Container appears in pending list
+        res_pending = self.client.get(
+            f'/api/terminal/yard-allocations/pending/?search={discharged_container.container_number}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_pending.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_pending.data['data']), 1)
+        self.assertEqual(res_pending.data['data'][0]['container_number'], "DSCH8899001")
+        self.assertEqual(res_pending.data['data'][0]['allocation_status'], "UNALLOCATED")
+        self.assertTrue(res_pending.data['data'][0]['is_discharged'])
+
+        # 2. Assign to available position using simple code Y...
+        target_code = f"Y{self.slot2.yard_slot_id:03d}"
+        payload = {
+            "container_id": discharged_container.container_id,
+            "simple_code": target_code,
+            "remarks": "Allocate discharged container via simple code"
+        }
+        res_alloc = self.client.post('/api/terminal/yard-allocations/', payload, format='json', **self.headers_tlo)
+        self.assertEqual(res_alloc.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_alloc.data['data']['simple_code'], target_code)
+        self.assertEqual(res_alloc.data['data']['yard_slot_code'], self.slot2.yard_slot_code)
+
+        # 3. Confirm slot is now occupied
+        self.slot2.refresh_from_db()
+        self.assertEqual(self.slot2.yard_slot_status, 'OCCUPIED')
+

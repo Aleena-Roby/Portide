@@ -13,19 +13,17 @@ import {
   XCircle,
   ArrowRight,
   ShieldCheck,
-  Truck,
   Ship,
-  Layers,
   ChevronRight,
   ChevronDown,
   Info,
   Building2,
   Calendar,
   User,
-  SlidersHorizontal,
   Unlock,
   Archive,
-  ArrowUpDown
+  ArrowUpDown,
+  Hash
 } from 'lucide-react';
 import { apiFetch } from '../../../services/api';
 import { useApp } from '../../../context/AppContext';
@@ -36,7 +34,6 @@ import {
   YardAllocationItem,
   YardItem,
   YardBlockItem,
-  YardSlotItem,
   CreateYardAllocationPayload,
   ReleaseYardAllocationPayload
 } from '../../../types';
@@ -44,39 +41,32 @@ import {
 export const YardAllocation: React.FC = () => {
   const { addToast } = useApp();
 
-  // Navigation Sub-tab
+  // Navigation Sub-tab: 'pending' (simple code allocation) | 'history' (active & history)
   const [activeSubTab, setActiveSubTab] = useState<'pending' | 'history'>('pending');
 
   // Master Data State
   const [pendingContainers, setPendingContainers] = useState<PendingContainerItem[]>([]);
   const [allocations, setAllocations] = useState<YardAllocationItem[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<AvailableSlotItem[]>([]);
   const [yards, setYards] = useState<YardItem[]>([]);
   const [loadingPending, setLoadingPending] = useState<boolean>(true);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(true);
+  const [loadingSlots, setLoadingSlots] = useState<boolean>(true);
   const [loadingYards, setLoadingYards] = useState<boolean>(false);
+
+  // Per-row chosen simple position code: { [container_id]: string }
+  const [rowSelectedCodes, setRowSelectedCodes] = useState<Record<number, string>>({});
 
   // Filters for Pending Containers
   const [pendingSearch, setPendingSearch] = useState<string>('');
   const [pendingStatusFilter, setPendingStatusFilter] = useState<string>('ALL');
 
-  // Filters for Allocation History
+  // Filters for History / Active Allocations
   const [historySearch, setHistorySearch] = useState<string>('');
-  const [historyYardFilter, setHistoryYardFilter] = useState<string>('ALL');
-  const [historyBlockFilter, setHistoryBlockFilter] = useState<string>('ALL');
   const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('ALL');
 
-  // Allocation Modal State
-  const [isAllocateModalOpen, setIsAllocateModalOpen] = useState<boolean>(false);
-  const [selectedPendingContainer, setSelectedPendingContainer] = useState<PendingContainerItem | null>(null);
-  const [modalYards, setModalYards] = useState<YardItem[]>([]);
-  const [modalBlocks, setModalBlocks] = useState<YardBlockItem[]>([]);
-  const [modalSlots, setModalSlots] = useState<AvailableSlotItem[]>([]);
-  const [selectedYardId, setSelectedYardId] = useState<string>('');
-  const [selectedBlockId, setSelectedBlockId] = useState<string>('');
-  const [selectedSlot, setSelectedSlot] = useState<AvailableSlotItem | null>(null);
-  const [allocationRemarks, setAllocationRemarks] = useState<string>('');
-  const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
-  const [submittingAllocation, setSubmittingAllocation] = useState<boolean>(false);
+  // Inline allocating state: { [container_id]: boolean }
+  const [allocatingContainerIds, setAllocatingContainerIds] = useState<Record<number, boolean>>({});
 
   // Release Modal State
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState<boolean>(false);
@@ -84,8 +74,11 @@ export const YardAllocation: React.FC = () => {
   const [releaseRemarks, setReleaseRemarks] = useState<string>('');
   const [submittingRelease, setSubmittingRelease] = useState<boolean>(false);
 
-  // Detail Modal State
-  const [selectedAllocationDetail, setSelectedAllocationDetail] = useState<YardAllocationItem | null>(null);
+  // Optional Remarks Modal State (for advanced notes)
+  const [isRemarksModalOpen, setIsRemarksModalOpen] = useState<boolean>(false);
+  const [remarksContainer, setRemarksContainer] = useState<PendingContainerItem | null>(null);
+  const [remarksCode, setRemarksCode] = useState<string>('');
+  const [customRemarks, setCustomRemarks] = useState<string>('');
 
   // =========================================================================
   // DATA FETCHING & RESPONSE PARSING
@@ -107,6 +100,24 @@ export const YardAllocation: React.FC = () => {
     return data;
   };
 
+  const fetchAvailableSlots = useCallback(async () => {
+    setLoadingSlots(true);
+    try {
+      const res = await apiFetch('/api/terminal/yard-allocations/available-slots/');
+      const data = await parseApiResponse(res);
+      if (data && data.status === 'success' && Array.isArray(data.data)) {
+        setAvailableSlots(data.data);
+      } else {
+        setAvailableSlots([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to load available slots:', err);
+      setAvailableSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, []);
+
   const fetchPendingContainers = useCallback(async () => {
     setLoadingPending(true);
     try {
@@ -121,14 +132,14 @@ export const YardAllocation: React.FC = () => {
       if (data && data.status === 'success' && Array.isArray(data.data)) {
         setPendingContainers(data.data);
       } else {
-        throw new Error('Invalid response envelope from server.');
+        setPendingContainers([]);
       }
     } catch (err: any) {
       console.error('Failed to load pending containers:', err);
       addToast(
         'error',
-        'Pending Load Error',
-        err.message || 'Unable to fetch pending container allocation records.'
+        'Load Error',
+        err.message || 'Unable to fetch pending container records.'
       );
       setPendingContainers([]);
     } finally {
@@ -142,8 +153,6 @@ export const YardAllocation: React.FC = () => {
       let url = '/api/terminal/yard-allocations/';
       const params = new URLSearchParams();
       if (historySearch.trim()) params.append('search', historySearch.trim());
-      if (historyYardFilter !== 'ALL') params.append('yard_id', historyYardFilter);
-      if (historyBlockFilter !== 'ALL') params.append('block_id', historyBlockFilter);
       if (historyStatusFilter !== 'ALL') params.append('status', historyStatusFilter);
       if (params.toString()) url += `?${params.toString()}`;
 
@@ -152,20 +161,15 @@ export const YardAllocation: React.FC = () => {
       if (data && data.status === 'success' && Array.isArray(data.data)) {
         setAllocations(data.data);
       } else {
-        throw new Error('Invalid response envelope from server.');
+        setAllocations([]);
       }
     } catch (err: any) {
       console.error('Failed to load yard allocations history:', err);
-      addToast(
-        'error',
-        'History Load Error',
-        err.message || 'Unable to fetch yard allocation records.'
-      );
       setAllocations([]);
     } finally {
       setLoadingHistory(false);
     }
-  }, [historySearch, historyYardFilter, historyBlockFilter, historyStatusFilter, addToast]);
+  }, [historySearch, historyStatusFilter]);
 
   const fetchYards = useCallback(async () => {
     setLoadingYards(true);
@@ -174,147 +178,64 @@ export const YardAllocation: React.FC = () => {
       const data = await parseApiResponse(res);
       if (data && data.status === 'success' && Array.isArray(data.data)) {
         setYards(data.data);
-      } else {
-        throw new Error('Invalid response envelope from server.');
       }
     } catch (err: any) {
-      console.error('Failed to load operational yards:', err);
-      addToast(
-        'error',
-        'Yards Load Error',
-        err.message || 'Unable to load operational yards.'
-      );
+      console.error('Failed to load yards:', err);
     } finally {
       setLoadingYards(false);
     }
-  }, [addToast]);
+  }, []);
 
-  useEffect(() => {
+  const refreshAll = useCallback(() => {
     fetchPendingContainers();
     fetchAllocations();
+    fetchAvailableSlots();
     fetchYards();
-  }, [fetchPendingContainers, fetchAllocations, fetchYards]);
+  }, [fetchPendingContainers, fetchAllocations, fetchAvailableSlots, fetchYards]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
+
+  // Pre-populate row selection with the first available simple code if not already set
+  useEffect(() => {
+    if (availableSlots.length > 0 && pendingContainers.length > 0) {
+      setRowSelectedCodes(prev => {
+        const next = { ...prev };
+        const defaultCode = availableSlots[0].simple_code || `Y${String(availableSlots[0].slot_id).padStart(3, '0')}`;
+        pendingContainers.forEach((c, idx) => {
+          if (!next[c.container_id]) {
+            // Assign available slots sequentially by default for operator convenience
+            const slotItem = availableSlots[idx % availableSlots.length];
+            next[c.container_id] = slotItem.simple_code || `Y${String(slotItem.slot_id).padStart(3, '0')}`;
+          }
+        });
+        return next;
+      });
+    }
+  }, [availableSlots, pendingContainers]);
 
   // =========================================================================
-  // ALLOCATION MODAL WORKFLOW
+  // SIMPLIFIED ALLOCATION ACTION
   // =========================================================================
 
-  const handleOpenAllocateModal = async (container: PendingContainerItem) => {
-    setSelectedPendingContainer(container);
-    setSelectedSlot(null);
-    setAllocationRemarks('');
-    setSelectedYardId('');
-    setSelectedBlockId('');
-    setModalBlocks([]);
-    setModalSlots([]);
-    setIsAllocateModalOpen(true);
-
-    try {
-      const res = await apiFetch('/api/terminal/yards/?status=ACTIVE');
-      const data = await parseApiResponse(res);
-      if (data && data.status === 'success' && Array.isArray(data.data)) {
-        setModalYards(data.data);
-        if (data.data.length > 0) {
-          const firstYard = data.data[0];
-          setSelectedYardId(String(firstYard.yard_id));
-          await loadBlocksForYard(firstYard.yard_id);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load yards for allocation modal:', err);
-    }
-  };
-
-  const loadBlocksForYard = async (yardId: number) => {
-    try {
-      const res = await apiFetch(`/api/terminal/yards/${yardId}/blocks/?status=ACTIVE`);
-      const data = await parseApiResponse(res);
-      if (data && data.status === 'success' && Array.isArray(data.data)) {
-        setModalBlocks(data.data);
-        if (data.data.length > 0) {
-          const firstBlock = data.data[0];
-          setSelectedBlockId(String(firstBlock.yard_block_id));
-          await loadAvailableSlots(yardId, firstBlock.yard_block_id);
-        } else {
-          setSelectedBlockId('');
-          setModalSlots([]);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load blocks for yard:', err);
-      setModalBlocks([]);
-      setModalSlots([]);
-    }
-  };
-
-  const loadAvailableSlots = async (yardId?: number, blockId?: number) => {
-    setLoadingSlots(true);
-    setSelectedSlot(null);
-    try {
-      let url = '/api/terminal/yard-allocations/available-slots/';
-      const params = new URLSearchParams();
-      if (yardId) params.append('yard_id', String(yardId));
-      if (blockId) params.append('block_id', String(blockId));
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const res = await apiFetch(url);
-      const data = await parseApiResponse(res);
-      if (data && data.status === 'success' && Array.isArray(data.data)) {
-        setModalSlots(data.data);
-      } else {
-        setModalSlots([]);
-      }
-    } catch (err: any) {
-      console.error('Failed to load available slots:', err);
-      addToast(
-        'error',
-        'Slots Error',
-        err.message || 'Unable to retrieve available storage slots.'
-      );
-      setModalSlots([]);
-    } finally {
-      setLoadingSlots(false);
-    }
-  };
-
-  const handleYardChange = async (newYardId: string) => {
-    setSelectedYardId(newYardId);
-    setSelectedSlot(null);
-    if (!newYardId) {
-      setModalBlocks([]);
-      setModalSlots([]);
-      setSelectedBlockId('');
-      return;
-    }
-    await loadBlocksForYard(Number(newYardId));
-  };
-
-  const handleBlockChange = async (newBlockId: string) => {
-    setSelectedBlockId(newBlockId);
-    setSelectedSlot(null);
-    if (!newBlockId) {
-      setModalSlots([]);
-      return;
-    }
-    await loadAvailableSlots(Number(selectedYardId), Number(newBlockId));
-  };
-
-  const handleConfirmAllocation = async () => {
-    if (!selectedPendingContainer || !selectedSlot) {
+  const handleAllocatePosition = async (container: PendingContainerItem, explicitRemarks?: string) => {
+    const chosenCode = rowSelectedCodes[container.container_id] || (availableSlots[0]?.simple_code ?? '');
+    if (!chosenCode) {
       addToast(
         'warning',
-        'Slot Required',
-        'Please choose an available storage slot to allocate the container.'
+        'Position Code Required',
+        'Please select a valid simple yard position code (e.g., Y001, Y002).'
       );
       return;
     }
 
-    setSubmittingAllocation(true);
+    setAllocatingContainerIds(prev => ({ ...prev, [container.container_id]: true }));
     try {
       const payload: CreateYardAllocationPayload = {
-        container_id: selectedPendingContainer.container_id,
-        slot_id: selectedSlot.yard_slot_id || selectedSlot.slot_id,
-        remarks: allocationRemarks.trim()
+        container_id: container.container_id,
+        simple_code: chosenCode,
+        remarks: explicitRemarks ? explicitRemarks.trim() : `Allocated to position ${chosenCode}.`
       };
 
       const res = await apiFetch('/api/terminal/yard-allocations/', {
@@ -328,29 +249,27 @@ export const YardAllocation: React.FC = () => {
       if (data && (data.status === 'success' || res.status === 201)) {
         addToast(
           'success',
-          'Allocation Successful',
-          `Container ${selectedPendingContainer.container_number} successfully allocated to slot ${selectedSlot.slot_code || selectedSlot.yard_slot_code}.`
+          'Position Allocated',
+          `Container ${container.container_number} successfully allocated to position ${chosenCode} (${data.data?.yard_slot_code || 'Yard Slot'}).`
         );
-        setIsAllocateModalOpen(false);
-        setSelectedPendingContainer(null);
-        setSelectedSlot(null);
-        setAllocationRemarks('');
-        // Refresh views
-        fetchPendingContainers();
-        fetchAllocations();
-        fetchYards();
+        if (isRemarksModalOpen) {
+          setIsRemarksModalOpen(false);
+          setRemarksContainer(null);
+          setCustomRemarks('');
+        }
+        refreshAll();
       } else {
-        throw new Error(data?.message || 'Allocation failed.');
+        throw new Error(data?.message || 'Failed to allocate position.');
       }
     } catch (err: any) {
       console.error('Allocation error:', err);
       addToast(
         'error',
         'Allocation Failed',
-        err.message || 'Failed to complete container allocation. Please re-check slot availability.'
+        err.message || 'Failed to complete container allocation. Please re-check position code.'
       );
     } finally {
-      setSubmittingAllocation(false);
+      setAllocatingContainerIds(prev => ({ ...prev, [container.container_id]: false }));
     }
   };
 
@@ -382,35 +301,29 @@ export const YardAllocation: React.FC = () => {
       const data = await parseApiResponse(res);
 
       if (data && data.status === 'success') {
+        const releasedCode = allocationToRelease.simple_code || allocationToRelease.slot_code || allocationToRelease.yard_slot_code;
         addToast(
           'success',
-          'Slot Released',
-          `Container ${allocationToRelease.container_number} released from slot ${allocationToRelease.slot_code || allocationToRelease.yard_slot_code}. Slot is now AVAILABLE.`
+          'Position Released',
+          `Container ${allocationToRelease.container_number} released from position ${releasedCode}. Position is now AVAILABLE.`
         );
         setIsReleaseModalOpen(false);
         setAllocationToRelease(null);
         setReleaseRemarks('');
-        // Refresh views
-        fetchPendingContainers();
-        fetchAllocations();
-        fetchYards();
+        refreshAll();
       } else {
         throw new Error(data?.message || 'Release failed.');
       }
     } catch (err: any) {
       console.error('Release error:', err);
-      addToast(
-        'error',
-        'Release Failed',
-        err.message || 'Failed to release slot.'
-      );
+      addToast('error', 'Release Failed', err.message || 'Failed to release position.');
     } finally {
       setSubmittingRelease(false);
     }
   };
 
   // =========================================================================
-  // STATS CALCULATIONS
+  // COMPUTED STATS
   // =========================================================================
 
   const stats = useMemo(() => {
@@ -421,189 +334,159 @@ export const YardAllocation: React.FC = () => {
 
     return {
       pendingCount: pendingContainers.length,
+      availablePositionsCount: availableSlots.length,
       activeAllocations: activeAllocCount,
-      totalCapacity: totalCap,
-      occupiedSlots: totalOcc,
       occupancyPercentage: overallRate
     };
-  }, [pendingContainers, allocations, yards]);
+  }, [pendingContainers, availableSlots, allocations, yards]);
 
-  // Helper for status badge
-  const renderStatusBadge = (status: string, display?: string) => {
-    const text = display || status;
-    switch (status) {
-      case 'ACTIVE':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-            <CheckCircle className="w-3 h-3 text-emerald-500" />
-            <span>ACTIVE</span>
-          </span>
-        );
-      case 'RELEASED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/30">
-            <Archive className="w-3 h-3 text-slate-500" />
-            <span>RELEASED</span>
-          </span>
-        );
-      case 'AVAILABLE':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30">
-            <CheckCircle2 className="w-3 h-3 text-sky-500" />
-            <span>AVAILABLE</span>
-          </span>
-        );
-      case 'OCCUPIED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-            <Boxes className="w-3 h-3 text-amber-500" />
-            <span>OCCUPIED</span>
-          </span>
-        );
-      case 'AT_TERMINAL':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-            <Warehouse className="w-3 h-3 text-amber-500" />
-            <span>At Terminal</span>
-          </span>
-        );
-      case 'ARRIVED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
-            <Ship className="w-3 h-3 text-indigo-500" />
-            <span>Arrived</span>
-          </span>
-        );
-      case 'REGISTERED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-            <Clock className="w-3 h-3 text-blue-500" />
-            <span>Registered</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-            {text}
-          </span>
-        );
-    }
-  };
-
-  const formatDate = (isoStr?: string | null) => {
-    if (!isoStr) return '—';
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return isoStr;
-    }
+  // Find slot item details by simple code
+  const getSlotDetails = (code: string): AvailableSlotItem | undefined => {
+    return availableSlots.find(
+      s => s.simple_code === code || s.yard_slot_code === code || `Y${String(s.slot_id).padStart(3, '0')}` === code
+    );
   };
 
   return (
-    <div id="yard-allocation-page" className="space-y-6 font-sans selection:bg-[#D49A24] selection:text-white animate-fade-in pb-12">
+    <div className="space-y-6">
       {/* ===================================================================== */}
-      {/* 1. PAGE HEADER */}
+      {/* 1. COMPACT EXECUTIVE HEADER */}
       {/* ===================================================================== */}
-      <div className="p-6 sm:p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black">
-              <MapPin className="w-5 h-5 text-[#D49A24]" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                Container Yard Allocation & Storage
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-normal">
-                Allocate inbound and terminal containers to operational physical yard slots with coordinate mapping and history tracking.
-              </p>
-            </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 rounded-3xl text-white shadow-lg border border-slate-700/50">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-[#D49A24]/20 text-[#E0A838] border border-[#D49A24]/30 mb-2">
+            <Hash className="w-3.5 h-3.5" />
+            <span>Code-Based Yard Management</span>
           </div>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+            <span>Yard Position Allocation</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Assign successfully discharged containers directly to available yard positions using simple codes (e.g., Y001, Y002, Y003).
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 self-start md:self-auto">
           <button
-            onClick={() => {
-              fetchPendingContainers();
-              fetchAllocations();
-              fetchYards();
-            }}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
-            title="Refresh Data"
+            id="refresh-yard-allocation-btn"
+            onClick={refreshAll}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 transition-colors inline-flex items-center gap-2 border border-slate-700 cursor-pointer shadow-xs"
+            title="Refresh All Records"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingPending || loadingHistory ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loadingPending || loadingSlots || loadingHistory ? 'animate-spin text-[#D49A24]' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {/* ===================================================================== */}
-      {/* 2. STATS SUMMARY CARDS */}
+      {/* 2. STATS OVERVIEW CARDS */}
       {/* ===================================================================== */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Pending Containers */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <span>Pending Allocation</span>
+            <span>Awaiting Allocation</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 font-mono">
             {stats.pendingCount}
           </div>
-          <span className="text-[11px] text-slate-400 block">Eligible containers awaiting slot placement</span>
+          <span className="text-[11px] text-slate-400 block">Discharged containers ready for placement</span>
         </div>
 
-        {/* Active Allocations */}
+        {/* Available Positions */}
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span>Available Positions</span>
+            <MapPin className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+            {stats.availablePositionsCount}
+          </div>
+          <span className="text-[11px] text-slate-400 block">Real operational yard positions free</span>
+        </div>
+
+        {/* Active Stored Containers */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             <span>Active Yard Storage</span>
-            <Boxes className="w-4 h-4 text-emerald-500" />
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-            {stats.activeAllocations}
-          </div>
-          <span className="text-[11px] text-slate-400 block">Containers currently parked in slots</span>
-        </div>
-
-        {/* Total Occupancy Rate */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <span>Yard Occupancy</span>
-            <Warehouse className="w-4 h-4 text-sky-500" />
+            <Boxes className="w-4 h-4 text-sky-500" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-sky-600 dark:text-sky-400 font-mono">
-            {stats.occupancyPercentage}%
+            {stats.activeAllocations}
           </div>
-          <span className="text-[11px] text-slate-400 block">
-            {stats.occupiedSlots} / {stats.totalCapacity} total yard capacity
-          </span>
+          <span className="text-[11px] text-slate-400 block">Containers currently parked in positions</span>
         </div>
 
-        {/* Operational Yards */}
+        {/* Yard Occupancy */}
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-1">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <span>Active Storage Yards</span>
-            <Building2 className="w-4 h-4 text-purple-500" />
+            <span>Terminal Occupancy</span>
+            <Warehouse className="w-4 h-4 text-purple-500" />
           </div>
           <div className="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400 font-mono">
-            {yards.length}
+            {stats.occupancyPercentage}%
           </div>
-          <span className="text-[11px] text-slate-400 block">Configured physical terminal yards</span>
+          <span className="text-[11px] text-slate-400 block">Overall yard capacity utilization</span>
         </div>
       </div>
 
       {/* ===================================================================== */}
-      {/* 3. NAVIGATION SUB-TABS */}
+      {/* 3. REAL AVAILABLE SIMPLE CODES QUICK STRIP */}
+      {/* ===================================================================== */}
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Warehouse className="w-4 h-4 text-[#D49A24]" />
+            <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              Operational Yard Positions Directory
+            </span>
+          </div>
+          <span className="text-[11px] font-bold text-slate-400">
+            {availableSlots.length} available code{availableSlots.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        {loadingSlots ? (
+          <div className="py-3 text-xs text-slate-400 flex items-center gap-2">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#D49A24]" />
+            <span>Loading real position codes...</span>
+          </div>
+        ) : availableSlots.length === 0 ? (
+          <div className="py-3 px-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>All yard slots are currently occupied or unavailable. Release active slots to free positions.</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {availableSlots.map((slot) => {
+              const code = slot.simple_code || `Y${String(slot.slot_id).padStart(3, '0')}`;
+              return (
+                <div
+                  key={slot.slot_id}
+                  id={`slot-badge-${code}`}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2 shadow-2xs"
+                  title={`${slot.location_display} (Row ${slot.slot_row}, Bay ${slot.slot_bay}, Tier ${slot.slot_tier})`}
+                >
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-black text-emerald-900 dark:text-emerald-200">{code}</span>
+                  <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 font-sans font-medium">
+                    {slot.block_code}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ===================================================================== */}
+      {/* 4. SUB-TABS NAVIGATION */}
       {/* ===================================================================== */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
         <button
+          id="tab-pending-allocations"
           onClick={() => setActiveSubTab('pending')}
           className={`pb-3 px-3 text-sm font-black transition-all cursor-pointer relative flex items-center gap-2 ${
             activeSubTab === 'pending'
@@ -619,6 +502,7 @@ export const YardAllocation: React.FC = () => {
         </button>
 
         <button
+          id="tab-active-allocations"
           onClick={() => setActiveSubTab('history')}
           className={`pb-3 px-3 text-sm font-black transition-all cursor-pointer relative flex items-center gap-2 ${
             activeSubTab === 'history'
@@ -635,15 +519,16 @@ export const YardAllocation: React.FC = () => {
       </div>
 
       {/* ===================================================================== */}
-      {/* 4. SECTION: PENDING YARD ALLOCATION */}
+      {/* 5. TAB 1: PENDING YARD ALLOCATION (SIMPLIFIED 5-ITEM TABLE) */}
       {/* ===================================================================== */}
       {activeSubTab === 'pending' && (
         <div className="space-y-4">
-          {/* Filters Bar */}
+          {/* Filter Bar */}
           <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
             <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
+                id="search-pending-containers"
                 type="text"
                 value={pendingSearch}
                 onChange={(e) => setPendingSearch(e.target.value)}
@@ -658,6 +543,7 @@ export const YardAllocation: React.FC = () => {
                 <span className="font-bold">Status:</span>
               </div>
               <select
+                id="filter-pending-status"
                 value={pendingStatusFilter}
                 onChange={(e) => setPendingStatusFilter(e.target.value)}
                 className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#D49A24]"
@@ -666,115 +552,161 @@ export const YardAllocation: React.FC = () => {
                 <option value="AT_TERMINAL">At Terminal</option>
                 <option value="ARRIVED">Arrived</option>
                 <option value="REGISTERED">Registered</option>
-                <option value="AWAITING_CUSTOMS">Awaiting Customs</option>
-                <option value="UNDER_INSPECTION">Under Inspection</option>
                 <option value="CLEARED">Cleared</option>
               </select>
             </div>
           </div>
 
-          {/* Pending Container Table */}
+          {/* SIMPLIFIED ALLOCATION TABLE */}
           <div className="overflow-x-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <table id="pending-container-table" className="w-full text-left text-xs border-collapse">
+            <table id="yard-allocation-screen-table" className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-black uppercase tracking-wider text-[10px]">
-                  <th className="p-3.5">Container Number</th>
-                  <th className="p-3.5">Type & Size</th>
-                  <th className="p-3.5">Gross Weight</th>
-                  <th className="p-3.5">Current Status</th>
-                  <th className="p-3.5">Vessel & Manifest</th>
-                  <th className="p-3.5">Customs Status</th>
-                  <th className="p-3.5">Allocation Status</th>
-                  <th className="p-3.5 text-right">Action</th>
+                  <th className="p-4 w-1/4">Container Number</th>
+                  <th className="p-4 w-1/4">Vessel</th>
+                  <th className="p-4 w-1/6">Allocation Status</th>
+                  <th className="p-4 w-1/4">Simple Yard Position Code</th>
+                  <th className="p-4 w-1/6 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
                 {loadingPending ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
+                    <td colSpan={5} className="p-10 text-center text-slate-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#D49A24]" />
-                      <span>Loading pending containers...</span>
+                      <span>Loading pending discharged containers...</span>
                     </td>
                   </tr>
                 ) : pendingContainers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-slate-400">
-                      <Boxes className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                    <td colSpan={5} className="p-12 text-center text-slate-400">
+                      <Boxes className="w-10 h-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
                       <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No Pending Containers Awaiting Allocation</p>
-                      <p className="text-xs text-slate-400 mt-1">All eligible unloaded containers currently have physical yard allocations assigned.</p>
+                      <p className="text-xs text-slate-400 mt-1">All eligible unloaded containers currently have physical yard positions assigned.</p>
                     </td>
                   </tr>
                 ) : (
-                  pendingContainers.map((container) => (
-                    <tr
-                      key={container.container_id}
-                      id={`pending-container-row-${container.container_id}`}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
-                        <div>{container.container_number}</div>
-                        <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                          container.trade_direction === 'EXPORT'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                        }`}>
-                          {container.trade_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
-                        </span>
-                      </td>
+                  pendingContainers.map((container) => {
+                    const currentCode = rowSelectedCodes[container.container_id] || (availableSlots[0]?.simple_code ?? '');
+                    const currentSlot = getSlotDetails(currentCode);
+                    const isAllocating = Boolean(allocatingContainerIds[container.container_id]);
 
-                      <td className="p-3.5">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">
-                          {container.container_type_display || container.container_type}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block font-mono">
-                          {container.teu_equivalent} TEU
-                        </span>
-                      </td>
+                    return (
+                      <tr
+                        key={container.container_id}
+                        id={`allocation-row-${container.container_id}`}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        {/* 1. Container Number */}
+                        <td className="p-4">
+                          <div className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                            {container.container_number}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              container.trade_direction === 'EXPORT'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
+                            }`}>
+                              {container.trade_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {container.container_type_display || container.container_type} • {container.container_gross_weight} MT
+                            </span>
+                          </div>
+                        </td>
 
-                      <td className="p-3.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                        {container.container_gross_weight} MT
-                      </td>
+                        {/* 2. Vessel */}
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <Ship className="w-3.5 h-3.5 text-[#D49A24] shrink-0" />
+                            <span className="truncate max-w-[200px]">{container.vessel_name || 'Carrier Vessel'}</span>
+                          </div>
+                          {container.arrival_request_id && (
+                            <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                              Arrival Req #{container.arrival_request_id}
+                            </span>
+                          )}
+                        </td>
 
-                      <td className="p-3.5">
-                        {renderStatusBadge(container.container_status, container.container_status_display)}
-                      </td>
+                        {/* 3. Allocation Status */}
+                        <td className="p-4">
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                            <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+                            <span>UNALLOCATED</span>
+                          </div>
+                          {container.is_discharged && (
+                            <span className="block mt-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                              ✓ Successfully Discharged
+                            </span>
+                          )}
+                        </td>
 
-                      <td className="p-3.5">
-                        <div className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[160px]">
-                          {container.vessel_name}
-                        </div>
-                        {container.arrival_request_id && (
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            Req #{container.arrival_request_id}
-                          </span>
-                        )}
-                      </td>
+                        {/* 4. Simple Yard Position Code */}
+                        <td className="p-4">
+                          {availableSlots.length === 0 ? (
+                            <div className="text-xs text-rose-500 font-bold flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>No positions available</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1 max-w-[240px]">
+                              <div className="relative">
+                                <select
+                                  id={`select-position-code-${container.container_id}`}
+                                  value={currentCode}
+                                  onChange={(e) => {
+                                    const newCode = e.target.value;
+                                    setRowSelectedCodes(prev => ({
+                                      ...prev,
+                                      [container.container_id]: newCode
+                                    }));
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D49A24] focus:ring-1 focus:ring-[#D49A24]"
+                                >
+                                  {availableSlots.map(slot => {
+                                    const code = slot.simple_code || `Y${String(slot.slot_id).padStart(3, '0')}`;
+                                    return (
+                                      <option key={slot.slot_id} value={code}>
+                                        {code} ({slot.block_code} • Row {slot.slot_row}, Bay {slot.slot_bay}, Tier {slot.slot_tier})
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                              {currentSlot && (
+                                <div className="text-[10px] text-slate-400 font-mono truncate" title={currentSlot.location_display}>
+                                  Mapped: {currentSlot.location_display}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
 
-                      <td className="p-3.5">
-                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                          {container.customs_status_display || 'Not Inspected'}
-                        </span>
-                      </td>
-
-                      <td className="p-3.5">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/30">
-                          <Clock className="w-2.5 h-2.5" />
-                          <span>UNALLOCATED</span>
-                        </span>
-                      </td>
-
-                      <td className="p-3.5 text-right">
-                        <button
-                          id={`allocate-container-btn-${container.container_id}`}
-                          onClick={() => handleOpenAllocateModal(container)}
-                          className="px-3.5 py-1.5 rounded-xl bg-[#D49A24] hover:bg-[#b88219] text-white font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
-                        >
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>Allocate</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        {/* 5. Allocate Position Action */}
+                        <td className="p-4 text-right">
+                          <button
+                            id={`allocate-position-btn-${container.container_id}`}
+                            disabled={availableSlots.length === 0 || isAllocating}
+                            onClick={() => handleAllocatePosition(container)}
+                            className="px-4 py-2 rounded-xl bg-[#D49A24] hover:bg-[#b88219] disabled:bg-slate-300 dark:disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold text-xs transition-all inline-flex items-center gap-1.5 shadow-sm cursor-pointer hover:shadow"
+                          >
+                            {isAllocating ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Allocating...</span>
+                              </>
+                            ) : (
+                              <>
+                                <MapPin className="w-3.5 h-3.5" />
+                                <span>Allocate Position</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -783,185 +715,150 @@ export const YardAllocation: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* 5. SECTION: ALLOCATION HISTORY & CURRENT LOCATIONS */}
+      {/* 6. TAB 2: ACTIVE ALLOCATIONS & MOVEMENT HISTORY */}
       {/* ===================================================================== */}
       {activeSubTab === 'history' && (
         <div className="space-y-4">
           {/* Filters Bar */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shadow-xs">
-            <div className="relative">
+          <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
+            <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
+                id="search-allocations-history"
                 type="text"
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                placeholder="Search container or slot..."
+                placeholder="Search container, vessel, or position code..."
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#D49A24]"
               />
             </div>
 
-            <div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <Filter className="w-3.5 h-3.5" />
+                <span className="font-bold">Status:</span>
+              </div>
               <select
-                value={historyYardFilter}
-                onChange={(e) => {
-                  setHistoryYardFilter(e.target.value);
-                  setHistoryBlockFilter('ALL');
-                }}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#D49A24]"
-              >
-                <option value="ALL">All Storage Yards</option>
-                {yards.map(y => (
-                  <option key={y.yard_id} value={String(y.yard_id)}>
-                    {y.yard_name} ({y.yard_code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
+                id="filter-history-status"
                 value={historyStatusFilter}
                 onChange={(e) => setHistoryStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#D49A24]"
+                className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#D49A24]"
               >
-                <option value="ALL">All Allocation Statuses</option>
-                <option value="ACTIVE">ACTIVE (Currently in Slot)</option>
-                <option value="RELEASED">RELEASED (Historical)</option>
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active Storage</option>
+                <option value="RELEASED">Released</option>
               </select>
-            </div>
-
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setHistorySearch('');
-                  setHistoryYardFilter('ALL');
-                  setHistoryBlockFilter('ALL');
-                  setHistoryStatusFilter('ALL');
-                }}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors cursor-pointer w-full"
-              >
-                Reset Filters
-              </button>
             </div>
           </div>
 
-          {/* Allocation History Table */}
+          {/* Active Allocations Table */}
           <div className="overflow-x-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <table id="allocation-history-table" className="w-full text-left text-xs border-collapse">
+            <table id="allocations-history-table" className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-black uppercase tracking-wider text-[10px]">
-                  <th className="p-3.5">Container</th>
-                  <th className="p-3.5">Current Physical Location</th>
-                  <th className="p-3.5">Coordinates</th>
-                  <th className="p-3.5">Status</th>
-                  <th className="p-3.5">Allocated At</th>
-                  <th className="p-3.5">Allocated By</th>
-                  <th className="p-3.5">Release Info</th>
-                  <th className="p-3.5 text-right">Actions</th>
+                  <th className="p-4">Container Number</th>
+                  <th className="p-4">Vessel</th>
+                  <th className="p-4">Allocation Status</th>
+                  <th className="p-4">Simple Yard Position Code</th>
+                  <th className="p-4">Allocated At</th>
+                  <th className="p-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
                 {loadingHistory ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
+                    <td colSpan={6} className="p-10 text-center text-slate-400">
                       <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#D49A24]" />
                       <span>Loading allocation records...</span>
                     </td>
                   </tr>
                 ) : allocations.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-12 text-center text-slate-400">
-                      <Warehouse className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                      <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No Yard Allocations Found</p>
-                      <p className="text-xs text-slate-400 mt-1">Allocate pending containers to storage slots to view records here.</p>
+                    <td colSpan={6} className="p-12 text-center text-slate-400">
+                      <Archive className="w-10 h-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                      <p className="font-bold text-slate-600 dark:text-slate-300 text-sm">No Allocation History Found</p>
+                      <p className="text-xs text-slate-400 mt-1">Containers allocated to yard positions will be listed here.</p>
                     </td>
                   </tr>
                 ) : (
-                  allocations.map((alloc) => (
-                    <tr
-                      key={alloc.yard_allocation_id}
-                      id={`allocation-history-row-${alloc.yard_allocation_id}`}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-                    >
-                      <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
-                        <span className="block">{alloc.container_number}</span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-slate-400 font-sans font-normal">
-                            {alloc.container_type_display || alloc.container_type}
-                          </span>
-                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                            alloc.trade_direction === 'EXPORT'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                              : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                          }`}>
-                            {alloc.trade_direction === 'EXPORT' ? '📤 EXP' : '📥 IMP'}
-                          </span>
-                        </div>
-                      </td>
+                  allocations.map((alloc) => {
+                    const positionCode = alloc.simple_code || `Y${String(alloc.slot_id).padStart(3, '0')}`;
+                    const isActive = alloc.yard_allocation_status === 'ACTIVE';
 
-                      <td className="p-3.5">
-                        <div id={`current-location-${alloc.container_id}`} className="space-y-0.5">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white text-xs block">
-                            {alloc.location_display || alloc.current_location}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">
-                            {alloc.yard_name} • {alloc.block_name}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="p-3.5 font-mono text-[11px] text-slate-600 dark:text-slate-400">
-                        Row {alloc.slot_row} • Bay {alloc.slot_bay} • Tier {alloc.slot_tier}
-                      </td>
-
-                      <td className="p-3.5">
-                        {renderStatusBadge(alloc.yard_allocation_status)}
-                      </td>
-
-                      <td className="p-3.5 text-[11px] text-slate-600 dark:text-slate-400">
-                        {formatDate(alloc.yard_allocation_allocated_at)}
-                      </td>
-
-                      <td className="p-3.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        {alloc.allocated_by_name || 'Terminal Operator'}
-                      </td>
-
-                      <td className="p-3.5 text-[11px]">
-                        {alloc.yard_allocation_status === 'RELEASED' ? (
-                          <div>
-                            <span className="text-slate-500 block">{formatDate(alloc.yard_allocation_released_at)}</span>
-                            {alloc.released_by_name && (
-                              <span className="text-[10px] text-slate-400 block">By: {alloc.released_by_name}</span>
-                            )}
+                    return (
+                      <tr
+                        key={alloc.yard_allocation_id}
+                        id={`history-row-${alloc.yard_allocation_id}`}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        {/* Container Number */}
+                        <td className="p-4">
+                          <div className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                            {alloc.container_number}
                           </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Occupying Slot</span>
-                        )}
-                      </td>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {alloc.container_type_display || alloc.container_type} • {alloc.container_gross_weight} MT
+                          </span>
+                        </td>
 
-                      <td className="p-3.5 text-right space-x-2">
-                        {alloc.yard_allocation_status === 'ACTIVE' && (
-                          <button
-                            id={`release-allocation-btn-${alloc.yard_allocation_id}`}
-                            onClick={() => handleOpenReleaseModal(alloc)}
-                            className="px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1 border border-rose-500/20"
-                            title="Release Container from Slot"
-                          >
-                            <Unlock className="w-3 h-3" />
-                            <span>Release</span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setSelectedAllocationDetail(alloc)}
-                          className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
-                          title="View Record Details"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        {/* Vessel */}
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <Ship className="w-3.5 h-3.5 text-[#D49A24] shrink-0" />
+                            <span>{alloc.vessel_name || 'Carrier Vessel'}</span>
+                          </div>
+                        </td>
+
+                        {/* Allocation Status */}
+                        <td className="p-4">
+                          {isActive ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                              <CheckCircle className="w-3 h-3 text-emerald-500" />
+                              <span>ACTIVE</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/30">
+                              <Archive className="w-3 h-3 text-slate-500" />
+                              <span>RELEASED</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Simple Yard Position Code */}
+                        <td className="p-4">
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-xs border border-slate-200 dark:border-slate-700">
+                            <MapPin className="w-3.5 h-3.5 text-[#D49A24]" />
+                            <span>{positionCode}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono block mt-1" title={alloc.location_display || alloc.current_location}>
+                            {alloc.current_location || alloc.location_display}
+                          </span>
+                        </td>
+
+                        {/* Allocated At */}
+                        <td className="p-4 text-slate-500 dark:text-slate-400 text-xs">
+                          <div>{new Date(alloc.yard_allocation_allocated_at).toLocaleDateString()}</div>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(alloc.yard_allocation_allocated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </td>
+
+                        {/* Action */}
+                        <td className="p-4 text-right">
+                          {isActive && (
+                            <button
+                              id={`release-position-btn-${alloc.yard_allocation_id}`}
+                              onClick={() => handleOpenReleaseModal(alloc)}
+                              className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>Release</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -970,422 +867,69 @@ export const YardAllocation: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* 6. MODAL: AVAILABLE SLOT SELECTION & ALLOCATION */}
+      {/* 7. RELEASE POSITION CONFIRMATION MODAL */}
       {/* ===================================================================== */}
-      <Modal
-        isOpen={isAllocateModalOpen}
-        onClose={() => setIsAllocateModalOpen(false)}
-        title="Allocate Container to Yard Slot"
-        subtitle={selectedPendingContainer ? `Container: ${selectedPendingContainer.container_number}` : ''}
-        icon={<MapPin className="w-5 h-5 text-[#D49A24]" />}
-        maxWidth="3xl"
-      >
-        <div className="space-y-5">
-          {/* Container Information Card */}
-          {selectedPendingContainer && (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Container</span>
-                <span className="font-mono font-black text-slate-900 dark:text-white text-sm">
-                  {selectedPendingContainer.container_number}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Trade Direction</span>
-                <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
-                  selectedPendingContainer.trade_direction === 'EXPORT'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                }`}>
-                  {selectedPendingContainer.trade_direction === 'EXPORT' ? '📤 EXPORT' : '📥 IMPORT'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Size / Type</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {selectedPendingContainer.container_type_display || selectedPendingContainer.container_type} ({selectedPendingContainer.teu_equivalent} TEU)
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Gross Weight</span>
-                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                  {selectedPendingContainer.container_gross_weight} MT
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Carrier Vessel</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
-                  {selectedPendingContainer.vessel_name}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Hierarchy Filter Bar: Yard -> Block */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                Select Storage Yard *
-              </label>
-              <select
-                id="allocation-yard-select"
-                value={selectedYardId}
-                onChange={(e) => handleYardChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-xs focus:outline-none focus:border-[#D49A24]"
-              >
-                <option value="">Select Yard...</option>
-                {modalYards.map(y => (
-                  <option key={y.yard_id} value={String(y.yard_id)}>
-                    {y.yard_name} ({y.yard_code}) — {y.available_capacity} free
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-                Select Storage Block *
-              </label>
-              <select
-                id="allocation-block-select"
-                value={selectedBlockId}
-                disabled={!selectedYardId || modalBlocks.length === 0}
-                onChange={(e) => handleBlockChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-xs focus:outline-none focus:border-[#D49A24] disabled:opacity-50"
-              >
-                <option value="">
-                  {modalBlocks.length === 0 ? 'No Active Blocks' : 'Select Block...'}
-                </option>
-                {modalBlocks.map(b => (
-                  <option key={b.yard_block_id} value={String(b.yard_block_id)}>
-                    {b.yard_block_name} ({b.yard_block_code}) — {b.available_capacity} slots free
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Available Slots Directory */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Warehouse className="w-4 h-4 text-[#D49A24]" />
-                Available Operational Slots in Block
-              </span>
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                {modalSlots.length} slot(s) available
-              </span>
-            </div>
-
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 max-h-60 overflow-y-auto">
-              <table id="available-slot-table" className="w-full text-left text-xs border-collapse">
-                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-black uppercase tracking-wider text-[10px]">
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-2.5 w-10 text-center">Select</th>
-                    <th className="p-2.5">Slot Code</th>
-                    <th className="p-2.5">Row</th>
-                    <th className="p-2.5">Bay</th>
-                    <th className="p-2.5">Tier</th>
-                    <th className="p-2.5">Block</th>
-                    <th className="p-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium text-slate-700 dark:text-slate-300">
-                  {loadingSlots ? (
-                    <tr>
-                      <td colSpan={7} className="p-6 text-center text-slate-400">
-                        <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-[#D49A24]" />
-                        <span>Searching available slots...</span>
-                      </td>
-                    </tr>
-                  ) : modalSlots.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400">
-                        <AlertCircle className="w-6 h-6 mx-auto mb-1 text-amber-500" />
-                        <p className="font-bold text-slate-700 dark:text-slate-300">No Operational Slots Available</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Please choose a different block or yard with free capacity.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    modalSlots.map((slot) => {
-                      const slotKey = slot.yard_slot_id || slot.slot_id;
-                      const isSelected = selectedSlot && (selectedSlot.yard_slot_id === slotKey || selectedSlot.slot_id === slotKey);
-
-                      return (
-                        <tr
-                          key={slotKey}
-                          id={`available-slot-row-${slotKey}`}
-                          onClick={() => setSelectedSlot(slot)}
-                          className={`cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-amber-500/15 dark:bg-amber-500/20 font-bold'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                          }`}
-                        >
-                          <td className="p-2.5 text-center">
-                            <input
-                              type="radio"
-                              name="slot-select"
-                              checked={Boolean(isSelected)}
-                              onChange={() => setSelectedSlot(slot)}
-                              className="accent-[#D49A24] cursor-pointer"
-                            />
-                          </td>
-
-                          <td className="p-2.5 font-mono font-bold text-slate-900 dark:text-white">
-                            {slot.yard_slot_code || slot.slot_code}
-                          </td>
-
-                          <td className="p-2.5 font-mono">Row {slot.yard_slot_row || slot.slot_row}</td>
-                          <td className="p-2.5 font-mono">Bay {slot.yard_slot_bay || slot.slot_bay}</td>
-                          <td className="p-2.5 font-mono">Tier {slot.yard_slot_tier || slot.slot_tier}</td>
-
-                          <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                            {slot.block_code} ({slot.block_name})
-                          </td>
-
-                          <td className="p-2.5">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
-                              AVAILABLE
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Selected Slot Confirmation Summary */}
-          {selectedSlot && (
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
-                Target Allocation Coordinate Confirmed:
-              </span>
-              <div className="text-base font-mono font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-emerald-600" />
-                <span>{selectedSlot.location_display}</span>
-              </div>
-              <span className="text-xs text-slate-600 dark:text-slate-300 block">
-                Yard: {selectedSlot.yard_name} ({selectedSlot.yard_code}) • Block: {selectedSlot.block_name} ({selectedSlot.block_code})
-              </span>
-            </div>
-          )}
-
-          {/* Remarks Field */}
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-              Operator Allocation Remarks (Optional)
-            </label>
-            <input
-              type="text"
-              value={allocationRemarks}
-              onChange={(e) => setAllocationRemarks(e.target.value)}
-              placeholder="e.g. Allocated to priority stacking bay near gantry 2"
-              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D49A24]"
-            />
-          </div>
-
-          {/* Action Buttons */}
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
-            <button
-              id="cancel-allocation-btn"
-              type="button"
-              disabled={submittingAllocation}
-              onClick={() => setIsAllocateModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-
-            <button
-              id="confirm-allocation-btn"
-              type="button"
-              disabled={!selectedSlot || submittingAllocation}
-              onClick={handleConfirmAllocation}
-              className="px-4 py-2 rounded-xl bg-[#D49A24] hover:bg-[#b88219] text-white font-bold text-xs transition-colors inline-flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
-            >
-              {submittingAllocation ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <CheckCircle className="w-4 h-4" />
-              )}
-              <span>Confirm Allocation</span>
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ===================================================================== */}
-      {/* 7. MODAL: RELEASE CONTAINER ALLOCATION */}
-      {/* ===================================================================== */}
-      <Modal
-        isOpen={isReleaseModalOpen}
-        onClose={() => setIsReleaseModalOpen(false)}
-        title="Release Container from Yard Slot"
-        subtitle={allocationToRelease ? `Container ${allocationToRelease.container_number}` : ''}
-        icon={<Unlock className="w-5 h-5 text-rose-500" />}
-        maxWidth="md"
-      >
-        <div className="space-y-4">
-          {allocationToRelease && (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 space-y-2 text-xs">
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase font-bold block">Current Location</span>
-                <span className="font-mono font-black text-slate-900 dark:text-white text-sm">
-                  {allocationToRelease.location_display || allocationToRelease.current_location}
-                </span>
-              </div>
-              <div className="text-slate-600 dark:text-slate-300">
-                Releasing this container will restore slot <strong className="font-mono text-slate-900 dark:text-white">{allocationToRelease.slot_code || allocationToRelease.yard_slot_code}</strong> back to <strong>AVAILABLE</strong> status and decrement block occupancy.
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
-              Release Reason / Notes (Optional)
-            </label>
-            <input
-              type="text"
-              value={releaseRemarks}
-              onChange={(e) => setReleaseRemarks(e.target.value)}
-              placeholder="e.g. Dispatched to gate for delivery pickup"
-              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-rose-500"
-            />
-          </div>
-
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              disabled={submittingRelease}
-              onClick={() => setIsReleaseModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={submittingRelease}
-              onClick={handleConfirmRelease}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-            >
-              {submittingRelease ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Unlock className="w-4 h-4" />
-              )}
-              <span>Confirm Release</span>
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ===================================================================== */}
-      {/* 8. MODAL: DETAILED RECORD VIEW */}
-      {/* ===================================================================== */}
-      <Modal
-        isOpen={!!selectedAllocationDetail}
-        onClose={() => setSelectedAllocationDetail(null)}
-        title="Yard Allocation Audit Details"
-        subtitle={selectedAllocationDetail ? `Record #${selectedAllocationDetail.yard_allocation_id} • ${selectedAllocationDetail.container_number}` : ''}
-        icon={<MapPin className="w-5 h-5 text-[#D49A24]" />}
-        maxWidth="lg"
-      >
-        {selectedAllocationDetail && (
-          <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Container</span>
-                <span className="font-mono font-black text-slate-900 dark:text-white text-base">
-                  {selectedAllocationDetail.container_number}
-                </span>
-                <span className="text-slate-400 block text-[11px]">
-                  {selectedAllocationDetail.container_type_display || selectedAllocationDetail.container_type}
-                </span>
-                <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                  selectedAllocationDetail.trade_direction === 'EXPORT'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                    : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800'
-                }`}>
-                  {selectedAllocationDetail.trade_direction === 'EXPORT' ? '📤 OUTBOUND EXPORT' : '📥 INBOUND IMPORT'}
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Status</span>
-                {renderStatusBadge(selectedAllocationDetail.yard_allocation_status)}
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block">
-                Physical Storage Coordinates
-              </span>
-              <div className="text-sm font-mono font-black text-slate-900 dark:text-white">
-                {selectedAllocationDetail.location_display || selectedAllocationDetail.current_location}
-              </div>
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div>
-                  <span className="text-slate-400 text-[10px] block">Row</span>
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedAllocationDetail.slot_row}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[10px] block">Bay</span>
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedAllocationDetail.slot_bay}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[10px] block">Tier</span>
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{selectedAllocationDetail.slot_tier}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-1">
-                <span className="text-slate-400 text-[10px] uppercase font-bold block">Allocated At</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block">
-                  {formatDate(selectedAllocationDetail.yard_allocation_allocated_at)}
-                </span>
-                <span className="text-[10px] text-slate-400 block">
-                  By: {selectedAllocationDetail.allocated_by_name || 'Terminal Operator'}
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-1">
-                <span className="text-slate-400 text-[10px] uppercase font-bold block">Released At</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block">
-                  {formatDate(selectedAllocationDetail.yard_allocation_released_at)}
-                </span>
-                <span className="text-[10px] text-slate-400 block">
-                  By: {selectedAllocationDetail.released_by_name || '—'}
-                </span>
-              </div>
-            </div>
-
-            {selectedAllocationDetail.yard_allocation_remarks && (
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
-                <span className="text-slate-400 text-[10px] uppercase font-bold block mb-0.5">Remarks / Audit Note</span>
-                <p className="text-slate-700 dark:text-slate-300 font-medium">
-                  {selectedAllocationDetail.yard_allocation_remarks}
+      {isReleaseModalOpen && allocationToRelease && (
+        <Modal
+          isOpen={isReleaseModalOpen}
+          onClose={() => setIsReleaseModalOpen(false)}
+          title="Release Yard Position"
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-800 dark:text-amber-200 space-y-1">
+                <p className="font-bold">Are you sure you want to release this position?</p>
+                <p>
+                  Container <span className="font-mono font-bold">{allocationToRelease.container_number}</span> will be released from position{' '}
+                  <span className="font-mono font-bold">{allocationToRelease.simple_code || allocationToRelease.slot_code}</span>. The position will become AVAILABLE for subsequent container assignments.
                 </p>
               </div>
-            )}
+            </div>
 
-            <div className="pt-2 flex justify-end">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Release Remarks (Optional)
+              </label>
+              <textarea
+                value={releaseRemarks}
+                onChange={(e) => setReleaseRemarks(e.target.value)}
+                placeholder="Reason for releasing position (e.g., Gate-Out, relocation)..."
+                rows={3}
+                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#D49A24]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => setSelectedAllocationDetail(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
+                onClick={() => setIsReleaseModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
-                Close
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingRelease}
+                onClick={handleConfirmRelease}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold transition-colors inline-flex items-center gap-1.5"
+              >
+                {submittingRelease ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Releasing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Confirm Release</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 };

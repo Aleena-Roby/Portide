@@ -3262,6 +3262,7 @@ class PendingContainerSerializer(serializers.ModelSerializer):
     customs_status_display = serializers.SerializerMethodField()
     has_active_allocation = serializers.SerializerMethodField()
     allocation_status = serializers.SerializerMethodField()
+    is_discharged = serializers.SerializerMethodField()
 
     class Meta:
         model = Container
@@ -3282,6 +3283,7 @@ class PendingContainerSerializer(serializers.ModelSerializer):
             'customs_status_display',
             'has_active_allocation',
             'allocation_status',
+            'is_discharged',
             'container_created_at',
         ]
 
@@ -3314,12 +3316,17 @@ class PendingContainerSerializer(serializers.ModelSerializer):
     def get_allocation_status(self, obj):
         return 'ALLOCATED' if obj.active_yard_allocation else 'UNALLOCATED'
 
+    def get_is_discharged(self, obj):
+        return obj.yard_movements.filter(yard_movement_movement_type='DISCHARGE').exists()
+
 
 class AvailableSlotSerializer(serializers.ModelSerializer):
     """
     Serializer for operational, available storage slots within active blocks/yards.
+    Exposes simple_code (e.g. Y001, Y002) mapped to real YardSlot records.
     """
     slot_id = serializers.IntegerField(source='yard_slot_id', read_only=True)
+    simple_code = serializers.CharField(read_only=True)
     slot_code = serializers.CharField(source='yard_slot_code', read_only=True)
     slot_row = serializers.IntegerField(source='yard_slot_row', read_only=True)
     slot_bay = serializers.IntegerField(source='yard_slot_bay', read_only=True)
@@ -3345,6 +3352,7 @@ class AvailableSlotSerializer(serializers.ModelSerializer):
         model = YardSlot
         fields = [
             'slot_id',
+            'simple_code',
             'slot_code',
             'slot_row',
             'slot_bay',
@@ -3376,6 +3384,7 @@ class AvailableSlotSerializer(serializers.ModelSerializer):
 class YardAllocationSerializer(serializers.ModelSerializer):
     """
     Serializer for detailed Yard Allocation records (Active & Historical).
+    Exposes simple_code (e.g. Y001, Y002) mapped to real YardSlot records.
     """
     container_id = serializers.IntegerField(source='yard_allocation_container_id.container_id', read_only=True)
     container_number = serializers.CharField(source='yard_allocation_container_id.container_number', read_only=True)
@@ -3387,6 +3396,7 @@ class YardAllocationSerializer(serializers.ModelSerializer):
     trade_direction = serializers.CharField(source='yard_allocation_container_id.trade_direction', read_only=True)
     vessel_name = serializers.SerializerMethodField()
     slot_id = serializers.IntegerField(source='yard_allocation_slot_id.yard_slot_id', read_only=True)
+    simple_code = serializers.CharField(read_only=True)
     slot_code = serializers.CharField(source='yard_allocation_slot_id.yard_slot_code', read_only=True)
     slot_row = serializers.IntegerField(source='yard_allocation_slot_id.yard_slot_row', read_only=True)
     slot_bay = serializers.IntegerField(source='yard_allocation_slot_id.yard_slot_bay', read_only=True)
@@ -3424,6 +3434,7 @@ class YardAllocationSerializer(serializers.ModelSerializer):
             'block_code',
             'block_name',
             'slot_id',
+            'simple_code',
             'slot_code',
             'slot_row',
             'slot_bay',
@@ -3458,9 +3469,12 @@ class YardAllocationSerializer(serializers.ModelSerializer):
 class YardAllocationCreateSerializer(serializers.Serializer):
     """
     Serializer for creating a new atomic Container Yard Allocation.
+    Supports assigning via slot_id (integer) or simple position code (e.g. Y001, Y002, Y003).
     """
     container_id = serializers.IntegerField(required=True)
-    slot_id = serializers.IntegerField(required=True)
+    slot_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    simple_code = serializers.CharField(required=False, allow_blank=True, default='')
+    slot_code = serializers.CharField(required=False, allow_blank=True, default='')
     remarks = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate_container_id(self, value):
@@ -3481,11 +3495,33 @@ class YardAllocationCreateSerializer(serializers.Serializer):
 
         return value
 
-    def validate_slot_id(self, value):
+    def validate(self, attrs):
+        slot_id = attrs.get('slot_id')
+        code = (attrs.get('simple_code') or attrs.get('slot_code') or '').strip().upper()
+
+        if not slot_id and not code:
+            raise serializers.ValidationError("Either 'slot_id' or a simple position code ('simple_code' e.g. Y001, Y002) is required.")
+
+        if not slot_id and code:
+            # Resolve code to real YardSlot:
+            # 1. Check if simple_code is like Y001, Y1, etc.
+            match = re.match(r'^Y0*(\d+)$', code)
+            target_slot = None
+            if match:
+                parsed_id = int(match.group(1))
+                target_slot = YardSlot.objects.filter(pk=parsed_id).first()
+            if not target_slot:
+                target_slot = YardSlot.objects.filter(yard_slot_code__iexact=code).first()
+            if not target_slot:
+                raise serializers.ValidationError(f"Yard position code '{code}' does not match any valid yard slot.")
+            slot_id = target_slot.yard_slot_id
+            attrs['slot_id'] = slot_id
+
+        # Validate the resolved slot_id
         try:
-            slot = YardSlot.objects.select_related('yard_slot_block_id__yard_block_yard_id').get(pk=value)
+            slot = YardSlot.objects.select_related('yard_slot_block_id__yard_block_yard_id').get(pk=slot_id)
         except YardSlot.DoesNotExist:
-            raise serializers.ValidationError(f"Yard slot #{value} does not exist.")
+            raise serializers.ValidationError(f"Yard slot #{slot_id} does not exist.")
 
         yard = slot.yard_slot_block_id.yard_block_yard_id
         block = slot.yard_slot_block_id
@@ -3505,7 +3541,7 @@ class YardAllocationCreateSerializer(serializers.Serializer):
         if yard.yard_occupied >= yard.yard_capacity:
             raise serializers.ValidationError(f"Yard '{yard.yard_code}' capacity limit ({yard.yard_capacity}) reached.")
 
-        return value
+        return attrs
 
 
 class YardAllocationReleaseSerializer(serializers.Serializer):
@@ -4198,12 +4234,15 @@ class EligibleVesselScheduleSerializer(serializers.ModelSerializer):
 class UnloadContainerExecuteSerializer(serializers.Serializer):
     """
     Serializer to validate incoming container vessel discharge request.
-    Validates vessel schedule, crane allocation, container, destination slot, and optional remarks.
+    Validates vessel schedule, crane allocation, container, optional destination slot / simple code, and optional remarks.
+    If slot_id / simple_code is provided, container is allocated into that slot upon discharge.
+    If slot_id is omitted, container is discharged directly to the terminal quay apron and becomes eligible for simplified yard allocation.
     """
     vessel_schedule_id = serializers.IntegerField(required=True)
     crane_allocation_id = serializers.IntegerField(required=True)
     container_id = serializers.IntegerField(required=True)
-    slot_id = serializers.IntegerField(required=True)
+    slot_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    simple_code = serializers.CharField(required=False, allow_blank=True, default='')
     remarks = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate_vessel_schedule_id(self, value):
@@ -4222,9 +4261,25 @@ class UnloadContainerExecuteSerializer(serializers.Serializer):
         return value
 
     def validate_slot_id(self, value):
-        if value <= 0:
+        if value is not None and value <= 0:
             raise serializers.ValidationError("Valid destination slot ID is required.")
         return value
+
+    def validate(self, attrs):
+        slot_id = attrs.get('slot_id')
+        code = (attrs.get('simple_code') or '').strip().upper()
+        if not slot_id and code:
+            match = re.match(r'^Y0*(\d+)$', code)
+            target_slot = None
+            if match:
+                parsed_id = int(match.group(1))
+                target_slot = YardSlot.objects.filter(pk=parsed_id).first()
+            if not target_slot:
+                target_slot = YardSlot.objects.filter(yard_slot_code__iexact=code).first()
+            if not target_slot:
+                raise serializers.ValidationError(f"Destination position code '{code}' does not match any valid yard slot.")
+            attrs['slot_id'] = target_slot.yard_slot_id
+        return attrs
 
 
 class EligibleUnloadingVesselSerializer(serializers.ModelSerializer):

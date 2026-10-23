@@ -1596,8 +1596,12 @@ class YardSlot(models.Model):
     def active_allocation(self):
         return self.allocations.filter(yard_allocation_status='ACTIVE').first()
 
+    @property
+    def simple_code(self) -> str:
+        return f"Y{self.yard_slot_id:03d}" if self.yard_slot_id else ""
+
     def __str__(self):
-        return f"Slot {self.yard_slot_code} ({self.yard_slot_status}) - Block {self.yard_slot_block_id.yard_block_code}"
+        return f"Slot {self.yard_slot_code} ({self.simple_code}) - Block {self.yard_slot_block_id.yard_block_code}"
 
 
 # ==============================================================================
@@ -1710,6 +1714,10 @@ class YardAllocation(models.Model):
     @property
     def crane_allocation(self):
         return self.yard_allocation_crane_allocation_id
+
+    @property
+    def simple_code(self) -> str:
+        return self.slot.simple_code if self.slot else ""
 
     @property
     def location_display(self) -> str:
@@ -1853,6 +1861,10 @@ class YardMovementHistory(models.Model):
         if self.yard_movement_movement_type == 'LOADING':
             return "Vessel (Loaded)"
         return "Unknown"
+
+    @property
+    def simple_code(self) -> str:
+        return self.to_slot.simple_code if self.to_slot else ""
 
     def __str__(self):
         return f"Move #{self.yard_movement_id}: {self.container.container_number} -> {self.to_location_display} at {self.yard_movement_timestamp}"

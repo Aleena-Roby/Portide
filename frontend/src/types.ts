@@ -947,11 +947,13 @@ export interface PendingContainerItem {
   customs_status_display: string;
   has_active_allocation: boolean;
   allocation_status: 'ALLOCATED' | 'UNALLOCATED';
+  is_discharged?: boolean;
   container_created_at: string;
 }
 
 export interface AvailableSlotItem {
   slot_id: number;
+  simple_code?: string;
   slot_code: string;
   slot_row: number;
   slot_bay: number;
@@ -992,6 +994,7 @@ export interface YardAllocationItem {
   block_code: string;
   block_name: string;
   slot_id: number;
+  simple_code?: string;
   slot_code: string;
   slot_row: number;
   slot_bay: number;
@@ -1012,7 +1015,8 @@ export interface YardAllocationItem {
 
 export interface CreateYardAllocationPayload {
   container_id: number;
-  slot_id: number;
+  slot_id?: number;
+  simple_code?: string;
   remarks?: string;
 }
 
