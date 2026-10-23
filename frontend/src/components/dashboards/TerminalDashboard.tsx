@@ -84,7 +84,7 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
             Unloading Operations
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Discharge inbound containers from berthed vessels via active quay cranes directly to yard storage coordinates.
+            Discharge inbound containers from berthed vessels directly to yard storage coordinates.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
             Loading Operations
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Hoist export containers from yard storage coordinates and stow aboard berthed carrier vessels via quay cranes.
+            Hoist export containers from yard storage coordinates and stow aboard berthed carrier vessels.
           </p>
         </div>
 

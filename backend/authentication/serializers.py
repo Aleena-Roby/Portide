@@ -4239,7 +4239,7 @@ class UnloadContainerExecuteSerializer(serializers.Serializer):
     If slot_id is omitted, container is discharged directly to the terminal quay apron and becomes eligible for simplified yard allocation.
     """
     vessel_schedule_id = serializers.IntegerField(required=True)
-    crane_allocation_id = serializers.IntegerField(required=True)
+    crane_allocation_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     container_id = serializers.IntegerField(required=True)
     slot_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     simple_code = serializers.CharField(required=False, allow_blank=True, default='')
@@ -4251,7 +4251,7 @@ class UnloadContainerExecuteSerializer(serializers.Serializer):
         return value
 
     def validate_crane_allocation_id(self, value):
-        if value <= 0:
+        if value is not None and value <= 0:
             raise serializers.ValidationError("Valid crane allocation ID is required.")
         return value
 
@@ -4935,7 +4935,7 @@ class LoadContainerExecuteSerializer(serializers.Serializer):
     Validates vessel schedule, crane allocation, container, origin yard slot, and optional remarks.
     """
     vessel_schedule_id = serializers.IntegerField(required=True)
-    crane_allocation_id = serializers.IntegerField(required=True)
+    crane_allocation_id = serializers.IntegerField(required=False, allow_null=True, default=None)
     container_id = serializers.IntegerField(required=True)
     slot_id = serializers.IntegerField(required=True)
     remarks = serializers.CharField(required=False, allow_blank=True, default='')
@@ -4946,7 +4946,7 @@ class LoadContainerExecuteSerializer(serializers.Serializer):
         return value
 
     def validate_crane_allocation_id(self, value):
-        if value <= 0:
+        if value is not None and value <= 0:
             raise serializers.ValidationError("Valid crane allocation ID is required.")
         return value
 

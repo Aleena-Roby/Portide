@@ -11126,9 +11126,9 @@ class UnloadingExecuteAPIView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         vessel_schedule_id = serializer.validated_data['vessel_schedule_id']
-        crane_allocation_id = serializer.validated_data['crane_allocation_id']
+        crane_allocation_id = serializer.validated_data.get('crane_allocation_id')
         container_id = serializer.validated_data['container_id']
-        slot_id = serializer.validated_data['slot_id']
+        slot_id = serializer.validated_data.get('slot_id')
         remarks = serializer.validated_data.get('remarks', '')
 
         with transaction.atomic():
@@ -11156,85 +11156,88 @@ class UnloadingExecuteAPIView(APIView):
                     )
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # 2. Fetch & lock crane allocation
-            try:
-                crane_alloc = CraneAllocation.objects.select_for_update().get(pk=crane_allocation_id)
-            except CraneAllocation.DoesNotExist:
-                return Response({
-                    "status": "error",
-                    "message": f"Crane allocation #{crane_allocation_id} not found."
-                }, status=status.HTTP_404_NOT_FOUND)
+            # 2. Fetch & lock crane allocation (optional - bypassed when not provided)
+            crane_alloc = None
+            crane = None
+            if crane_allocation_id:
+                try:
+                    crane_alloc = CraneAllocation.objects.select_for_update().get(pk=crane_allocation_id)
+                except CraneAllocation.DoesNotExist:
+                    return Response({
+                        "status": "error",
+                        "message": f"Crane allocation #{crane_allocation_id} not found."
+                    }, status=status.HTTP_404_NOT_FOUND)
 
-            # Validate crane allocation belongs to vessel schedule
-            if crane_alloc.crane_allocation_vessel_schedule_id_id != vessel_schedule.vessel_schedule_id:
-                return Response({
-                    "status": "error",
-                    "message": f"Crane allocation #{crane_allocation_id} does not belong to vessel schedule #{vessel_schedule_id} ('{vessel_name}')."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                # Validate crane allocation belongs to vessel schedule
+                if crane_alloc.crane_allocation_vessel_schedule_id_id != vessel_schedule.vessel_schedule_id:
+                    return Response({
+                        "status": "error",
+                        "message": f"Crane allocation #{crane_allocation_id} does not belong to vessel schedule #{vessel_schedule_id} ('{vessel_name}')."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Validate crane allocation status is ACTIVE
-            if crane_alloc.crane_allocation_status != 'ACTIVE':
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Crane allocation #{crane_allocation_id} is '{crane_alloc.get_crane_allocation_status_display()}'. "
-                        f"Allocation must be in 'ACTIVE' status for physical container discharge."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Validate operation type permits unloading
-            if crane_alloc.crane_allocation_operation_type not in ['UNLOADING', 'BOTH']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Crane allocation #{crane_allocation_id} operation type is "
-                        f"'{crane_alloc.get_crane_allocation_operation_type_display()}'. "
-                        f"Operation type must permit Unloading (Discharge)."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Validate berth consistency
-            if crane_alloc.crane_allocation_berth_id and berth:
-                if crane_alloc.crane_allocation_berth_id_id != berth.berth_id:
+                # Validate crane allocation status is ACTIVE
+                if crane_alloc.crane_allocation_status != 'ACTIVE':
                     return Response({
                         "status": "error",
                         "message": (
-                            f"Crane allocation berth '{crane_alloc.crane_allocation_berth_id.berth_name}' does not match "
-                            f"vessel schedule berth '{berth.berth_name}'."
+                            f"Crane allocation #{crane_allocation_id} is '{crane_alloc.get_crane_allocation_status_display()}'. "
+                            f"Allocation must be in 'ACTIVE' status for physical container discharge."
                         )
                     }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Validate crane equipment operational status
-            crane = Crane.objects.select_for_update().get(pk=crane_alloc.crane_allocation_crane_id_id)
-            if not crane.crane_is_active or crane.crane_status in ['MAINTENANCE', 'INACTIVE']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) is currently in "
-                        f"'{crane.get_crane_status_display()}' status and is not operational."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Validate crane type compatibility for quayside discharge
-            if crane.crane_type not in ['STS', 'MHC']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) of type '{crane.get_crane_type_display()}' "
-                        f"is not a compatible quayside crane for vessel discharge."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Validate STS fixed berth consistency
-            if crane.crane_type == 'STS' and crane.crane_assigned_berth_id and berth:
-                if crane.crane_assigned_berth_id_id != berth.berth_id:
+                # Validate operation type permits unloading
+                if crane_alloc.crane_allocation_operation_type not in ['UNLOADING', 'BOTH']:
                     return Response({
                         "status": "error",
                         "message": (
-                            f"Assigned STS crane '{crane.crane_code}' fixed berth '{crane.crane_assigned_berth_id.berth_name}' "
-                            f"does not match vessel schedule berth '{berth.berth_name}'."
+                            f"Crane allocation #{crane_allocation_id} operation type is "
+                            f"'{crane_alloc.get_crane_allocation_operation_type_display()}'. "
+                            f"Operation type must permit Unloading (Discharge)."
                         )
                     }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Validate berth consistency
+                if crane_alloc.crane_allocation_berth_id and berth:
+                    if crane_alloc.crane_allocation_berth_id_id != berth.berth_id:
+                        return Response({
+                            "status": "error",
+                            "message": (
+                                f"Crane allocation berth '{crane_alloc.crane_allocation_berth_id.berth_name}' does not match "
+                                f"vessel schedule berth '{berth.berth_name}'."
+                            )
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Validate crane equipment operational status
+                crane = Crane.objects.select_for_update().get(pk=crane_alloc.crane_allocation_crane_id_id)
+                if not crane.crane_is_active or crane.crane_status in ['MAINTENANCE', 'INACTIVE']:
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) is currently in "
+                            f"'{crane.get_crane_status_display()}' status and is not operational."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Validate crane type compatibility for quayside discharge
+                if crane.crane_type not in ['STS', 'MHC']:
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) of type '{crane.get_crane_type_display()}' "
+                            f"is not a compatible quayside crane for vessel discharge."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Validate STS fixed berth consistency
+                if crane.crane_type == 'STS' and crane.crane_assigned_berth_id and berth:
+                    if crane.crane_assigned_berth_id_id != berth.berth_id:
+                        return Response({
+                            "status": "error",
+                            "message": (
+                                f"Assigned STS crane '{crane.crane_code}' fixed berth '{crane.crane_assigned_berth_id.berth_name}' "
+                                f"does not match vessel schedule berth '{berth.berth_name}'."
+                            )
+                        }, status=status.HTTP_400_BAD_REQUEST)
 
             # 3. Fetch & lock container
             try:
@@ -11376,10 +11379,11 @@ class UnloadingExecuteAPIView(APIView):
             container.save(update_fields=['container_status', 'container_updated_at'])
 
             # Create YardAllocation record if destination slot was selected
+            crane_desc = f" via crane '{crane.crane_code}'" if crane else ""
             discharge_remarks = remarks or (
-                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' via crane '{crane.crane_code}' into yard slot '{slot.yard_slot_code}'."
+                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}'{crane_desc} into yard slot '{slot.yard_slot_code}'."
                 if slot else
-                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' via crane '{crane.crane_code}'. Container at terminal awaiting yard allocation."
+                f"Discharged from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}'{crane_desc}. Container at terminal awaiting yard allocation."
             )
 
             if slot:
@@ -11418,15 +11422,16 @@ class UnloadingExecuteAPIView(APIView):
 
             # Write AuditLog event
             operator_name = user_obj.user_full_name if user_obj else 'Terminal Operator'
+            crane_audit = f"using crane '{crane.crane_code}' " if crane else ""
             audit_description = (
                 f"Discharged Container '{container.container_number}' ({container.get_container_type_display()}) "
                 f"from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
-                f"using crane '{crane.crane_code}' into yard slot '{slot.yard_slot_code}' "
+                f"{crane_audit}into yard slot '{slot.yard_slot_code}' "
                 f"({yard.yard_code} / {block.yard_block_code})."
                 if slot else
                 f"Discharged Container '{container.container_number}' ({container.get_container_type_display()}) "
                 f"from vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
-                f"using crane '{crane.crane_code}' to terminal quay apron. Awaiting yard allocation."
+                f"{crane_audit}to terminal quay apron. Awaiting yard allocation."
             )
             create_audit_log(
                 user=user_obj or login_obj,
@@ -11461,7 +11466,7 @@ class UnloadingExecuteAPIView(APIView):
                     "container_status_display": container.get_container_status_display(),
                     "vessel_name": vessel_name,
                     "berth_name": berth.berth_name if berth else 'N/A',
-                    "crane_code": crane.crane_code,
+                    "crane_code": crane.crane_code if crane else None,
                     "yard_code": yard.yard_code if yard else None,
                     "block_code": block.yard_block_code if block else None,
                     "slot_code": slot.yard_slot_code if slot else None,
@@ -13007,7 +13012,7 @@ class LoadingExecuteAPIView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         vessel_schedule_id = serializer.validated_data['vessel_schedule_id']
-        crane_allocation_id = serializer.validated_data['crane_allocation_id']
+        crane_allocation_id = serializer.validated_data.get('crane_allocation_id')
         container_id = serializer.validated_data['container_id']
         slot_id = serializer.validated_data['slot_id']
         remarks = serializer.validated_data.get('remarks', '').strip()
@@ -13036,59 +13041,62 @@ class LoadingExecuteAPIView(APIView):
                     )
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # 2. Fetch & lock crane allocation
-            try:
-                crane_alloc = CraneAllocation.objects.select_for_update().get(pk=crane_allocation_id)
-            except CraneAllocation.DoesNotExist:
-                return Response({
-                    "status": "error",
-                    "message": f"Crane allocation #{crane_allocation_id} not found."
-                }, status=status.HTTP_404_NOT_FOUND)
+            # 2. Fetch & lock crane allocation (optional - bypassed when not provided)
+            crane_alloc = None
+            crane = None
+            if crane_allocation_id:
+                try:
+                    crane_alloc = CraneAllocation.objects.select_for_update().get(pk=crane_allocation_id)
+                except CraneAllocation.DoesNotExist:
+                    return Response({
+                        "status": "error",
+                        "message": f"Crane allocation #{crane_allocation_id} not found."
+                    }, status=status.HTTP_404_NOT_FOUND)
 
-            if crane_alloc.crane_allocation_vessel_schedule_id_id != vessel_schedule.vessel_schedule_id:
-                return Response({
-                    "status": "error",
-                    "message": f"Crane allocation #{crane_allocation_id} does not belong to vessel schedule #{vessel_schedule_id} ('{vessel_name}')."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if crane_alloc.crane_allocation_vessel_schedule_id_id != vessel_schedule.vessel_schedule_id:
+                    return Response({
+                        "status": "error",
+                        "message": f"Crane allocation #{crane_allocation_id} does not belong to vessel schedule #{vessel_schedule_id} ('{vessel_name}')."
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if crane_alloc.crane_allocation_status != 'ACTIVE':
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Crane allocation #{crane_allocation_id} is '{crane_alloc.get_crane_allocation_status_display()}'. "
-                        f"Allocation must be in 'ACTIVE' status for physical container loading."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if crane_alloc.crane_allocation_status != 'ACTIVE':
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Crane allocation #{crane_allocation_id} is '{crane_alloc.get_crane_allocation_status_display()}'. "
+                            f"Allocation must be in 'ACTIVE' status for physical container loading."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if crane_alloc.crane_allocation_operation_type not in ['LOADING', 'BOTH']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Crane allocation #{crane_allocation_id} operation type is "
-                        f"'{crane_alloc.get_crane_allocation_operation_type_display()}'. "
-                        f"Operation type must permit Loading."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if crane_alloc.crane_allocation_operation_type not in ['LOADING', 'BOTH']:
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Crane allocation #{crane_allocation_id} operation type is "
+                            f"'{crane_alloc.get_crane_allocation_operation_type_display()}'. "
+                            f"Operation type must permit Loading."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Validate crane equipment operational status
-            crane = Crane.objects.select_for_update().get(pk=crane_alloc.crane_allocation_crane_id_id)
-            if not crane.crane_is_active or crane.crane_status in ['MAINTENANCE', 'INACTIVE']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) is currently in "
-                        f"'{crane.get_crane_status_display()}' status and is not operational."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
+                # Validate crane equipment operational status
+                crane = Crane.objects.select_for_update().get(pk=crane_alloc.crane_allocation_crane_id_id)
+                if not crane.crane_is_active or crane.crane_status in ['MAINTENANCE', 'INACTIVE']:
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) is currently in "
+                            f"'{crane.get_crane_status_display()}' status and is not operational."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            if crane.crane_type not in ['STS', 'MHC']:
-                return Response({
-                    "status": "error",
-                    "message": (
-                        f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) of type '{crane.get_crane_type_display()}' "
-                        f"is not a compatible quayside crane for vessel loading."
-                    )
-                }, status=status.HTTP_400_BAD_REQUEST)
+                if crane.crane_type not in ['STS', 'MHC']:
+                    return Response({
+                        "status": "error",
+                        "message": (
+                            f"Assigned crane '{crane.crane_code}' ({crane.crane_name}) of type '{crane.get_crane_type_display()}' "
+                            f"is not a compatible quayside crane for vessel loading."
+                        )
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
             # 3. Fetch & lock container
             try:
@@ -13274,9 +13282,10 @@ class LoadingExecuteAPIView(APIView):
             container.save(update_fields=['container_status', 'container_updated_at'])
 
             # Release active yard allocation
+            crane_alloc_text = f" via crane '{crane.crane_code}'" if crane else ""
             active_alloc.yard_allocation_status = 'RELEASED'
             active_alloc.yard_allocation_released_at = now
-            active_alloc.yard_allocation_remarks = f"Released upon loading onto vessel '{vessel_name}' via crane '{crane.crane_code}'."
+            active_alloc.yard_allocation_remarks = f"Released upon loading onto vessel '{vessel_name}'{crane_alloc_text}."
             active_alloc.save(update_fields=[
                 'yard_allocation_status', 
                 'yard_allocation_released_at', 
@@ -13308,7 +13317,8 @@ class LoadingExecuteAPIView(APIView):
             )
 
             # Record ContainerTrackingEvent
-            tracking_desc = f"Container {container.container_number} loaded onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' using crane '{crane.crane_code}'."
+            crane_track = f" using crane '{crane.crane_code}'" if crane else ""
+            tracking_desc = f"Container {container.container_number} loaded onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}'{crane_track}."
             if remarks:
                 tracking_desc += f" Remarks: {remarks}"
             ContainerTrackingEvent.objects.create(
@@ -13322,6 +13332,7 @@ class LoadingExecuteAPIView(APIView):
 
             # Record AuditLog event
             operator_name = user_obj.user_full_name if user_obj else 'Terminal Operator'
+            crane_audit = f" using crane '{crane.crane_code}'" if crane else ""
             create_audit_log(
                 user=user_obj or login_obj,
                 actor_name=operator_name,
@@ -13333,8 +13344,8 @@ class LoadingExecuteAPIView(APIView):
                 description=(
                     f"Loaded Container '{container.container_number}' ({container.get_container_type_display()}) "
                     f"from yard slot '{slot.yard_slot_code}' ({yard.yard_code}/{block.yard_block_code}) "
-                    f"onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}' "
-                    f"using crane '{crane.crane_code}'."
+                    f"onto vessel '{vessel_name}' at berth '{berth.berth_name if berth else 'N/A'}'"
+                    f"{crane_audit}."
                 ),
                 status='SUCCESS',
                 request=request
@@ -13350,7 +13361,7 @@ class LoadingExecuteAPIView(APIView):
                     "container_status_display": container.get_container_status_display(),
                     "vessel_name": vessel_name,
                     "berth_name": berth.berth_name if berth else 'N/A',
-                    "crane_code": crane.crane_code,
+                    "crane_code": crane.crane_code if crane else None,
                     "vacated_slot": f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code}",
                     "movement_id": movement.yard_movement_id,
                     "loaded_at": now.isoformat()

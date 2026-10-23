@@ -1269,5 +1269,197 @@ class LoadingOperationsTestCase(TestCase):
             audit_log_target_id=str(container_e2e.container_id)
         ).exists())
 
+    # =========================================================================
+    # Additional Verification: Loading Without Crane Allocation & Guardrails
+    # =========================================================================
+    def test_successful_loading_without_crane_allocation(self):
+        """Export vessel loading must succeed without any crane_allocation_id."""
+        export_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="EXPU7766554",
+            container_type="20FT",
+            container_gross_weight=Decimal("22.00"),
+            container_status="AT_TERMINAL",
+            container_customs_status="CLEARED"
+        )
+        export_slot = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T9",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=9,
+            yard_slot_status="OCCUPIED"
+        )
+        YardAllocation.objects.create(
+            yard_allocation_container_id=export_container,
+            yard_allocation_slot_id=export_slot,
+            yard_allocation_allocated_by_id=self.user_tlo,
+            yard_allocation_status="ACTIVE"
+        )
+        self.block.yard_block_occupied += 1
+        self.block.save()
+        self.yard.yard_occupied += 1
+        self.yard.save()
+
+        # Execute loading without crane_allocation_id
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": export_container.container_id,
+            "slot_id": export_slot.yard_slot_id,
+            "remarks": "Loading without crane allocation requirement"
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['status'], 'success')
+        self.assertIsNone(res.data['data']['crane_code'])
+
+        export_container.refresh_from_db()
+        export_slot.refresh_from_db()
+        self.assertEqual(export_container.container_status, 'LOADED')
+        self.assertEqual(export_slot.yard_slot_status, 'AVAILABLE')
+
+        # Yard movement recorded with None for crane
+        movement = YardMovementHistory.objects.get(
+            yard_movement_container_id=export_container,
+            yard_movement_movement_type='LOADING'
+        )
+        self.assertIsNone(movement.yard_movement_crane_id)
+
+        # Tracking event recorded
+        tracking = ContainerTrackingEvent.objects.filter(
+            tracking_event_container_id=export_container,
+            tracking_event_status='LOADED_ON_VESSEL'
+        ).first()
+        self.assertIsNotNone(tracking)
+
+        # Audit log recorded
+        audit = AuditLog.objects.filter(
+            audit_log_action='LOAD_CONTAINER_VESSEL',
+            audit_log_target_id=str(export_container.container_id)
+        ).first()
+        self.assertIsNotNone(audit)
+
+    def test_loading_without_crane_blocked_if_customs_hold(self):
+        """Customs Hold must strictly block loading even when crane allocation is omitted."""
+        hold_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="EXPU3344112",
+            container_type="20FT",
+            container_gross_weight=Decimal("20.00"),
+            container_status="CUSTOMS_HOLD",
+            container_customs_status="CUSTOMS_HOLD"
+        )
+        hold_slot = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T10",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=10,
+            yard_slot_status="OCCUPIED"
+        )
+        YardAllocation.objects.create(
+            yard_allocation_container_id=hold_container,
+            yard_allocation_slot_id=hold_slot,
+            yard_allocation_allocated_by_id=self.user_tlo,
+            yard_allocation_status="ACTIVE"
+        )
+
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": hold_container.container_id,
+            "slot_id": hold_slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Customs Hold", res.data['message'])
+
+    def test_loading_without_crane_blocked_if_customs_not_cleared(self):
+        """Uncleared customs status must block loading even when crane allocation is omitted."""
+        uncleared_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="EXPU5544332",
+            container_type="20FT",
+            container_gross_weight=Decimal("20.00"),
+            container_status="AT_TERMINAL",
+            container_customs_status="PENDING_REVIEW"
+        )
+        uncleared_slot = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="EXP-B1-R1-B1-T11",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=11,
+            yard_slot_status="OCCUPIED"
+        )
+        YardAllocation.objects.create(
+            yard_allocation_container_id=uncleared_container,
+            yard_allocation_slot_id=uncleared_slot,
+            yard_allocation_allocated_by_id=self.user_tlo,
+            yard_allocation_status="ACTIVE"
+        )
+
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": uncleared_container.container_id,
+            "slot_id": uncleared_slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pending Customs review", res.data['message'])
+
+    def test_loading_without_crane_blocked_if_vessel_not_at_berth(self):
+        """Vessel not AT_BERTH must block loading even when crane allocation is omitted."""
+        self.vessel_schedule.vessel_schedule_status = 'SCHEDULED'
+        self.vessel_schedule.save()
+
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("At Berth", res.data['message'])
+
+    def test_loading_without_crane_blocked_for_duplicate_stowage(self):
+        """Container already in LOADED status cannot be loaded again."""
+        self.container.container_status = 'LOADED'
+        self.container.save()
+
+        load_payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id
+        }
+        res = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(load_payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already loaded", res.data['message'])
+
+
 
 

@@ -29,7 +29,6 @@ import { Modal } from '../../common/Modal';
 import { DirectShipToTruckOperations } from './DirectShipToTruckOperations';
 import {
   EligibleUnloadingVessel,
-  ActiveUnloadingCrane,
   ManifestUnloadingContainer,
   AvailableSlotItem,
   YardItem,
@@ -57,10 +56,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
   const [vessels, setVessels] = useState<EligibleUnloadingVessel[]>([]);
   const [selectedVessel, setSelectedVessel] = useState<EligibleUnloadingVessel | null>(null);
   const [loadingVessels, setLoadingVessels] = useState<boolean>(false);
-
-  const [cranes, setCranes] = useState<ActiveUnloadingCrane[]>([]);
-  const [selectedCrane, setSelectedCrane] = useState<ActiveUnloadingCrane | null>(null);
-  const [loadingCranes, setLoadingCranes] = useState<boolean>(false);
 
   const [containers, setContainers] = useState<ManifestUnloadingContainer[]>([]);
   const [selectedContainer, setSelectedContainer] = useState<ManifestUnloadingContainer | null>(null);
@@ -132,41 +127,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
       );
     } finally {
       setLoadingVessels(false);
-    }
-  }, [addToast]);
-
-  // Fetch Cranes when Vessel changes
-  const fetchActiveCranes = useCallback(async (vesselScheduleId: number) => {
-    setLoadingCranes(true);
-    try {
-      const res = await apiFetch(`/api/terminal/unloading/active-cranes/?vessel_schedule_id=${vesselScheduleId}`);
-      const data = await parseApiResponse(res);
-      if (data && data.status === 'success' && Array.isArray(data.data)) {
-        setCranes(data.data);
-        setSelectedCrane((prevCrane) => {
-          if (data.data.length === 1) {
-            return data.data[0];
-          }
-          if (prevCrane) {
-            const updated = data.data.find(
-              (c: ActiveUnloadingCrane) => c.crane_allocation_id === prevCrane.crane_allocation_id
-            );
-            return updated || prevCrane;
-          }
-          return null;
-        });
-      } else {
-        throw new Error('Invalid response envelope from server.');
-      }
-    } catch (err: any) {
-      console.error('Failed to load active cranes:', err);
-      addToast(
-        'error',
-        'Cranes Load Error',
-        err.message || 'Unable to fetch active cranes for this vessel.'
-      );
-    } finally {
-      setLoadingCranes(false);
     }
   }, [addToast]);
 
@@ -286,18 +246,15 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
     fetchHistory();
   }, [fetchEligibleVessels, fetchYards, fetchHistory]);
 
-  // Re-fetch cranes and containers when selected vessel changes
+  // Re-fetch containers when selected vessel changes
   useEffect(() => {
     if (selectedVessel) {
-      fetchActiveCranes(selectedVessel.vessel_schedule_id);
       fetchManifestContainers(selectedVessel.vessel_schedule_id);
     } else {
-      setCranes([]);
-      setSelectedCrane(null);
       setContainers([]);
       setSelectedContainer(null);
     }
-  }, [selectedVessel?.vessel_schedule_id, fetchActiveCranes, fetchManifestContainers]);
+  }, [selectedVessel?.vessel_schedule_id, fetchManifestContainers]);
 
   // Re-fetch slots when yard or block changes
   useEffect(() => {
@@ -338,11 +295,11 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
   // =========================================================================
 
   const handleExecuteDischarge = async () => {
-    if (!selectedVessel || !selectedCrane || !selectedContainer || !selectedSlot) {
+    if (!selectedVessel || !selectedContainer || !selectedSlot) {
       addToast(
         'error',
         'Incomplete Selection',
-        'Please select a berthed vessel, an active crane, a manifested container, and a destination yard slot.'
+        'Please select a berthed vessel, a manifested container, and a destination yard slot.'
       );
       return;
     }
@@ -351,7 +308,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
     try {
       const payload = {
         vessel_schedule_id: selectedVessel.vessel_schedule_id,
-        crane_allocation_id: selectedCrane.crane_allocation_id,
         container_id: selectedContainer.container_id,
         slot_id: selectedSlot.slot_id,
         remarks: remarks.trim()
@@ -407,8 +363,8 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wide uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
               Quay-to-Yard Coordinated Operations
             </span>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              T4 Crane + T1/T2 Yard Integration
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              Vessel Discharge & Yard Integration
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
@@ -416,7 +372,7 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             Container Unloading Operations
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
-            Coordinate physical vessel discharge using verified active quay crane allocations, manifest container validation, and atomic storage slot allocation.
+            Coordinate physical vessel discharge using manifest container validation and atomic storage slot allocation.
           </p>
         </div>
 
@@ -425,16 +381,15 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             onClick={() => {
               fetchEligibleVessels();
               if (selectedVessel) {
-                fetchActiveCranes(selectedVessel.vessel_schedule_id);
                 fetchManifestContainers(selectedVessel.vessel_schedule_id);
               }
               fetchAvailableSlots();
               fetchHistory();
             }}
-            disabled={loadingVessels || loadingCranes || loadingContainers}
+            disabled={loadingVessels || loadingContainers}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-all disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingVessels || loadingCranes ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingVessels || loadingContainers ? 'animate-spin' : ''}`} />
             Refresh Data
           </button>
 
@@ -519,7 +474,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                       key={v.vessel_schedule_id}
                       onClick={() => {
                         setSelectedVessel(v);
-                        setSelectedCrane(null);
                         setSelectedContainer(null);
                       }}
                       className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -551,10 +505,8 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{v.berth_name}</span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Active Cranes</span>
-                          <span className={`font-semibold ${v.active_cranes_count > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                            {v.active_cranes_count} Active
-                          </span>
+                          <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Call Sign</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{v.vessel_call_sign || 'N/A'}</span>
                         </div>
                         <div>
                           <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Manifest Load</span>
@@ -576,195 +528,110 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             )}
           </div>
 
-          {/* STEP 2: SELECT CRANE & STEP 3: SELECT CONTAINER */}
+          {/* STEP 2: SELECT MANIFESTED CONTAINER */}
           {selectedVessel && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* STEP 2: CRANE SELECTION */}
-              <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
-                      2
-                    </div>
-                    <div>
-                      <h3 className="text-base font-black text-slate-900 dark:text-white">
-                        Select Active Crane Allocation
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Quay cranes currently active and permitted for unloading.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500">
-                    {cranes.length} crane{cranes.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-
-                {loadingCranes ? (
-                  <div className="py-8 text-center text-slate-400">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
-                    <p className="text-xs">Loading crane allocations...</p>
-                  </div>
-                ) : cranes.length === 0 ? (
-                  <div className="p-5 text-center rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-3">
-                    <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400 mx-auto" />
-                    <div>
-                      <p className="text-xs font-bold text-amber-900 dark:text-amber-200">No Active Unloading Crane</p>
-                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                        No crane allocation is currently in 'ACTIVE' status for vessel '{selectedVessel.vessel_name}'.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {cranes.map((c) => {
-                      const isSelected = selectedCrane?.crane_allocation_id === c.crane_allocation_id;
-                      return (
-                        <div
-                          key={c.crane_allocation_id}
-                          onClick={() => setSelectedCrane(c)}
-                          className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                            isSelected
-                              ? 'border-amber-500 bg-amber-500/5 dark:bg-amber-500/10 shadow-sm'
-                              : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-                                🏗️
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                                  {c.crane_code} — {c.crane_name}
-                                </h4>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
-                                  {c.crane_type_display} • Max Lift: {c.crane_max_lifting_capacity_mt} MT
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                {c.operation_type_display}
-                              </span>
-                              {isSelected && (
-                                <span className="p-1 rounded-full bg-amber-500 text-white">
-                                  <Check className="w-3 h-3" />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* STEP 3: CONTAINER SELECTION */}
-              <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
-                      3
-                    </div>
-                    <div>
-                      <h3 className="text-base font-black text-slate-900 dark:text-white">
-                        Select Manifested Container
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Inbound container aboard '{selectedVessel.vessel_name}' awaiting discharge.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500">
-                    {filteredContainers.length} container{filteredContainers.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-
-                {/* Search */}
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={containerSearch}
-                    onChange={(e) => setContainerSearch(e.target.value)}
-                    placeholder="Search by container number or cargo..."
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-
-                {loadingContainers ? (
-                  <div className="py-8 text-center text-slate-400">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
-                    <p className="text-xs">Loading manifested containers...</p>
-                  </div>
-                ) : filteredContainers.length === 0 ? (
-                  <div className="p-5 text-center rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700">
-                    <Boxes className="w-6 h-6 text-slate-400 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No Containers Awaiting Discharge</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      All manifested containers for this voyage have already been discharged or allocated.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {filteredContainers.map((c) => {
-                      const isSelected = selectedContainer?.container_id === c.container_id;
-                      return (
-                        <div
-                          key={c.container_id}
-                          onClick={() => setSelectedContainer(c)}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                            isSelected
-                              ? 'border-amber-500 bg-amber-500/5 dark:bg-amber-500/10 shadow-sm'
-                              : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-xs font-mono text-slate-900 dark:text-white tracking-wide">
-                                  {c.container_number}
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                  {c.container_type} ({c.teu_equivalent} TEU)
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                  <span>📥</span> IMPORT
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                Weight: {c.container_gross_weight} MT • {c.cargo_description || 'General Cargo'}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                {c.customs_status_display}
-                              </span>
-                              {isSelected && (
-                                <span className="p-1 rounded-full bg-amber-500 text-white">
-                                  <Check className="w-3 h-3" />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: DESTINATION YARD SLOT SELECTION */}
-          {selectedVessel && selectedCrane && selectedContainer && (
             <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
-                    4
+                    2
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      Select Manifested Container
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Inbound container aboard '{selectedVessel.vessel_name}' awaiting discharge.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold text-slate-500">
+                  {filteredContainers.length} container{filteredContainers.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={containerSearch}
+                  onChange={(e) => setContainerSearch(e.target.value)}
+                  placeholder="Search by container number or cargo..."
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              {loadingContainers ? (
+                <div className="py-8 text-center text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-500" />
+                  <p className="text-xs">Loading manifested containers...</p>
+                </div>
+              ) : filteredContainers.length === 0 ? (
+                <div className="p-5 text-center rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700">
+                  <Boxes className="w-6 h-6 text-slate-400 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No Containers Awaiting Discharge</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    All manifested containers for this voyage have already been discharged or allocated.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                  {filteredContainers.map((c) => {
+                    const isSelected = selectedContainer?.container_id === c.container_id;
+                    return (
+                      <div
+                        key={c.container_id}
+                        onClick={() => setSelectedContainer(c)}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-500/5 dark:bg-amber-500/10 shadow-sm'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-xs font-mono text-slate-900 dark:text-white tracking-wide">
+                                {c.container_number}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                {c.container_type} ({c.teu_equivalent} TEU)
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                <span>📥</span> IMPORT
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              Weight: {c.container_gross_weight} MT • {c.cargo_description || 'General Cargo'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                              {c.customs_status_display}
+                            </span>
+                            {isSelected && (
+                              <span className="p-1 rounded-full bg-amber-500 text-white">
+                                <Check className="w-3 h-3" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 3: DESTINATION YARD SLOT SELECTION */}
+          {selectedVessel && selectedContainer && (
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
+                    3
                   </div>
                   <div>
                     <h3 className="text-base font-black text-slate-900 dark:text-white">
@@ -870,8 +737,8 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             </div>
           )}
 
-          {/* STEP 5: REVIEW & DISCHARGE ACTION */}
-          {selectedVessel && selectedCrane && selectedContainer && selectedSlot && (
+          {/* STEP 4: REVIEW & DISCHARGE ACTION */}
+          {selectedVessel && selectedContainer && selectedSlot && (
             <div className="p-6 sm:p-7 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-2 border-amber-500/40 dark:border-amber-500/30 shadow-md space-y-5 animate-fade-in">
               <div className="flex items-center justify-between">
                 <div>
@@ -889,7 +756,7 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
               </div>
 
               {/* Review Summary Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 backdrop-blur-xs text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 backdrop-blur-xs text-xs">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-1">
                     Carrier Vessel & Berth
@@ -899,18 +766,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                   </div>
                   <div className="text-slate-500 text-[11px]">
                     Berth: {selectedVessel.berth_name}
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider mb-1">
-                    Quay Crane Equipment
-                  </span>
-                  <div className="font-bold text-slate-900 dark:text-white text-sm">
-                    {selectedCrane.crane_code}
-                  </div>
-                  <div className="text-slate-500 text-[11px]">
-                    {selectedCrane.crane_type_display} ({selectedCrane.crane_max_lifting_capacity_mt} MT)
                   </div>
                 </div>
 
@@ -951,7 +806,7 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                   type="text"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="e.g., Routine quay crane discharge under morning shift..."
+                  placeholder="e.g., Routine vessel discharge under morning shift..."
                   className="w-full px-3.5 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
@@ -1088,10 +943,6 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
             <div className="flex justify-between">
               <span className="text-slate-400 font-semibold">Carrier Vessel:</span>
               <span className="font-bold text-slate-900 dark:text-white">{selectedVessel?.vessel_name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400 font-semibold">Quay Crane:</span>
-              <span className="font-bold text-slate-900 dark:text-white">{selectedCrane?.crane_code}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400 font-semibold">Container:</span>

@@ -857,3 +857,75 @@ class UnloadingOperationsTestCase(TestCase):
         self.assertEqual(self.container_2.customs_clearance_status, 'CLEARED')
         self.assertEqual(self.container_2.container_delivery_status, 'NOT_APPLICABLE')
 
+    # =========================================================================
+    # 18. Unloading Discharge Succeeds Without Any Crane Allocation
+    # =========================================================================
+    def test_18_successful_unloading_without_crane_allocation(self):
+        """Discharge must succeed without any crane allocation parameter or active crane."""
+        container_no_crane = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="MSKU9988112",
+            container_type="20FT",
+            container_gross_weight=Decimal("21.00"),
+            container_status="ARRIVED"
+        )
+        slot_no_crane = YardSlot.objects.create(
+            yard_slot_block_id=self.block,
+            yard_slot_code="U1-R1-B1-T3",
+            yard_slot_row=1,
+            yard_slot_bay=1,
+            yard_slot_tier=3,
+            yard_slot_status="AVAILABLE"
+        )
+
+        # Omit crane_allocation_id entirely
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "container_id": container_no_crane.container_id,
+            "slot_id": slot_no_crane.yard_slot_id,
+            "remarks": "Discharge without crane allocation requirement"
+        }
+
+        res = self.client.post(
+            '/api/terminal/unloading/discharge/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['status'], 'success')
+        self.assertIsNone(res.data['data']['crane_code'])
+
+        # 1. Container transitioned strictly to AT_TERMINAL
+        container_no_crane.refresh_from_db()
+        self.assertEqual(container_no_crane.container_status, 'AT_TERMINAL')
+
+        # 2. YardAllocation created with None for crane allocation
+        alloc = YardAllocation.objects.get(
+            yard_allocation_container_id=container_no_crane,
+            yard_allocation_status='ACTIVE'
+        )
+        self.assertEqual(alloc.yard_allocation_slot_id, slot_no_crane)
+        self.assertIsNone(alloc.yard_allocation_crane_allocation_id)
+
+        # 3. Slot updated to OCCUPIED
+        slot_no_crane.refresh_from_db()
+        self.assertEqual(slot_no_crane.yard_slot_status, 'OCCUPIED')
+
+        # 4. YardMovementHistory created with None for crane
+        movement = YardMovementHistory.objects.get(
+            yard_movement_container_id=container_no_crane,
+            yard_movement_movement_type='DISCHARGE'
+        )
+        self.assertIsNone(movement.yard_movement_crane_id)
+        self.assertEqual(movement.yard_movement_to_slot_id, slot_no_crane)
+
+        # 5. AuditLog recorded
+        audit = AuditLog.objects.filter(
+            audit_log_action='DISCHARGE_CONTAINER_UNLOAD',
+            audit_log_target_id=str(container_no_crane.container_id)
+        ).first()
+        self.assertIsNotNone(audit)
+
+
