@@ -800,7 +800,10 @@ class Container(models.Model):
 
     @property
     def latest_gate_in(self):
-        return self.gate_ins.order_by('-gate_in_time', '-gate_in_id').first()
+        try:
+            return self.gate_ins.order_by('-gate_in_time', '-gate_in_id').first()
+        except Exception:
+            return None
 
     @property
     def latest_gate_release(self):

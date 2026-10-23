@@ -1526,30 +1526,33 @@ class ContainerSerializer(serializers.ModelSerializer):
         }
 
     def get_gate_in(self, obj):
-        gate_in = obj.latest_gate_in
-        if not gate_in:
+        try:
+            gate_in = obj.latest_gate_in
+            if not gate_in:
+                return None
+            officer = gate_in.gate_in_officer_id
+            gate = gate_in.gate_in_gate_id
+            return {
+                'gate_in_id': gate_in.gate_in_id,
+                'previous_status': gate_in.gate_in_previous_status,
+                'new_status': gate_in.gate_in_new_status,
+                'truck_number': gate_in.gate_in_truck_number,
+                'driver_name': gate_in.gate_in_driver_name,
+                'driver_license': gate_in.gate_in_driver_license,
+                'driver_phone': gate_in.gate_in_driver_phone,
+                'entry_point': gate_in.gate_in_entry_point,
+                'seal_number': gate_in.gate_in_seal_number,
+                'gate_id': gate.gate_id if gate else None,
+                'gate_name': gate.gate_name if gate else gate_in.gate_in_entry_point,
+                'gate_code': gate.gate_code if gate else None,
+                'remarks': gate_in.gate_in_remarks or '',
+                'officer_id': officer.user_id if officer else None,
+                'officer_name': officer.user_full_name if officer else None,
+                'officer_email': officer.login_id.login_email if officer and officer.login_id else None,
+                'gate_in_time': gate_in.gate_in_time.isoformat() if gate_in.gate_in_time else None
+            }
+        except Exception:
             return None
-        officer = gate_in.gate_in_officer_id
-        gate = gate_in.gate_in_gate_id
-        return {
-            'gate_in_id': gate_in.gate_in_id,
-            'previous_status': gate_in.gate_in_previous_status,
-            'new_status': gate_in.gate_in_new_status,
-            'truck_number': gate_in.gate_in_truck_number,
-            'driver_name': gate_in.gate_in_driver_name,
-            'driver_license': gate_in.gate_in_driver_license,
-            'driver_phone': gate_in.gate_in_driver_phone,
-            'entry_point': gate_in.gate_in_entry_point,
-            'seal_number': gate_in.gate_in_seal_number,
-            'gate_id': gate.gate_id if gate else None,
-            'gate_name': gate.gate_name if gate else gate_in.gate_in_entry_point,
-            'gate_code': gate.gate_code if gate else None,
-            'remarks': gate_in.gate_in_remarks or '',
-            'officer_id': officer.user_id if officer else None,
-            'officer_name': officer.user_full_name if officer else None,
-            'officer_email': officer.login_id.login_email if officer and officer.login_id else None,
-            'gate_in_time': gate_in.gate_in_time.isoformat() if gate_in.gate_in_time else None
-        }
 
     def get_gate_pass(self, obj):
         assoc = obj.gate_pass_associations.select_related(

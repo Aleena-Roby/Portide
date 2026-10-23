@@ -330,7 +330,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         q === '' ||
-        c.container_number.toLowerCase().includes(q) ||
+        (c.container_number || '').toLowerCase().includes(q) ||
         (c.cargo_context?.cargo_description || '').toLowerCase().includes(q) ||
         (c.cargo_context?.vessel_name || '').toLowerCase().includes(q) ||
         (c.cargo_context?.vessel_imo_number || '').includes(q) ||
@@ -961,50 +961,53 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {recentDecisions.map((dec) => (
-                  <div key={dec.audit_log_id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <div className="shrink-0 mt-0.5">
-                        {dec.audit_log_action.includes('CLEAR') ? (
-                          <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 block">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </span>
-                        ) : dec.audit_log_action.includes('HOLD') ? (
-                          <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 block">
-                            <AlertOctagon className="w-3.5 h-3.5" />
-                          </span>
-                        ) : dec.audit_log_action.includes('ADDITIONAL') ? (
-                          <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 block">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                          </span>
-                        ) : (
-                          <span className="p-1.5 rounded-lg bg-purple-500/10 text-purple-600 block">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-slate-900 dark:text-white">
-                            {dec.audit_log_target_type || 'Container'} #{dec.audit_log_target_id}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            {formatDate(dec.audit_log_timestamp)}
-                          </span>
+                {recentDecisions.map((dec) => {
+                  const act = (dec?.audit_log_action || '').toUpperCase();
+                  return (
+                    <div key={dec.audit_log_id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="shrink-0 mt-0.5">
+                          {act.includes('CLEAR') ? (
+                            <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 block">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </span>
+                          ) : act.includes('HOLD') ? (
+                            <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 block">
+                              <AlertOctagon className="w-3.5 h-3.5" />
+                            </span>
+                          ) : act.includes('ADDITIONAL') ? (
+                            <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 block">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                            </span>
+                          ) : (
+                            <span className="p-1.5 rounded-lg bg-purple-500/10 text-purple-600 block">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </span>
+                          )}
                         </div>
-                        <p className="text-slate-600 dark:text-slate-300 text-[11px] truncate mt-0.5 max-w-xl">
-                          {dec.audit_log_description}
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {dec?.audit_log_target_type || 'Container'} #{dec?.audit_log_target_id}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {formatDate(dec?.audit_log_timestamp)}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 dark:text-slate-300 text-[11px] truncate mt-0.5 max-w-xl">
+                            {dec?.audit_log_description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-[10px] text-slate-400 block">Recorded by</span>
+                        <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
+                          {dec?.audit_log_actor_name || 'Customs Inspector'}
+                        </span>
                       </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <span className="text-[10px] text-slate-400 block">Recorded by</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
-                        {dec.audit_log_actor_name || 'Customs Inspector'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
