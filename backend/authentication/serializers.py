@@ -1033,6 +1033,16 @@ class AuditLogSerializer(serializers.ModelSerializer):
     iso_timestamp = serializers.SerializerMethodField()
     ip_address = serializers.CharField(source='audit_log_ip_address', allow_null=True)
 
+    # Backward-compatible prefixed aliases
+    audit_log_action = serializers.CharField(source='audit_log_action', read_only=True)
+    audit_log_category = serializers.CharField(source='audit_log_category', read_only=True)
+    audit_log_target_type = serializers.CharField(source='audit_log_target_type', read_only=True)
+    audit_log_target_id = serializers.CharField(source='audit_log_target_id', allow_null=True, read_only=True)
+    audit_log_actor_name = serializers.SerializerMethodField()
+    audit_log_description = serializers.CharField(source='audit_log_description', read_only=True)
+    audit_log_status = serializers.CharField(source='audit_log_status', read_only=True)
+    audit_log_timestamp = serializers.SerializerMethodField()
+
     class Meta:
         model = AuditLog
         fields = [
@@ -1049,6 +1059,15 @@ class AuditLogSerializer(serializers.ModelSerializer):
             'description',
             'status',
             'ip_address',
+            # Prefixed aliases for full backward compatibility
+            'audit_log_action',
+            'audit_log_category',
+            'audit_log_target_type',
+            'audit_log_target_id',
+            'audit_log_actor_name',
+            'audit_log_description',
+            'audit_log_status',
+            'audit_log_timestamp',
         ]
 
     def get_actor(self, obj):
@@ -1057,6 +1076,9 @@ class AuditLogSerializer(serializers.ModelSerializer):
         if obj.audit_log_user_id:
             return obj.audit_log_user_id.user_full_name or (obj.audit_log_user_id.login_id.login_email if obj.audit_log_user_id.login_id else "System")
         return "System"
+
+    def get_audit_log_actor_name(self, obj):
+        return self.get_actor(obj)
 
     def get_target_resource(self, obj):
         if obj.audit_log_target_type and obj.audit_log_target_id:
@@ -1080,6 +1102,9 @@ class AuditLogSerializer(serializers.ModelSerializer):
         if obj.audit_log_timestamp:
             return obj.audit_log_timestamp.isoformat()
         return None
+
+    def get_audit_log_timestamp(self, obj):
+        return self.get_iso_timestamp(obj)
 
 
 class PortSerializer(serializers.ModelSerializer):

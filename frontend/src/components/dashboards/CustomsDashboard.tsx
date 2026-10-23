@@ -74,9 +74,9 @@ const extractInspectionErrorMessage = (json: any): string => {
   };
 
   const formatMessage = (field: string, rawMsg: string): string => {
-    const msg = rawMsg.trim();
+    const msg = (rawMsg || '').trim();
     const lower = msg.toLowerCase();
-    const label = fieldLabelMap[field] || field.replace(/_/g, ' ');
+    const label = fieldLabelMap[field] || (field || '').replace(/_/g, ' ');
 
     if (
       lower === 'this field is required.' ||

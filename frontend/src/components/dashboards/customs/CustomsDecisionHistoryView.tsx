@@ -23,14 +23,26 @@ import { Modal } from '../../common/Modal';
 
 export interface CustomsAuditRecord {
   audit_log_id: number;
-  audit_log_action: string;
-  audit_log_category: string;
+  audit_log_action?: string;
+  audit_log_category?: string;
   audit_log_target_type?: string;
   audit_log_target_id?: string | number;
   audit_log_actor_name?: string;
   audit_log_description?: string;
   audit_log_status?: string;
-  audit_log_timestamp: string;
+  audit_log_timestamp?: string;
+  // Fallbacks provided by standard AuditLogSerializer
+  action?: string;
+  category?: string;
+  target_type?: string;
+  target_id?: string | number;
+  target_resource?: string;
+  actor?: string;
+  role?: string;
+  description?: string;
+  status?: string;
+  timestamp?: string;
+  iso_timestamp?: string;
 }
 
 export const CustomsDecisionHistoryView: React.FC = () => {
@@ -98,7 +110,7 @@ export const CustomsDecisionHistoryView: React.FC = () => {
     }
   };
 
-  const getActionBadge = (action: string) => {
+  const getActionBadge = (action?: string | null) => {
     const act = (action || '').toUpperCase();
     if (act.includes('CLEAR')) {
       return (
@@ -140,10 +152,11 @@ export const CustomsDecisionHistoryView: React.FC = () => {
         </span>
       );
     }
+    const displayAction = (action || 'DECISION').replace(/_/g, ' ');
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
         <FileText className="w-3 h-3" />
-        <span>{action.replace(/_/g, ' ')}</span>
+        <span>{displayAction}</span>
       </span>
     );
   };
@@ -260,47 +273,56 @@ export const CustomsDecisionHistoryView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                records.map((record) => (
-                  <tr
-                    key={record.audit_log_id}
-                    onClick={() => setSelectedRecord(record)}
-                    className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
-                  >
-                    <td className="p-3.5 whitespace-nowrap font-mono text-[11px] text-slate-500">
-                      {formatDate(record.audit_log_timestamp)}
-                    </td>
-                    <td className="p-3.5 whitespace-nowrap">
-                      {getActionBadge(record.audit_log_action)}
-                    </td>
-                    <td className="p-3.5 whitespace-nowrap">
-                      <span className="font-mono font-bold text-slate-900 dark:text-white">
-                        {record.audit_log_target_type || 'Entity'}: #{record.audit_log_target_id || '—'}
-                      </span>
-                    </td>
-                    <td className="p-3.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{record.audit_log_actor_name || 'Customs Inspector'}</span>
-                      </div>
-                    </td>
-                    <td className="p-3.5 max-w-md truncate text-slate-600 dark:text-slate-300">
-                      {record.audit_log_description}
-                    </td>
-                    <td className="p-3.5 text-right whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedRecord(record);
-                        }}
-                        className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 transition-colors"
-                        title="View Full Audit Record"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                records.map((record) => {
+                  const recAction = record.audit_log_action || record.action || 'DECISION';
+                  const recTimestamp = record.audit_log_timestamp || record.iso_timestamp || record.timestamp;
+                  const recTargetType = record.audit_log_target_type || record.target_type || 'Entity';
+                  const recTargetId = record.audit_log_target_id ?? record.target_id ?? '—';
+                  const recActor = record.audit_log_actor_name || record.actor || 'Customs Inspector';
+                  const recDescription = record.audit_log_description || record.description || '—';
+
+                  return (
+                    <tr
+                      key={record.audit_log_id}
+                      onClick={() => setSelectedRecord(record)}
+                      className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+                    >
+                      <td className="p-3.5 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                        {formatDate(recTimestamp)}
+                      </td>
+                      <td className="p-3.5 whitespace-nowrap">
+                        {getActionBadge(recAction)}
+                      </td>
+                      <td className="p-3.5 whitespace-nowrap">
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {recTargetType}: #{recTargetId}
+                        </span>
+                      </td>
+                      <td className="p-3.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{recActor}</span>
+                        </div>
+                      </td>
+                      <td className="p-3.5 max-w-md truncate text-slate-600 dark:text-slate-300">
+                        {recDescription}
+                      </td>
+                      <td className="p-3.5 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRecord(record);
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 transition-colors"
+                          title="View Full Audit Record"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -336,7 +358,7 @@ export const CustomsDecisionHistoryView: React.FC = () => {
         isOpen={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
         title="Customs Regulatory Audit Record"
-        subtitle={`Event #${selectedRecord?.audit_log_id} • Action: ${selectedRecord?.audit_log_action}`}
+        subtitle={`Event #${selectedRecord?.audit_log_id} • Action: ${selectedRecord?.audit_log_action || selectedRecord?.action || 'DECISION'}`}
         icon={<Clock className="w-5 h-5 text-purple-600" />}
         maxWidth="lg"
       >
@@ -346,23 +368,23 @@ export const CustomsDecisionHistoryView: React.FC = () => {
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Action Category</span>
                 <span className="font-bold text-slate-900 dark:text-white font-mono">
-                  {selectedRecord.audit_log_category}
+                  {selectedRecord.audit_log_category || selectedRecord.category || 'CUSTOMS'}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Recorded Action</span>
-                <div className="mt-0.5">{getActionBadge(selectedRecord.audit_log_action)}</div>
+                <div className="mt-0.5">{getActionBadge(selectedRecord.audit_log_action || selectedRecord.action)}</div>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Recorded Timestamp</span>
                 <span className="font-mono text-slate-700 dark:text-slate-300">
-                  {formatDate(selectedRecord.audit_log_timestamp)}
+                  {formatDate(selectedRecord.audit_log_timestamp || selectedRecord.iso_timestamp || selectedRecord.timestamp)}
                 </span>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Customs Officer / Actor</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {selectedRecord.audit_log_actor_name || 'Customs Inspector'}
+                  {selectedRecord.audit_log_actor_name || selectedRecord.actor || 'Customs Inspector'}
                 </span>
               </div>
             </div>
@@ -370,14 +392,14 @@ export const CustomsDecisionHistoryView: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Subject</span>
               <div className="font-mono font-bold text-slate-900 dark:text-white">
-                {selectedRecord.audit_log_target_type || 'Subject'} Identifier: {selectedRecord.audit_log_target_id}
+                {(selectedRecord.audit_log_target_type || selectedRecord.target_type || 'Subject')} Identifier: {selectedRecord.audit_log_target_id ?? selectedRecord.target_id ?? '—'}
               </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">Officer Remarks & Audit Description</span>
               <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-normal">
-                {selectedRecord.audit_log_description}
+                {selectedRecord.audit_log_description || selectedRecord.description || 'No remarks provided.'}
               </p>
             </div>
 
