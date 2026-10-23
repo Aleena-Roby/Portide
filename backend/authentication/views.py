@@ -12351,6 +12351,12 @@ class LoadingYardContainersAPIView(APIView):
             yard_movement_movement_type='DISCHARGE'
         ).values_list('yard_movement_container_id_id', flat=True)
 
+        # Exclude containers with active Customs inspection holds
+        on_hold_inspection_container_ids = CustomsInspection.objects.filter(
+            customs_inspection_result='HOLD',
+            customs_inspection_status='ON_HOLD'
+        ).values_list('customs_inspection_container_id_id', flat=True)
+
         queryset = Container.objects.select_related(
             'container_cargo_id',
             'container_cargo_id__cargo_arrival_request_id',
@@ -12358,7 +12364,17 @@ class LoadingYardContainersAPIView(APIView):
         ).filter(
             container_id__in=allocated_container_ids,
             container_status__in=['AT_TERMINAL', 'CLEARED'],
+            container_customs_status='CLEARED',
             container_cargo_id__cargo_direction='EXPORT'
+        ).exclude(
+            container_status='CUSTOMS_HOLD'
+        ).exclude(
+            container_customs_status__in=[
+                'NOT_SUBMITTED', 'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
+                'UNDER_INSPECTION', 'CUSTOMS_HOLD'
+            ]
+        ).exclude(
+            container_id__in=on_hold_inspection_container_ids
         ).exclude(
             container_id__in=discharged_container_ids
         ).exclude(
@@ -12579,6 +12595,71 @@ class LoadingExecuteAPIView(APIView):
                     "message": (
                         f"Container '{container.container_number}' is committed to the local delivery/gate-out pipeline "
                         f"and cannot be loaded onto a vessel."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validate mandatory Customs clearance before physical vessel loading
+            if container.container_status == 'CUSTOMS_HOLD' or container.container_customs_status == 'CUSTOMS_HOLD':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' is placed on Customs Hold "
+                        f"and cannot be loaded onto an outbound vessel."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_status == 'UNDER_INSPECTION' or container.container_customs_status == 'UNDER_INSPECTION':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' is currently undergoing Customs Inspection "
+                        f"and cannot be loaded until formal clearance is granted."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_customs_status == 'PENDING_REVIEW':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' is pending Customs review "
+                        f"and cannot be loaded until formal clearance is granted."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_customs_status == 'ADDITIONAL_INFORMATION_REQUIRED':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' requires additional documentation/information "
+                        f"for Customs review and cannot be loaded."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_customs_status == 'NOT_SUBMITTED':
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' has not been submitted for Customs clearance. "
+                        f"All export containers must have valid Customs clearance prior to vessel stowage."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            latest_inspection = container.latest_customs_inspection
+            if latest_inspection and (latest_inspection.customs_inspection_result == 'HOLD' or latest_inspection.customs_inspection_status == 'ON_HOLD'):
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' has an active Customs inspection Hold "
+                        f"and cannot be loaded onto an outbound vessel."
+                    )
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if container.container_customs_status != 'CLEARED' and not container.is_customs_cleared:
+                return Response({
+                    "status": "error",
+                    "message": (
+                        f"Cannot load container. Container '{container.container_number}' does not have verified final Customs clearance "
+                        f"(Customs Status: {container.get_container_customs_status_display()})."
                     )
                 }, status=status.HTTP_400_BAD_REQUEST)
 

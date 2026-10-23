@@ -4807,7 +4807,15 @@ class EligibleLoadingVesselSerializer(serializers.ModelSerializer):
             yard_allocation_status='ACTIVE',
             yard_allocation_container_id__container_cargo_id__cargo_arrival_request_id=arrival_req,
             yard_allocation_container_id__container_cargo_id__cargo_direction='EXPORT',
-            yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED']
+            yard_allocation_container_id__container_status__in=['AT_TERMINAL', 'CLEARED'],
+            yard_allocation_container_id__container_customs_status='CLEARED'
+        ).exclude(
+            yard_allocation_container_id__container_status='CUSTOMS_HOLD'
+        ).exclude(
+            yard_allocation_container_id__container_customs_status__in=[
+                'NOT_SUBMITTED', 'PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED',
+                'UNDER_INSPECTION', 'CUSTOMS_HOLD'
+            ]
         ).exclude(
             yard_allocation_container_id_id__in=discharged_ids
         ).exclude(

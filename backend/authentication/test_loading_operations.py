@@ -25,7 +25,8 @@ from authentication.models import (
     YardAllocation,
     YardMovementHistory,
     ContainerTrackingEvent,
-    AuditLog
+    AuditLog,
+    CustomsInspection
 )
 
 
@@ -804,4 +805,253 @@ class LoadingOperationsTestCase(TestCase):
         container_in.refresh_from_db()
         self.assertEqual(container_in.container_status, 'CLEARED')
         self.assertEqual(container_in.container_customs_status, 'CLEARED')
+
+    def test_16_loading_rejected_when_customs_status_not_submitted(self):
+        """Export container with container_customs_status='NOT_SUBMITTED' must be rejected from loading."""
+        self.container.container_customs_status = 'NOT_SUBMITTED'
+        self.container.save(update_fields=['container_customs_status'])
+
+        # Snapshot initial state
+        slot_status_before = self.slot.yard_slot_status
+        yard_occupied_before = self.yard.yard_occupied
+        block_occupied_before = self.block.yard_block_occupied
+        alloc_status_before = self.allocation.yard_allocation_status
+        tracking_events_count_before = ContainerTrackingEvent.objects.filter(tracking_event_container_id=self.container).count()
+        movements_count_before = YardMovementHistory.objects.filter(yard_movement_container_id=self.container).count()
+        audit_count_before = AuditLog.objects.filter(audit_log_action='LOAD_CONTAINER_VESSEL').count()
+
+        # Verify excluded from eligible loading yard containers list
+        res_list = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        listed_cntr_ids = [c['container_id'] for c in res_list.data['data']]
+        self.assertNotIn(self.container.container_id, listed_cntr_ids)
+
+        # Attempt loading execution
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id,
+            "remarks": "Attempt loading unsubmitted export container"
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_load.data['status'], 'error')
+        self.assertIn("not been submitted for Customs clearance", res_load.data['message'])
+
+        # Verify all database records, slot status, occupancy, and tracking remain untouched
+        self.container.refresh_from_db()
+        self.assertEqual(self.container.container_status, 'AT_TERMINAL')
+        self.allocation.refresh_from_db()
+        self.assertEqual(self.allocation.yard_allocation_status, alloc_status_before)
+        self.slot.refresh_from_db()
+        self.assertEqual(self.slot.yard_slot_status, slot_status_before)
+        self.yard.refresh_from_db()
+        self.assertEqual(self.yard.yard_occupied, yard_occupied_before)
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.yard_block_occupied, block_occupied_before)
+        self.assertEqual(ContainerTrackingEvent.objects.filter(tracking_event_container_id=self.container).count(), tracking_events_count_before)
+        self.assertEqual(YardMovementHistory.objects.filter(yard_movement_container_id=self.container).count(), movements_count_before)
+        self.assertEqual(AuditLog.objects.filter(audit_log_action='LOAD_CONTAINER_VESSEL').count(), audit_count_before)
+
+    def test_17_loading_rejected_when_customs_pending_or_under_inspection(self):
+        """Export containers with PENDING_REVIEW, ADDITIONAL_INFORMATION_REQUIRED, or UNDER_INSPECTION must be blocked."""
+        for non_cleared_status in ['PENDING_REVIEW', 'ADDITIONAL_INFORMATION_REQUIRED', 'UNDER_INSPECTION']:
+            self.container.container_customs_status = non_cleared_status
+            self.container.save(update_fields=['container_customs_status'])
+
+            # Verify excluded from eligible loading yard containers list
+            res_list = self.client.get(
+                f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+                **self.headers_tlo
+            )
+            self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+            listed_ids = [c['container_id'] for c in res_list.data['data']]
+            self.assertNotIn(self.container.container_id, listed_ids)
+
+            # Attempt loading execution
+            payload = {
+                "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+                "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+                "container_id": self.container.container_id,
+                "slot_id": self.slot.yard_slot_id,
+                "remarks": f"Attempt loading container with customs status {non_cleared_status}"
+            }
+            res_load = self.client.post(
+                '/api/terminal/loading/load/',
+                data=json.dumps(payload),
+                content_type='application/json',
+                **self.headers_tlo
+            )
+            self.assertEqual(res_load.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(res_load.data['status'], 'error')
+
+            # Ensure container remains AT_TERMINAL with active yard allocation
+            self.container.refresh_from_db()
+            self.assertEqual(self.container.container_status, 'AT_TERMINAL')
+            self.allocation.refresh_from_db()
+            self.assertEqual(self.allocation.yard_allocation_status, 'ACTIVE')
+            self.slot.refresh_from_db()
+            self.assertEqual(self.slot.yard_slot_status, 'OCCUPIED')
+
+    def test_18_loading_rejected_when_customs_status_on_hold(self):
+        """Export container with CUSTOMS_HOLD must be rejected from loading."""
+        self.container.container_status = 'CUSTOMS_HOLD'
+        self.container.container_customs_status = 'CUSTOMS_HOLD'
+        self.container.save(update_fields=['container_status', 'container_customs_status'])
+
+        # Verify excluded from loading yard containers list
+        res_list = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        listed_ids = [c['container_id'] for c in res_list.data['data']]
+        self.assertNotIn(self.container.container_id, listed_ids)
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id,
+            "remarks": "Attempt loading on-hold container"
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_load.data['status'], 'error')
+        self.assertIn("Customs Hold", res_load.data['message'])
+
+        # Verify slot and allocation remain unchanged
+        self.slot.refresh_from_db()
+        self.assertEqual(self.slot.yard_slot_status, 'OCCUPIED')
+        self.allocation.refresh_from_db()
+        self.assertEqual(self.allocation.yard_allocation_status, 'ACTIVE')
+
+    def test_19_loading_rejected_when_customs_inspection_on_hold(self):
+        """Container with CLEARED customs status but active HOLD inspection record must be rejected."""
+        self.container.container_status = 'AT_TERMINAL'
+        self.container.container_customs_status = 'CLEARED'
+        self.container.save(update_fields=['container_status', 'container_customs_status'])
+
+        # Create active hold inspection record
+        CustomsInspection.objects.create(
+            customs_inspection_container_id=self.container,
+            customs_inspection_officer_id=self.user_tlo,
+            customs_inspection_status='ON_HOLD',
+            customs_inspection_result='HOLD',
+            customs_inspection_document_status='ISSUE_FOUND',
+            customs_inspection_hold_reason='SUSPECT_MANIFEST_MISMATCH',
+            customs_inspection_started_at=timezone.now(),
+            customs_inspection_remarks='Cargo scan anomaly detected'
+        )
+
+        # Verify excluded from eligible loading containers list
+        res_list = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        listed_ids = [c['container_id'] for c in res_list.data['data']]
+        self.assertNotIn(self.container.container_id, listed_ids)
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id,
+            "remarks": "Attempt loading container with active inspection hold"
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_load.data['status'], 'error')
+        self.assertIn("active Customs inspection Hold", res_load.data['message'])
+
+    def test_20_loading_succeeds_for_officially_cleared_container_with_inspection(self):
+        """Export container with verified Customs inspection clearance loads successfully."""
+        self.container.container_status = 'AT_TERMINAL'
+        self.container.container_customs_status = 'CLEARED'
+        self.container.save(update_fields=['container_status', 'container_customs_status'])
+
+        # Create formal completed clearance inspection
+        CustomsInspection.objects.create(
+            customs_inspection_container_id=self.container,
+            customs_inspection_officer_id=self.user_tlo,
+            customs_inspection_status='COMPLETED',
+            customs_inspection_result='CLEARED',
+            customs_inspection_document_status='VERIFIED',
+            customs_inspection_started_at=timezone.now() - timedelta(minutes=30),
+            customs_inspection_completed_at=timezone.now() - timedelta(minutes=10),
+            customs_inspection_clearance_date=timezone.now() - timedelta(minutes=10),
+            customs_inspection_remarks='Export manifest and seals verified intact'
+        )
+
+        # Verify listed in eligible loading containers list
+        res_list = self.client.get(
+            f'/api/terminal/loading/yard-containers/?vessel_schedule_id={self.vessel_schedule.vessel_schedule_id}',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        listed_ids = [c['container_id'] for c in res_list.data['data']]
+        self.assertIn(self.container.container_id, listed_ids)
+
+        payload = {
+            "vessel_schedule_id": self.vessel_schedule.vessel_schedule_id,
+            "crane_allocation_id": self.crane_allocation.crane_allocation_id,
+            "container_id": self.container.container_id,
+            "slot_id": self.slot.yard_slot_id,
+            "remarks": "Official cleared export stowage"
+        }
+        res_load = self.client.post(
+            '/api/terminal/loading/load/',
+            data=json.dumps(payload),
+            content_type='application/json',
+            **self.headers_tlo
+        )
+        self.assertEqual(res_load.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_load.data['status'], 'success')
+
+        # Verify state changes
+        self.container.refresh_from_db()
+        self.assertEqual(self.container.container_status, 'LOADED')
+        self.slot.refresh_from_db()
+        self.assertEqual(self.slot.yard_slot_status, 'AVAILABLE')
+        self.allocation.refresh_from_db()
+        self.assertEqual(self.allocation.yard_allocation_status, 'RELEASED')
+        self.yard.refresh_from_db()
+        self.assertEqual(self.yard.yard_occupied, 0)
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.yard_block_occupied, 0)
+
+        # Dual-state tracking and history verification
+        self.assertTrue(ContainerTrackingEvent.objects.filter(
+            tracking_event_container_id=self.container,
+            tracking_event_status='LOADED_ON_VESSEL'
+        ).exists())
+        self.assertTrue(YardMovementHistory.objects.filter(
+            yard_movement_container_id=self.container,
+            yard_movement_movement_type='LOADING'
+        ).exists())
+        self.assertTrue(AuditLog.objects.filter(
+            audit_log_action='LOAD_CONTAINER_VESSEL',
+            audit_log_target_id=str(self.container.container_id)
+        ).exists())
+
 
