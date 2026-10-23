@@ -136,7 +136,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { id: 'yard-master', label: 'Yard Master', icon: Warehouse, path: `${basePath}/yard-master` },
           { id: 'yard-allocation', label: 'Yard Allocation', icon: MapPin, path: `${basePath}/yard-allocation` },
           { id: 'yard-operations', label: 'Yard Operations', icon: MoveHorizontal, path: `${basePath}/yard-operations` },
-          { id: 'crane-management', label: 'Crane Management', icon: Anchor, path: `${basePath}/crane-management` },
           { id: 'containers', label: 'Cargo Management', icon: Boxes, path: `${basePath}/containers` },
           { id: 'delivery-tracking', label: 'Delivery Tracking', icon: Truck, path: `${basePath}/delivery-tracking` }
         ];

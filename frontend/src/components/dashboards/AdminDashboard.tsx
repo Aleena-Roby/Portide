@@ -37,7 +37,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ activeTab = 'ove
     {
       id: 'master-data',
       title: 'Port Master Infrastructure Registry',
-      description: 'Configure port facility parameters, cargo classifications, crane equipment, and security thresholds.',
+      description: 'Configure port facility parameters, cargo classifications, terminal storage parameters, and security thresholds.',
       icon: Sliders
     },
     {

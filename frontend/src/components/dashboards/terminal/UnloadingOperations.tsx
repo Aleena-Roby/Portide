@@ -611,19 +611,9 @@ export const UnloadingOperations: React.FC<UnloadingOperationsProps> = ({
                     <div>
                       <p className="text-xs font-bold text-amber-900 dark:text-amber-200">No Active Unloading Crane</p>
                       <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                        No crane allocation is in 'ACTIVE' status for vessel '{selectedVessel.vessel_name}'.
-                        Please start a scheduled crane in Crane Management first.
+                        No crane allocation is currently in 'ACTIVE' status for vessel '{selectedVessel.vessel_name}'.
                       </p>
                     </div>
-                    {onNavigate && (
-                      <button
-                        onClick={() => onNavigate('crane-management')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-200/60 dark:bg-amber-800/40 rounded-lg hover:bg-amber-200 transition-colors cursor-pointer"
-                      >
-                        <Anchor className="w-3.5 h-3.5" />
-                        Go to Crane Management
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <div className="space-y-2.5">

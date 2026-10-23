@@ -4,7 +4,6 @@ import { DeliveryTracking } from './terminal/DeliveryTracking';
 import { YardMaster } from './terminal/YardMaster';
 import { YardAllocation } from './terminal/YardAllocation';
 import { YardOperations } from './terminal/YardOperations';
-import { CraneManagement } from './terminal/CraneManagement';
 import { UnloadingOperations } from './terminal/UnloadingOperations';
 import { LoadingOperations } from './terminal/LoadingOperations';
 
@@ -16,6 +15,10 @@ interface TerminalDashboardProps {
 export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab = 'overview', onNavigate }) => {
   if (activeTab === 'direct-transfer' || activeTab === 'direct_transfer' || activeTab === 'ship-to-truck') {
     return <UnloadingOperations initialTab="discharge" onNavigate={onNavigate} />;
+  }
+
+  if (activeTab === 'crane-management' || activeTab === 'cranes' || activeTab === 'crane') {
+    return <TerminalDashboard activeTab="overview" onNavigate={onNavigate} />;
   }
 
   if (activeTab === 'unloading-operations' || activeTab === 'unloading' || activeTab === 'discharge') {
@@ -38,9 +41,6 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
     return <YardOperations />;
   }
 
-  if (activeTab === 'crane-management' || activeTab === 'cranes' || activeTab === 'crane') {
-    return <CraneManagement onNavigate={onNavigate} />;
-  }
 
   if (activeTab === 'delivery-tracking' || activeTab === 'delivery') {
     return <DeliveryTracking />;
@@ -148,20 +148,6 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
           </p>
         </div>
 
-        <div 
-          onClick={() => onNavigate?.('crane-management')}
-          className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/60 hover:shadow-md transition-all cursor-pointer group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-            <span className="font-bold text-lg">🏗️</span>
-          </div>
-          <h3 className="font-black text-base text-slate-900 dark:text-white mb-1 group-hover:text-amber-500 transition-colors">
-            Crane Management
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Manage STS and RTG heavy equipment, allocate cranes to scheduled vessels, and coordinate quay lifting operations.
-          </p>
-        </div>
 
         <div 
           onClick={() => onNavigate?.('delivery-tracking')}
