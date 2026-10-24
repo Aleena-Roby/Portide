@@ -2143,6 +2143,7 @@ class PreArrivalCustomsDeclaration(models.Model):
     declaration_type = models.CharField(max_length=50, default='IMPORT_PRE_ARRIVAL')
     declaration_document = models.FileField(upload_to='customs_docs/declarations/', null=True, blank=True)
     declaration_document_name = models.CharField(max_length=255, blank=True, default='')
+    declaration_content_base64 = models.TextField(null=True, blank=True, help_text='Persistent base64 storage for cloud container restarts')
     declaration_notes = models.TextField(blank=True, default='')
     declaration_submitted_by = models.ForeignKey(
         'User',
@@ -2267,6 +2268,7 @@ class CustomsDocument(models.Model):
     document_name = models.CharField(max_length=255)
     file_size = models.BigIntegerField(default=0)
     file_type = models.CharField(max_length=100, blank=True, default='')
+    document_content_base64 = models.TextField(null=True, blank=True, help_text='Persistent base64 storage for cloud container restarts')
     document_notes = models.TextField(blank=True, default='')
     document_version = models.PositiveIntegerField(default=1)
     document_is_active = models.BooleanField(default=True, db_index=True)

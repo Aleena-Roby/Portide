@@ -1230,6 +1230,34 @@ class NormalCustomsDocumentWorkflowTestCase(TestCase):
         get_res = self.client.get(f"/api/customs/containers/{self.container1.container_id}/documents/")
         self.assertEqual(get_res.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_30_download_document_self_healing_when_physical_file_missing_on_disk(self):
+        """
+        Verifies that when a physical document file does not exist on ephemeral storage disk
+        (e.g., following a cloud container rebuild / deployment), CustomsDocumentDownloadAPIView
+        self-heals dynamically, reconstructing a valid certified PDF and returning HTTP 200.
+        """
+        import os
+        self._auth_customs()
+
+        doc = CustomsDocument.objects.create(
+            document_container_id=self.container1,
+            document_type="BILL_OF_LADING",
+            document_name="iot2.pdf",
+            document_file="customs_docs/2026/10/iot2.pdf",
+            file_type="application/pdf",
+            document_review_status="PENDING"
+        )
+        # Ensure physical file is not on disk
+        if doc.document_file and hasattr(doc.document_file, 'path') and os.path.exists(doc.document_file.path):
+            os.remove(doc.document_file.path)
+
+        res = self.client.get(f"/api/customs/documents/{doc.document_id}/download/?preview=true")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.headers["Content-Type"], "application/pdf")
+        self.assertIn("inline", res.headers["Content-Disposition"])
+        self.assertIn("iot2.pdf", res.headers["Content-Disposition"])
+
+
 
 
 

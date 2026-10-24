@@ -5611,7 +5611,16 @@ class CustomsDocumentUploadAPIView(APIView):
                 customs_inspection_status__in=['IN_PROGRESS', 'ON_HOLD', 'PENDING']
             ).order_by('-customs_inspection_started_at').first()
 
+            import base64
             for idx, f in enumerate(upload_files):
+                b64_content = None
+                try:
+                    f_bytes = f.read()
+                    f.seek(0)
+                    b64_content = base64.b64encode(f_bytes).decode('ascii')
+                except Exception:
+                    pass
+
                 doc = CustomsDocument.objects.create(
                     document_container_id=container,
                     document_inspection_id=active_inspection,
@@ -5621,6 +5630,7 @@ class CustomsDocumentUploadAPIView(APIView):
                     document_name=f.name,
                     file_size=f.size,
                     file_type=getattr(f, 'content_type', '') or '',
+                    document_content_base64=b64_content,
                     document_notes=resolved_notes[idx],
                     document_version=1,
                     document_is_active=True,
@@ -5911,16 +5921,14 @@ class CustomsDocumentDownloadAPIView(APIView):
                 if not user_company or user_company.shipping_company_id != decl.declaration_shipping_company_id_id:
                     return Response({"status": "error", "message": "Access denied to another shipping company's documents."}, status=status.HTTP_403_FORBIDDEN)
 
-            if not decl.declaration_document:
+            if not decl.declaration_document and not decl.declaration_document_name:
                 return Response({"status": "error", "message": "Document file not found."}, status=status.HTTP_404_NOT_FOUND)
 
             try:
                 import os
-                f_path = decl.declaration_document.path
-                if not os.path.exists(f_path):
-                    return Response({"status": "error", "message": "Physical file does not exist on storage."}, status=status.HTTP_404_NOT_FOUND)
-                is_inline = request.query_params.get('inline') == '1' or request.query_params.get('preview') == '1'
-                content_type = 'application/pdf' if f_path.endswith('.pdf') else 'application/octet-stream'
+                from authentication.customs_document_generator import ensure_document_physical_file
+                f_path, content_type = ensure_document_physical_file(decl)
+                is_inline = request.query_params.get('inline') in ['1', 'true', True] or request.query_params.get('preview') in ['1', 'true', True]
                 response = FileResponse(open(f_path, 'rb'), content_type=content_type)
                 disp = 'inline' if is_inline else 'attachment'
                 filename = decl.declaration_document_name or os.path.basename(f_path)
@@ -5954,17 +5962,16 @@ class CustomsDocumentDownloadAPIView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-        if not doc.document_file:
+        if not doc.document_file and not doc.document_name:
             return Response({"status": "error", "message": "Document has no associated file."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             import os
-            f_path = doc.document_file.path
-            if not os.path.exists(f_path):
-                return Response({"status": "error", "message": "Physical file does not exist on storage."}, status=status.HTTP_404_NOT_FOUND)
-
-            is_inline = request.query_params.get('inline') == '1' or request.query_params.get('preview') == '1'
-            content_type = doc.file_type or ('application/pdf' if f_path.endswith('.pdf') else 'application/octet-stream')
+            from authentication.customs_document_generator import ensure_document_physical_file
+            f_path, content_type = ensure_document_physical_file(doc)
+            is_inline = request.query_params.get('inline') in ['1', 'true', True] or request.query_params.get('preview') in ['1', 'true', True]
+            if doc.file_type and not content_type:
+                content_type = doc.file_type
             response = FileResponse(open(f_path, 'rb'), content_type=content_type)
             disp = 'inline' if is_inline else 'attachment'
             filename = doc.document_name or os.path.basename(f_path)
@@ -6158,6 +6165,15 @@ class CustomsDocumentReplaceAPIView(APIView):
 
         with transaction.atomic():
             now = timezone.now()
+            b64_content = None
+            try:
+                import base64
+                f_bytes = new_file.read()
+                new_file.seek(0)
+                b64_content = base64.b64encode(f_bytes).decode('ascii')
+            except Exception:
+                pass
+
             # 1. Create new replacement document
             new_doc = CustomsDocument.objects.create(
                 document_container_id=container,
@@ -6169,6 +6185,7 @@ class CustomsDocumentReplaceAPIView(APIView):
                 document_name=new_file.name,
                 file_size=new_file.size,
                 file_type=getattr(new_file, 'content_type', '') or '',
+                document_content_base64=b64_content,
                 document_notes=notes,
                 document_version=old_doc.document_version + 1,
                 document_is_active=True,
@@ -12024,6 +12041,16 @@ class PreArrivalCustomsSubmitAPIView(APIView):
                 ref = f"DEC-CUST-{current_year}-{seq:05d}"
 
             primary_file = upload_files[0] if upload_files else None
+            primary_b64 = None
+            if primary_file:
+                try:
+                    import base64
+                    p_bytes = primary_file.read()
+                    primary_file.seek(0)
+                    primary_b64 = base64.b64encode(p_bytes).decode('ascii')
+                except Exception:
+                    pass
+
             decl = PreArrivalCustomsDeclaration.objects.create(
                 declaration_reference=ref,
                 declaration_container_id=container,
@@ -12034,6 +12061,7 @@ class PreArrivalCustomsSubmitAPIView(APIView):
                 declaration_type=decl_type,
                 declaration_document=primary_file,
                 declaration_document_name=primary_file.name if primary_file else (existing_decl.declaration_document_name if existing_decl else ''),
+                declaration_content_base64=primary_b64,
                 declaration_notes=notes,
                 declaration_submitted_by=user_obj,
                 declaration_submitted_at=now,
@@ -12042,6 +12070,15 @@ class PreArrivalCustomsSubmitAPIView(APIView):
 
             created_docs = []
             for idx, f in enumerate(upload_files):
+                f_b64 = None
+                try:
+                    import base64
+                    raw_b = f.read()
+                    f.seek(0)
+                    f_b64 = base64.b64encode(raw_b).decode('ascii')
+                except Exception:
+                    pass
+
                 doc = CustomsDocument.objects.create(
                     document_container_id=container,
                     document_declaration_id=decl,
@@ -12051,6 +12088,7 @@ class PreArrivalCustomsSubmitAPIView(APIView):
                     document_name=f.name,
                     file_size=f.size,
                     file_type=getattr(f, 'content_type', '') or '',
+                    document_content_base64=f_b64,
                     document_notes=resolved_notes[idx],
                     document_version=1,
                     document_is_active=True,
