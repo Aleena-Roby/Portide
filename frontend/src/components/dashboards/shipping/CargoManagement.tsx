@@ -61,6 +61,42 @@ const TYPE_UNIT_OPTIONS_MAP: Record<string, { value: string; label: string; help
 
 const ITEMS_PER_PAGE = 10;
 
+/**
+ * Format cargo quantity:
+ * - For TEU, FEU, and whole numbers, displays whole-number quantities without unnecessary trailing zeros.
+ * - Allows decimal quantities only where existing business rules and unit definitions support them (e.g. TONNES, KG).
+ */
+export const formatCargoQuantity = (qty: number | string | undefined | null, unit?: string, displayField?: string): string => {
+  if (displayField) return displayField;
+  if (qty === undefined || qty === null || qty === '') return '0';
+  const num = typeof qty === 'number' ? qty : parseFloat(String(qty));
+  if (isNaN(num)) return String(qty);
+
+  const isWhole = num % 1 === 0;
+  const isIntegerUnit = unit ? ['TEU', 'FEU', 'UNITS', 'PACKAGES'].includes(unit.toUpperCase()) : false;
+
+  if (isWhole || isIntegerUnit) {
+    if (isWhole) {
+      return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    }
+  }
+
+  // Decimal quantities where unit definition / business rules support them
+  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
+
+/**
+ * Format gross weight in Metric Tonnes:
+ * - Supports decimal values, for example 25.50 MT.
+ */
+export const formatGrossWeight = (weight: number | string | undefined | null, displayField?: string): string => {
+  if (displayField) return displayField;
+  if (weight === undefined || weight === null || weight === '') return '0.00';
+  const num = typeof weight === 'number' ? weight : parseFloat(String(weight));
+  if (isNaN(num)) return String(weight);
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export const CargoManagement: React.FC<CargoManagementProps> = ({ 
   arrivalRequests,
   onRefreshRequests,
@@ -262,15 +298,15 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
       if (newType === 'CONTAINERIZED') {
         setCargoQuantity('250');
         setCargoUnit('TEU');
-        setCargoWeight('3500');
+        setCargoWeight('3500.00');
       } else if (newType === 'BULK_CARGO') {
         setCargoQuantity('5000');
         setCargoUnit('TONNES');
-        setCargoWeight('5000');
+        setCargoWeight('5000.00');
       } else if (newType === 'GENERAL_CARGO') {
         setCargoQuantity('1200');
         setCargoUnit('PACKAGES');
-        setCargoWeight('450');
+        setCargoWeight('450.00');
       }
     }
   };
@@ -300,7 +336,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     setCargoDirection('IMPORT');
     setCargoQuantity('500');
     setCargoUnit('TEU');
-    setCargoWeight('6000');
+    setCargoWeight('6000.00');
 
     // Default origin and destination ports if available
     if (ports.length >= 2) {
@@ -327,9 +363,26 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
     setCargoDescription(cargo.cargo_description);
     setCargoType(cargo.cargo_type);
     setCargoDirection(cargo.cargo_direction || 'IMPORT');
-    setCargoQuantity(String(cargo.cargo_quantity));
+
+    // For TEU and FEU (and integer units), strip trailing zeros when whole
+    const rawQtyNum = parseFloat(String(cargo.cargo_quantity));
+    const isIntegerUnit = ['TEU', 'FEU', 'UNITS', 'PACKAGES'].includes(cargo.cargo_unit);
+    if (!isNaN(rawQtyNum) && rawQtyNum % 1 === 0 && isIntegerUnit) {
+      setCargoQuantity(String(Math.round(rawQtyNum)));
+    } else {
+      setCargoQuantity(String(cargo.cargo_quantity));
+    }
+
     setCargoUnit(cargo.cargo_unit);
-    setCargoWeight(String(cargo.cargo_weight));
+
+    // Support decimal values for gross weight (e.g. 25.50)
+    const rawWeightNum = parseFloat(String(cargo.cargo_weight));
+    if (!isNaN(rawWeightNum)) {
+      setCargoWeight(rawWeightNum.toFixed(2));
+    } else {
+      setCargoWeight(String(cargo.cargo_weight));
+    }
+
     setCargoOriginPortId(cargo.cargo_origin_port_id || '');
     setCargoDestinationPortId(cargo.cargo_destination_port_id || '');
     setFormError('');
@@ -371,9 +424,15 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
       return;
     }
 
+    // Allow decimal quantities only where existing business rules and unit definition support them
+    if (['TEU', 'FEU', 'UNITS', 'PACKAGES'].includes(cargoUnit) && qtyNum % 1 !== 0) {
+      setFormError(`Quantity for ${cargoUnit} must be a whole number count.`);
+      return;
+    }
+
     const weightNum = parseFloat(cargoWeight);
     if (isNaN(weightNum) || weightNum <= 0) {
-      setFormError('Gross weight must be a positive number greater than zero.');
+      setFormError('Gross Weight (Metric Tonnes) must be a positive number greater than zero.');
       return;
     }
 
@@ -791,11 +850,11 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                       </td>
 
                       <td className="p-4 font-mono font-bold text-slate-900 dark:text-white">
-                        {cargo.cargo_quantity} <span className="text-[10px] text-slate-400 font-normal">{cargo.cargo_unit}</span>
+                        {formatCargoQuantity(cargo.cargo_quantity, cargo.cargo_unit, cargo.cargo_quantity_display)} <span className="text-[10px] text-slate-400 font-normal">{cargo.cargo_unit}</span>
                       </td>
 
                       <td className="p-4 font-mono text-emerald-600 font-bold">
-                        {cargo.cargo_weight} <span className="text-[10px] text-slate-400 font-normal">MT</span>
+                        {formatGrossWeight(cargo.cargo_weight, cargo.cargo_weight_display)} <span className="text-[10px] text-slate-400 font-normal">MT</span>
                       </td>
 
                       <td className="p-4">
@@ -1120,19 +1179,19 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                 </label>
                 <input
                   type="number"
-                  step="0.01"
-                  min="0.01"
+                  step={['TEU', 'FEU', 'UNITS', 'PACKAGES'].includes(cargoUnit) ? "1" : "0.01"}
+                  min={['TEU', 'FEU', 'UNITS', 'PACKAGES'].includes(cargoUnit) ? "1" : "0.01"}
                   required
                   value={cargoQuantity}
                   onChange={(e) => setCargoQuantity(e.target.value)}
-                  placeholder={cargoType === 'BULK_CARGO' ? '5000' : cargoType === 'GENERAL_CARGO' ? '1200' : '250'}
+                  placeholder={['TEU', 'FEU'].includes(cargoUnit) ? '250' : cargoType === 'BULK_CARGO' ? '5000' : '1200'}
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold focus:outline-none focus:border-[#D49A24]"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block truncate">
                   {cargoType === 'CONTAINERIZED'
-                    ? 'ISO container count or TEU volume'
+                    ? 'ISO container count or TEU volume (whole number)'
                     : cargoType === 'BULK_CARGO'
-                    ? 'Declared bulk shipment amount'
+                    ? 'Declared bulk shipment amount (metric tonnes / kg)'
                     : 'Count of packages, cartons, or pieces'}
                 </span>
               </div>
@@ -1158,7 +1217,7 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
 
             <div>
               <label className="block text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                Total Manifest Gross Weight (Metric Tonnes) *
+                Gross Weight (Metric Tonnes) *
               </label>
               <input
                 type="number"
@@ -1167,11 +1226,11 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
                 required
                 value={cargoWeight}
                 onChange={(e) => setCargoWeight(e.target.value)}
-                placeholder={cargoType === 'BULK_CARGO' ? '5000.00' : cargoType === 'GENERAL_CARGO' ? '450.00' : '3500.00'}
+                placeholder="25.50"
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono font-bold focus:outline-none focus:border-[#D49A24]"
               />
               <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                <span>Total weight in MT (1 MT = 1,000 kg).</span>
+                <span>Gross Weight in Metric Tonnes (e.g. 25.50 MT). 1 MT = 1,000 kg.</span>
                 {parseFloat(cargoQuantity) > 0 && parseFloat(cargoWeight) > 0 && (
                   <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
                     {cargoType === 'CONTAINERIZED'
@@ -1335,14 +1394,14 @@ export const CargoManagement: React.FC<CargoManagementProps> = ({
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
                 <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Quantity & Unit</span>
                 <div className="font-mono font-bold text-slate-900 dark:text-white mt-1">
-                  {selectedCargoDetail.cargo_quantity} {selectedCargoDetail.cargo_unit}
+                  {formatCargoQuantity(selectedCargoDetail.cargo_quantity, selectedCargoDetail.cargo_unit, selectedCargoDetail.cargo_quantity_display)} {selectedCargoDetail.cargo_unit}
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Gross Weight</span>
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Gross Weight (Metric Tonnes)</span>
                 <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {selectedCargoDetail.cargo_weight} Metric Tonnes (MT)
+                  {formatGrossWeight(selectedCargoDetail.cargo_weight, selectedCargoDetail.cargo_weight_display)} MT
                 </div>
               </div>
 

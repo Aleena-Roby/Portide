@@ -175,9 +175,11 @@ export interface BackendCargo {
   cargo_direction?: 'IMPORT' | 'EXPORT';
   cargo_direction_display?: string;
   cargo_quantity: number | string;
+  cargo_quantity_display?: string;
   cargo_unit: 'TEU' | 'FEU' | 'TONNES' | 'KG' | 'UNITS' | 'PACKAGES' | string;
   cargo_unit_display?: string;
   cargo_weight: number | string;
+  cargo_weight_display?: string;
   cargo_origin_port_id?: number | null;
   cargo_destination_port_id?: number | null;
   origin_port?: BackendPort | null;

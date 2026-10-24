@@ -1148,6 +1148,8 @@ class CargoSerializer(serializers.ModelSerializer):
     destination_port = PortSerializer(source='cargo_destination_port_id', read_only=True)
     cargo_origin = serializers.CharField(read_only=True)
     cargo_destination = serializers.CharField(read_only=True)
+    cargo_quantity_display = serializers.SerializerMethodField()
+    cargo_weight_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Cargo
@@ -1160,9 +1162,11 @@ class CargoSerializer(serializers.ModelSerializer):
             'cargo_direction',
             'cargo_direction_display',
             'cargo_quantity',
+            'cargo_quantity_display',
             'cargo_unit',
             'cargo_unit_display',
             'cargo_weight',
+            'cargo_weight_display',
             'cargo_origin_port_id',
             'cargo_destination_port_id',
             'origin_port',
@@ -1175,6 +1179,19 @@ class CargoSerializer(serializers.ModelSerializer):
             'cargo_updated_at',
             'arrival_request_summary'
         ]
+
+    def get_cargo_quantity_display(self, obj):
+        if obj.cargo_quantity is None:
+            return "0"
+        val = obj.cargo_quantity
+        if val == val.to_integral():
+            return str(int(val))
+        return f"{val:.2f}".rstrip('0').rstrip('.')
+
+    def get_cargo_weight_display(self, obj):
+        if obj.cargo_weight is None:
+            return "0.00"
+        return f"{obj.cargo_weight:.2f}"
 
     def get_arrival_request_summary(self, obj):
         req = obj.cargo_arrival_request_id

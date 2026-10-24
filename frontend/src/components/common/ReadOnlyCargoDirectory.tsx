@@ -18,6 +18,7 @@ import {
   Info
 } from 'lucide-react';
 import { ContainerManagementModal } from '../dashboards/shipping/ContainerManagementModal';
+import { formatCargoQuantity, formatGrossWeight } from '../dashboards/shipping/CargoManagement';
 
 interface ReadOnlyCargoDirectoryProps {
   title?: string;
@@ -354,11 +355,11 @@ export const ReadOnlyCargoDirectory: React.FC<ReadOnlyCargoDirectoryProps> = ({
                       </td>
 
                       <td className="p-4 font-mono font-bold text-slate-900 dark:text-white">
-                        {cargo.cargo_quantity} <span className="text-[10px] text-slate-400 font-normal">{cargo.cargo_unit}</span>
+                        {formatCargoQuantity(cargo.cargo_quantity, cargo.cargo_unit, cargo.cargo_quantity_display)} <span className="text-[10px] text-slate-400 font-normal">{cargo.cargo_unit}</span>
                       </td>
 
                       <td className="p-4 font-mono text-emerald-600 font-bold">
-                        {cargo.cargo_weight} <span className="text-[10px] text-slate-400 font-normal">MT</span>
+                        {formatGrossWeight(cargo.cargo_weight, cargo.cargo_weight_display)} <span className="text-[10px] text-slate-400 font-normal">MT</span>
                       </td>
 
                       <td className="p-4">
@@ -519,14 +520,14 @@ export const ReadOnlyCargoDirectory: React.FC<ReadOnlyCargoDirectoryProps> = ({
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
                 <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Quantity & Unit</span>
                 <div className="font-mono font-bold text-slate-900 dark:text-white mt-1">
-                  {selectedCargoDetail.cargo_quantity} {selectedCargoDetail.cargo_unit}
+                  {formatCargoQuantity(selectedCargoDetail.cargo_quantity, selectedCargoDetail.cargo_unit, selectedCargoDetail.cargo_quantity_display)} {selectedCargoDetail.cargo_unit}
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Gross Weight</span>
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Gross Weight (Metric Tonnes)</span>
                 <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {selectedCargoDetail.cargo_weight} Metric Tonnes (MT)
+                  {formatGrossWeight(selectedCargoDetail.cargo_weight, selectedCargoDetail.cargo_weight_display)} MT
                 </div>
               </div>
 

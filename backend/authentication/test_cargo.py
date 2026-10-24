@@ -162,6 +162,8 @@ class CargoRegistrationTestCase(TestCase):
         self.assertEqual(cargo_data["cargo_status"], "REGISTERED")
         self.assertEqual(cargo_data["cargo_type"], "CONTAINERIZED")
         self.assertEqual(Decimal(str(cargo_data["cargo_quantity"])), Decimal("450.00"))
+        self.assertEqual(cargo_data["cargo_quantity_display"], "450")
+        self.assertEqual(cargo_data["cargo_weight_display"], "5400.50")
         self.assertEqual(cargo_data["cargo_origin_port_id"], self.port_singapore.port_id)
         self.assertEqual(cargo_data["cargo_destination_port_id"], self.port_mumbai.port_id)
 
@@ -1321,4 +1323,55 @@ class CargoRegistrationTestCase(TestCase):
         )
         self.assertEqual(res3.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("cargo_weight", res3.data["errors"])
+
+    def test_cargo_quantity_and_gross_weight_formatting(self):
+        """Verify quantity formatting (whole numbers without trailing zeros for TEU/FEU) and gross weight decimals."""
+        # 1. Whole number TEU quantity -> displayed as "250", not "250.00"
+        payload_teu = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Clean Container Consignment",
+            "cargo_type": "CONTAINERIZED",
+            "cargo_quantity": 250,
+            "cargo_unit": "TEU",
+            "cargo_weight": 3500.50,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_teu = self.client.post(
+            "/api/cargo/",
+            data=payload_teu,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_teu.status_code, status.HTTP_201_CREATED)
+        data_teu = res_teu.data["data"]
+        self.assertEqual(data_teu["cargo_quantity_display"], "250")
+        self.assertEqual(data_teu["cargo_weight_display"], "3500.50")
+
+        # 2. Decimal Bulk Quantity (supported for TONNES) -> displays decimal places
+        payload_bulk_decimal = {
+            "cargo_arrival_request_id": self.arrival_a.vessel_arrival_request_id,
+            "cargo_description": "Precision Grain Cargo",
+            "cargo_type": "BULK_CARGO",
+            "cargo_quantity": 1250.75,
+            "cargo_unit": "TONNES",
+            "cargo_weight": 1250.75,
+            "cargo_origin_port_id": self.port_singapore.port_id,
+            "cargo_destination_port_id": self.port_mumbai.port_id
+        }
+        res_bulk = self.client.post(
+            "/api/cargo/",
+            data=payload_bulk_decimal,
+            format="json",
+            HTTP_X_USER_EMAIL=self.login_a.login_email,
+            HTTP_X_USER_ROLE="shipping_company",
+            HTTP_X_USER_ID=str(self.login_a.login_id)
+        )
+        self.assertEqual(res_bulk.status_code, status.HTTP_201_CREATED)
+        data_bulk = res_bulk.data["data"]
+        self.assertEqual(data_bulk["cargo_quantity_display"], "1250.75")
+        self.assertEqual(data_bulk["cargo_weight_display"], "1250.75")
+
 
