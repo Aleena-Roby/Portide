@@ -260,6 +260,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
         method: 'POST',
         body: JSON.stringify({
           review_status: status,
+          remarks: remarks || '',
           review_remarks: remarks || ''
         })
       });

@@ -5749,7 +5749,7 @@ class CustomsDocumentReviewAPIView(APIView):
             )
 
         review_status = serializer.validated_data['review_status']
-        remarks = serializer.validated_data.get('remarks', '').strip()
+        remarks = (serializer.validated_data.get('remarks') or serializer.validated_data.get('review_remarks') or request.data.get('remarks') or request.data.get('review_remarks') or '').strip()
 
         with transaction.atomic():
             try:
@@ -5797,12 +5797,12 @@ class CustomsDocumentReviewAPIView(APIView):
             )
             # Trigger asynchronous email notification to the shipping line & submitting agent
             try:
-                send_customs_document_review_notification(
+                transaction.on_commit(lambda: send_customs_document_review_notification(
                     document=doc,
                     review_status=review_status,
                     remarks=remarks,
                     officer_name=officer_name
-                )
+                ))
             except Exception as mail_err:
                 logger.error(f"Failed to queue customs document review email: {mail_err}", exc_info=True)
 

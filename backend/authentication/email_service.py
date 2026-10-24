@@ -87,8 +87,9 @@ def _send_via_google_script(subject, message, from_email, recipient_list, html_m
     if not script_url:
         return False
 
+    to_field = ", ".join(recipient_list) if isinstance(recipient_list, (list, tuple, set)) else str(recipient_list)
     payload = {
-        "to": recipient_list,
+        "to": to_field,
         "subject": subject,
         "message": message,
         "html": html_message or message
@@ -105,7 +106,15 @@ def _send_via_google_script(subject, message, from_email, recipient_list, html_m
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            logger.info(f"Google Apps Script email delivery successful to {recipient_list}")
+            resp_body = resp.read().decode("utf-8")
+            try:
+                data = json.loads(resp_body)
+                if isinstance(data, dict) and data.get("status") == "error":
+                    logger.error(f"Google Apps Script returned delivery error: {data.get('message')}")
+                    return False
+            except Exception:
+                pass
+            logger.info(f"Google Apps Script email delivery successful to {to_field}")
             return True
     except Exception as e:
         logger.error(f"Google Apps Script email delivery failed: {e}", exc_info=True)
@@ -1290,12 +1299,23 @@ Maritime Port Operations Intelligence Platform
         return False
 
 
-def send_customs_hold_notification(container, hold_reason: str = None, officer_name: str = None) -> bool:
+def send_customs_hold_notification(container, hold_reason: str = None, remarks: str = None, officer_name: str = None) -> bool:
     """
     Sends notification email when a container is placed on Customs Hold.
     Notifies the linked shipping company with selectable container number.
+    Accepts optional remarks and officer_name (supports both 3-arg and 4-arg calls).
     """
     try:
+        # Handle call signature where 3rd arg might be officer_name
+        if officer_name is None and remarks and not remarks.startswith(('DOC', 'CON', 'SUS', 'PHY', 'MIS', 'CUS')):
+            # If called as send_customs_hold_notification(container, hold_reason, officer_name)
+            # where 3rd arg is actually officer name string
+            officer = remarks
+            effective_remarks = None
+        else:
+            officer = officer_name or 'Customs Authority'
+            effective_remarks = remarks
+
         shipping_company = container.shipping_company
         recipient_email = shipping_company.shipping_company_email if shipping_company else None
         if not recipient_email:
@@ -1305,8 +1325,9 @@ def send_customs_hold_notification(container, hold_reason: str = None, officer_n
         container_type_display = container.get_container_type_display() if hasattr(container, 'get_container_type_display') else 'Standard Container'
         cargo_desc = container.cargo.cargo_description if getattr(container, 'cargo', None) else 'Containerized Cargo'
         vessel_name = container.vessel.vessel_name if getattr(container, 'vessel', None) else 'N/A'
-        officer = officer_name or 'Customs Authority'
         reason = hold_reason or 'Documentation / Inspection Discrepancy'
+        if effective_remarks:
+            reason = f"{reason} - {effective_remarks}"
 
         plain_body = f"""Dear {shipping_company.shipping_company_name},
 
@@ -1711,21 +1732,28 @@ def send_customs_document_review_notification(document, review_status: str, rema
     """
     try:
         container = getattr(document, 'document_container_id', None)
+        if not container and getattr(document, 'document_declaration_id', None):
+            container = getattr(document.document_declaration_id, 'declaration_container_id', None)
+
         if not container:
             return False
 
         shipping_company = container.shipping_company
+        uploader = getattr(document, 'document_uploaded_by', None)
+
+        if not shipping_company and uploader and getattr(uploader, 'shipping_company_id', None):
+            shipping_company = uploader.shipping_company_id
+
         recipients = set()
 
         if shipping_company and getattr(shipping_company, 'shipping_company_email', None):
-            recipients.add(shipping_company.shipping_company_email)
+            recipients.add(str(shipping_company.shipping_company_email).strip())
 
-        uploader = getattr(document, 'document_uploaded_by', None)
         if uploader:
             if getattr(uploader, 'user_email', None):
-                recipients.add(uploader.user_email)
+                recipients.add(str(uploader.user_email).strip())
             if getattr(uploader, 'login_id', None) and getattr(uploader.login_id, 'login_email', None):
-                recipients.add(uploader.login_id.login_email)
+                recipients.add(str(uploader.login_id.login_email).strip())
 
         recipient_list = [r for r in recipients if r and '@' in r]
         if not recipient_list:

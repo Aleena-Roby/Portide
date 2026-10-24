@@ -4846,6 +4846,7 @@ class CustomsDocumentReviewSerializer(serializers.Serializer):
         required=True
     )
     remarks = serializers.CharField(required=False, allow_blank=True, default='')
+    review_remarks = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 # ==============================================================================
