@@ -92,22 +92,24 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
     }
   }, [containerSearch]);
 
-  // Fetch active gates
+  // Fetch active gates permitted for physical truck entry (INBOUND or BIDIRECTIONAL)
   const fetchGates = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/gate/gates/');
+      const res = await apiFetch('/api/gate/gates/?direction=entry');
       const json = await res.json();
       if (res.ok && json.status === 'success') {
-        const activeGates: BackendGate[] = (json.data || []).filter(
-          (g: BackendGate) => g.gate_is_active
+        const entryGates: BackendGate[] = (json.data || []).filter(
+          (g: BackendGate) =>
+            g.gate_is_active &&
+            (g.gate_type === 'INBOUND' || g.gate_type === 'BIDIRECTIONAL')
         );
-        setGates(activeGates);
-        if (activeGates.length > 0 && selectedGateId === '') {
-          // Default to first active inbound or bidirectional gate
-          const defaultGate = activeGates.find(
-            (g) => g.gate_type === 'INBOUND' || g.gate_type === 'BIDIRECTIONAL'
-          ) || activeGates[0];
-          setSelectedGateId(defaultGate.gate_id);
+        setGates(entryGates);
+        if (entryGates.length > 0) {
+          if (!entryGates.some((g) => g.gate_id === selectedGateId)) {
+            setSelectedGateId(entryGates[0].gate_id);
+          }
+        } else {
+          setSelectedGateId('');
         }
       }
     } catch {
@@ -173,7 +175,7 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
       return;
     }
     if (!selectedGateId) {
-      setSubmitError('Please select the arrival port gate.');
+      setSubmitError('Please select a valid arrival port gate permitted for physical entry (INBOUND or BIDIRECTIONAL).');
       return;
     }
 
@@ -489,16 +491,33 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
                   <select
                     value={selectedGateId}
                     onChange={(e) => setSelectedGateId(Number(e.target.value) || '')}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-bold focus:ring-2 focus:ring-teal-500 focus:outline-none cursor-pointer"
+                    disabled={gates.length === 0}
+                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border ${
+                      gates.length === 0
+                        ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 cursor-not-allowed'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white cursor-pointer'
+                    } text-xs font-bold focus:ring-2 focus:ring-teal-500 focus:outline-none`}
                   >
-                    <option value="">Select Arrival Gate...</option>
-                    {gates.map((g) => (
-                      <option key={g.gate_id} value={g.gate_id}>
-                        {g.gate_name} ({g.gate_code}) &bull; {g.gate_type}
-                      </option>
-                    ))}
+                    {gates.length === 0 ? (
+                      <option value="">No entry gates available (INBOUND / BIDIRECTIONAL required)</option>
+                    ) : (
+                      <>
+                        <option value="">Select Arrival Gate...</option>
+                        {gates.map((g) => (
+                          <option key={g.gate_id} value={g.gate_id}>
+                            {g.gate_name} ({g.gate_code}) &bull; {g.gate_type_display || g.gate_type}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
+                {gates.length === 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    All registered port gates are currently configured as OUTBOUND (exit-only). Physical truck entry requires an INBOUND or BIDIRECTIONAL gate.
+                  </p>
+                )}
               </div>
 
               <div>

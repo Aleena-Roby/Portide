@@ -664,3 +664,100 @@ class ExportGateInWorkflowTestCase(TestCase):
         self.assertEqual(first_rec["gate_in_driver_name"], "Suresh Kumar")
         self.assertEqual(first_rec["gate_in_seal_number"], "SEAL-XYZ-123")
         self.assertEqual(first_rec["officer_name"], "Rajesh Gate Officer")
+
+    # -------------------------------------------------------------------------
+    # TEST 19: REJECT OUTBOUND (EXIT-ONLY) GATES FOR EXPORT GATE-IN ENTRY
+    # -------------------------------------------------------------------------
+    def test_19_export_gate_in_rejects_outbound_exit_gate(self):
+        """
+        Verify that an OUTBOUND (exit-only) gate cannot be used for physical truck entry
+        during export gate-in, even though the cargo trade direction is export.
+        """
+        outbound_gate = Gate.objects.create(
+            gate_code="GATE-TEST-EXIT-01",
+            gate_name="Commercial Test Exit Gate 2",
+            gate_type="OUTBOUND",
+            gate_is_active=True
+        )
+
+        payload = {
+            "container_id": self.export_container.container_id,
+            "truck_number": "MH-04-AB-9999",
+            "driver_name": "Ramesh Exit",
+            "driver_license": "DL-MH-2015-999999",
+            "gate_id": outbound_gate.gate_id
+        }
+        response = self.client.post("/api/gate/export-gate-in/", payload, format="json", **self._auth_gate())
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["status"], "error")
+        self.assertIn("exit-only gate", response.data["message"])
+        self.assertIn("requires an INBOUND or BIDIRECTIONAL gate", response.data["message"])
+
+    # -------------------------------------------------------------------------
+    # TEST 20: ACCEPT BIDIRECTIONAL GATES FOR EXPORT GATE-IN ENTRY
+    # -------------------------------------------------------------------------
+    def test_20_export_gate_in_accepts_bidirectional_gate(self):
+        """
+        Verify that a BIDIRECTIONAL gate permits physical truck entry during export gate-in.
+        """
+        bidi_gate = Gate.objects.create(
+            gate_code="GATE-TEST-BIDI-01",
+            gate_name="Main Dual Direction Gate",
+            gate_type="BIDIRECTIONAL",
+            gate_is_active=True
+        )
+
+        payload = {
+            "container_id": self.export_container.container_id,
+            "truck_number": "MH-04-AB-5555",
+            "driver_name": "Vikas Dual",
+            "driver_license": "DL-MH-2015-555555",
+            "gate_id": bidi_gate.gate_id
+        }
+        response = self.client.post("/api/gate/export-gate-in/", payload, format="json", **self._auth_gate())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "success")
+
+    # -------------------------------------------------------------------------
+    # TEST 21: GATE DIRECTORY DIRECTION FILTERING
+    # -------------------------------------------------------------------------
+    def test_21_gate_list_direction_filtering(self):
+        """
+        Verify that GateListAPIView correctly filters gates by physical direction:
+          - ?direction=entry returns INBOUND and BIDIRECTIONAL gates, excluding OUTBOUND
+          - ?direction=exit returns OUTBOUND and BIDIRECTIONAL gates, excluding INBOUND
+        """
+        Gate.objects.create(
+            gate_code="GATE-DIR-IN",
+            gate_name="Inbound Gate Test",
+            gate_type="INBOUND",
+            gate_is_active=True
+        )
+        Gate.objects.create(
+            gate_code="GATE-DIR-OUT",
+            gate_name="Outbound Gate Test",
+            gate_type="OUTBOUND",
+            gate_is_active=True
+        )
+        Gate.objects.create(
+            gate_code="GATE-DIR-BIDI",
+            gate_name="Bidirectional Gate Test",
+            gate_type="BIDIRECTIONAL",
+            gate_is_active=True
+        )
+
+        # 1. Query entry gates
+        res_entry = self.client.get("/api/gate/gates/?direction=entry", **self._auth_gate())
+        self.assertEqual(res_entry.status_code, status.HTTP_200_OK)
+        entry_codes = [g["gate_code"] for g in res_entry.data["data"]]
+        self.assertIn("GATE-DIR-IN", entry_codes)
+        self.assertIn("GATE-DIR-BIDI", entry_codes)
+        self.assertNotIn("GATE-DIR-OUT", entry_codes)
+
+        # 2. Query exit gates
+        res_exit = self.client.get("/api/gate/gates/?direction=exit", **self._auth_gate())
+        self.assertEqual(res_exit.status_code, status.HTTP_200_OK)
+        exit_codes = [g["gate_code"] for g in res_exit.data["data"]]
+        self.assertIn("GATE-DIR-OUT", exit_codes)
+        self.assertIn("GATE-DIR-BIDI", exit_codes)
+        self.assertNotIn("GATE-DIR-IN", exit_codes)

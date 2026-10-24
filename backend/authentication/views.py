@@ -6808,15 +6808,27 @@ class ExportGateInAPIView(APIView):
             if not gate_obj:
                 # Default to an active inbound or bidirectional gate if available
                 gate_obj = (
-                    Gate.objects.filter(gate_type__in=['INBOUND', 'BIDIRECTIONAL'], gate_is_active=True).first() or
-                    Gate.objects.filter(gate_is_active=True).first()
+                    Gate.objects.filter(gate_type__in=['INBOUND', 'BIDIRECTIONAL'], gate_is_active=True).first()
                 )
 
             if not gate_obj:
                 return Response(
                     {
                         "status": "error",
-                        "message": "A valid active port gate is required for export gate-in."
+                        "message": "A valid active inbound or bi-directional port gate is required for export gate-in. Please select an entry gate."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate that the gate permits physical truck entry into the port
+            if gate_obj.gate_type not in ['INBOUND', 'BIDIRECTIONAL']:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": (
+                            f"Gate '{gate_obj.gate_name}' ({gate_obj.gate_code}) is designated as an exit-only gate ({gate_obj.gate_type}). "
+                            "Physical truck arrival and export gate-in requires an INBOUND or BIDIRECTIONAL gate."
+                        )
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
@@ -7118,11 +7130,26 @@ class GateListAPIView(APIView):
     """
     Port Gates Directory API View.
     GET: List designated port entry/exit gates.
+    Supports filtering by physical direction:
+      - ?direction=entry (or inbound): filters gate_type in ['INBOUND', 'BIDIRECTIONAL']
+      - ?direction=exit (or outbound): filters gate_type in ['OUTBOUND', 'BIDIRECTIONAL']
+      - ?gate_type=INBOUND|OUTBOUND|BIDIRECTIONAL: filters exact gate_type
     """
     permission_classes = [IsGateTruckOfficer]
 
     def get(self, request):
-        gates = Gate.objects.filter(gate_is_active=True).order_by('gate_name')
+        gates = Gate.objects.filter(gate_is_active=True)
+        direction = (request.query_params.get('direction') or '').strip().lower()
+        gate_type = (request.query_params.get('gate_type') or '').strip().upper()
+
+        if direction in ['entry', 'inbound', 'in']:
+            gates = gates.filter(gate_type__in=['INBOUND', 'BIDIRECTIONAL'])
+        elif direction in ['exit', 'outbound', 'out']:
+            gates = gates.filter(gate_type__in=['OUTBOUND', 'BIDIRECTIONAL'])
+        elif gate_type:
+            gates = gates.filter(gate_type=gate_type)
+
+        gates = gates.order_by('gate_name')
         serializer = GateSerializer(gates, many=True)
         return Response({
             "status": "success",
