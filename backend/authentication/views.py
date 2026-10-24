@@ -4837,8 +4837,29 @@ class CargoContainersSummaryAPIView(APIView):
         capacity_mismatch = False
         if cargo.cargo_unit == 'TEU':
             capacity_mismatch = round(total_teu, 2) != round(declared_qty, 2)
+            capacity_qty = total_teu
+            capacity_unit = 'TEU'
         elif cargo.cargo_unit == 'FEU':
             capacity_mismatch = round(total_teu / 2.0, 2) != round(declared_qty, 2)
+            capacity_qty = total_teu / 2.0
+            capacity_unit = 'FEU'
+        else:
+            capacity_qty = total_teu
+            capacity_unit = 'TEU'
+
+        def _format_qty_display(val):
+            if val is None:
+                return "0"
+            try:
+                f = float(val)
+            except (ValueError, TypeError):
+                return str(val)
+            if f == 0 or f.is_integer():
+                return str(int(f))
+            return f"{round(f, 2):.2f}".rstrip('0').rstrip('.')
+
+        declared_qty_str = f"{_format_qty_display(declared_qty)} {cargo.cargo_unit}"
+        capacity_qty_str = f"{_format_qty_display(capacity_qty)} {capacity_unit}"
 
         return Response(
             {
@@ -4865,7 +4886,7 @@ class CargoContainersSummaryAPIView(APIView):
                     "declared_cargo_unit": cargo.cargo_unit,
                     "capacity_mismatch": capacity_mismatch,
                     "mismatch_message": (
-                        f"Declared cargo quantity ({declared_qty} {cargo.cargo_unit}) and currently registered container capacity ({round(total_teu, 2)} TEU) do not match."
+                        f"The declared cargo quantity ({declared_qty_str}) does not match the currently registered container capacity ({capacity_qty_str}). Please verify both values."
                         if capacity_mismatch else None
                     )
                 },

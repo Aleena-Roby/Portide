@@ -567,6 +567,10 @@ class ContainerManagementTestCase(TestCase):
         # Declared quantity is 500 TEU vs 3 TEU registered -> capacity_mismatch is True
         self.assertTrue(summary['capacity_mismatch'])
         self.assertIsNotNone(summary['mismatch_message'])
+        self.assertEqual(
+            summary['mismatch_message'],
+            "The declared cargo quantity (500 TEU) does not match the currently registered container capacity (3 TEU). Please verify both values."
+        )
 
     # =========================================================================
     # 19. Centralized Audit Log Creation
@@ -1103,5 +1107,98 @@ class ContainerManagementTestCase(TestCase):
         self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
         container.refresh_from_db()
         self.assertEqual(container.container_gross_weight, Decimal("21.50"))
+
+    # =========================================================================
+    # 37. Cargo Quantity Mismatch Message Formatting & Unit Rules
+    # =========================================================================
+    def test_37_cargo_quantity_mismatch_message_formatting(self):
+        """
+        Validates cargo quantity mismatch messaging:
+        - Displays whole-number TEU/FEU quantities without unnecessary trailing zeros (250 TEU, not 250.0 TEU).
+        - Displays zero as 0 TEU (or 0 FEU), not 0.0 TEU.
+        - Preserves meaningful fractional values where supported by unit rules (e.g. 0.5 FEU).
+        - Uses clear wording: 'The declared cargo quantity (...) does not match the currently registered container capacity (...). Please verify both values.'
+        """
+        # Case 1: Cargo with 250 TEU declared and 0 containers registered
+        cargo_250_teu = Cargo.objects.create(
+            cargo_arrival_request_id=self.arr_req_a,
+            cargo_description="Footwear and Garments",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("250.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("3000.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        res_zero = self.client.get(f'/api/cargo/{cargo_250_teu.cargo_id}/containers/', **self.headers_company_a)
+        self.assertEqual(res_zero.status_code, status.HTTP_200_OK)
+        sum_zero = res_zero.data['summary']
+        self.assertTrue(sum_zero['capacity_mismatch'])
+        self.assertEqual(
+            sum_zero['mismatch_message'],
+            "The declared cargo quantity (250 TEU) does not match the currently registered container capacity (0 TEU). Please verify both values."
+        )
+
+        # Case 2: FEU cargo with 100 FEU declared and 1 x 20FT container (1 TEU = 0.5 FEU)
+        cargo_100_feu = Cargo.objects.create(
+            cargo_arrival_request_id=self.arr_req_a,
+            cargo_description="Refrigerated Fruits",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("100.00"),
+            cargo_unit="FEU",
+            cargo_weight=Decimal("2000.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        Container.objects.create(
+            container_cargo_id=cargo_100_feu,
+            container_number="FEUU1234567",
+            container_type="20FT",
+            container_gross_weight=Decimal("15.00"),
+            container_status="REGISTERED"
+        )
+        res_feu = self.client.get(f'/api/cargo/{cargo_100_feu.cargo_id}/containers/', **self.headers_company_a)
+        self.assertEqual(res_feu.status_code, status.HTTP_200_OK)
+        sum_feu = res_feu.data['summary']
+        self.assertTrue(sum_feu['capacity_mismatch'])
+        self.assertEqual(
+            sum_feu['mismatch_message'],
+            "The declared cargo quantity (100 FEU) does not match the currently registered container capacity (0.5 FEU). Please verify both values."
+        )
+
+        # Case 3: Matching capacity (e.g. 2 x 20FT = 2 TEU declared and registered) -> No mismatch
+        cargo_match = Cargo.objects.create(
+            cargo_arrival_request_id=self.arr_req_a,
+            cargo_description="Precision Instruments",
+            cargo_type="CONTAINERIZED",
+            cargo_quantity=Decimal("2.00"),
+            cargo_unit="TEU",
+            cargo_weight=Decimal("25.00"),
+            cargo_origin_port_id=self.port_singapore,
+            cargo_destination_port_id=self.port_mumbai,
+            cargo_status="REGISTERED"
+        )
+        Container.objects.create(
+            container_cargo_id=cargo_match,
+            container_number="MSCU2000001",
+            container_type="20FT",
+            container_gross_weight=Decimal("12.00"),
+            container_status="REGISTERED"
+        )
+        Container.objects.create(
+            container_cargo_id=cargo_match,
+            container_number="MSCU2000002",
+            container_type="20FT",
+            container_gross_weight=Decimal("13.00"),
+            container_status="REGISTERED"
+        )
+        res_match = self.client.get(f'/api/cargo/{cargo_match.cargo_id}/containers/', **self.headers_company_a)
+        self.assertEqual(res_match.status_code, status.HTTP_200_OK)
+        sum_match = res_match.data['summary']
+        self.assertFalse(sum_match['capacity_mismatch'])
+        self.assertIsNone(sum_match['mismatch_message'])
+
 
 

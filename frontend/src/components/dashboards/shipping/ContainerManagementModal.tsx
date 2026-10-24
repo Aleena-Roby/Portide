@@ -37,6 +37,7 @@ import {
 import { ContainerTrackingModal } from '../../modals/ContainerTrackingModal';
 import { SubmitCustomsDocumentModal } from './SubmitCustomsDocumentModal';
 import { SubmitPreArrivalCustomsModal } from './SubmitPreArrivalCustomsModal';
+import { formatCargoQuantity } from './CargoManagement';
 
 interface ContainerManagementModalProps {
   isOpen: boolean;
@@ -590,7 +591,7 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                     <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-center">
                       <span className="text-[9px] font-bold uppercase tracking-wider text-[#D49A24] block">Capacity</span>
                       <span className="text-lg font-black text-[#D49A24] block mt-0.5">
-                        {summary.total_teu} <span className="text-[10px] font-semibold text-slate-400">TEU</span>
+                        {formatCargoQuantity(summary.total_teu, 'TEU')} <span className="text-[10px] font-semibold text-slate-400">TEU</span>
                       </span>
                     </div>
 
@@ -647,7 +648,7 @@ export const ContainerManagementModal: React.FC<ContainerManagementModalProps> =
                         </span>
                       </div>
                       <span className="text-[10px] text-amber-700/80 dark:text-amber-400 font-mono shrink-0">
-                        {summary.total_teu} / {summary.declared_cargo_quantity} {summary.declared_cargo_unit}
+                        {formatCargoQuantity(summary.total_teu, 'TEU')} / {formatCargoQuantity(summary.declared_cargo_quantity, summary.declared_cargo_unit)} {summary.declared_cargo_unit}
                       </span>
                     </div>
                   )}
