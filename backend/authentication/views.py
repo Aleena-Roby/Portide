@@ -94,6 +94,7 @@ from authentication.serializers import (
     ContainerTrackingEventSerializer,
     ContainerDeliveryListSerializer,
     ContainerDeliveryDetailSerializer,
+    DeliveryUpdateAddressSerializer,
     DeliveryConfirmDepartureSerializer,
     DeliveryUpdateStatusSerializer,
     DeliveryConfirmDeliverySerializer,
@@ -4223,7 +4224,7 @@ class PublicContainerTrackingAPIView(APIView):
 
                 origin_name = cargo.cargo_origin_port_id.port_name if (cargo and cargo.cargo_origin_port_id) else "Port of Origin"
                 dest_port_name = cargo.cargo_destination_port_id.port_name if (cargo and cargo.cargo_destination_port_id) else "Port of Cochin"
-                delivery_dest = container.container_delivery_destination or f"{dest_port_name} -> Kochi Distribution Facility"
+                delivery_dest = container.container_delivery_destination or "Destination address not provided"
 
                 last_event = delivery_events[-1] if delivery_events else None
                 last_dt = last_event.tracking_event_timestamp if last_event else last_updated_dt
@@ -7350,9 +7351,7 @@ class GatePassGenerateAPIView(APIView):
                 )
 
                 container.container_delivery_status = 'GATE_PASS_GENERATED'
-                if not container.container_delivery_destination:
-                    container.container_delivery_destination = f"{gate.gate_name} -> Regional Distribution Facility"
-                container.save(update_fields=['container_delivery_status', 'container_delivery_destination', 'container_updated_at'])
+                container.save(update_fields=['container_delivery_status', 'container_updated_at'])
 
         officer_name = user_obj.user_full_name if user_obj else 'Gate & Truck Operations Officer'
 
@@ -7931,7 +7930,11 @@ class DeliveryContainerListAPIView(APIView):
         role = (request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else '')).strip().lower()
 
         # Query all containers that have reached the release / delivery lifecycle
+        # STRICT REQUIREMENT: Delivery Tracking handles ONLY eligible IMPORT containers released for collection.
+        # EXPORT containers are strictly excluded from its worklist and related KPIs.
         qs = Container.objects.filter(
+            container_cargo_id__cargo_direction='IMPORT'
+        ).filter(
             models.Q(container_status='RELEASED') |
             models.Q(gate_releases__isnull=False) |
             models.Q(tracking_events__isnull=False) |
@@ -8523,6 +8526,69 @@ class DeliveryReportExceptionAPIView(APIView):
         return Response({
             "status": "success",
             "message": f"Delivery exception recorded for Container {container.container_number}.",
+            "data": detail_serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class DeliveryUpdateAddressAPIView(APIView):
+    """
+    Directly update the final delivery destination address (and optional recipient name)
+    for an import container without forcing a status change or altering Cargo Registration.
+    Endpoints: POST /api/delivery/containers/<int:pk>/update-address/
+    Permissions: IsTerminalLogisticsOperator (Terminal Operators & Port Admins)
+    """
+    permission_classes = [IsTerminalLogisticsOperator]
+
+    def post(self, request, pk):
+        login_obj, user_obj, _ = get_authenticated_user_and_company(request)
+        if user_obj and getattr(user_obj, 'user_must_change_password', False):
+            return Response({"status": "error", "message": "Password change required."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = DeliveryUpdateAddressSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"status": "error", "message": "Validation error.", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        dest_addr = serializer.validated_data['destination_address'].strip()
+        recipient_name = serializer.validated_data.get('recipient_name', '').strip()
+        remarks = serializer.validated_data.get('remarks', '').strip()
+
+        with transaction.atomic():
+            try:
+                container = Container.objects.select_for_update().get(container_id=pk)
+            except Container.DoesNotExist:
+                return Response({"status": "error", "message": f"Container #{pk} not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            container.container_delivery_destination = dest_addr
+            update_fields = ['container_delivery_destination', 'container_updated_at']
+            if recipient_name:
+                container.container_delivery_recipient = recipient_name
+                update_fields.append('container_delivery_recipient')
+            container.save(update_fields=update_fields)
+
+            operator_name = user_obj.user_full_name if user_obj else 'Operations Officer'
+            desc = f"Updated delivery address for Container {container.container_number} to '{dest_addr}'."
+            if recipient_name:
+                desc += f" Consignee/Recipient: '{recipient_name}'."
+            if remarks:
+                desc += f" Notes: {remarks}"
+
+            create_audit_log(
+                user=user_obj or login_obj,
+                actor_name=operator_name,
+                role='Terminal & Logistics Operator',
+                action='UPDATE_DELIVERY_ADDRESS',
+                category='DELIVERY_TRACKING',
+                target_type='Container',
+                target_id=str(container.container_id),
+                description=desc,
+                status='SUCCESS',
+                request=request
+            )
+
+        detail_serializer = ContainerDeliveryDetailSerializer(container, context={'request': request})
+        return Response({
+            "status": "success",
+            "message": f"Delivery address updated for Container {container.container_number}.",
             "data": detail_serializer.data
         }, status=status.HTTP_200_OK)
 
@@ -12729,11 +12795,11 @@ class DirectTransferExecuteAPIView(APIView):
 
             # Container physical status update (DOES NOT touch YardAllocation or YardSlot)
             container.container_delivery_status = 'GATE_PASS_GENERATED'
-            if not container.container_delivery_recipient:
+            update_fields = ['container_delivery_status', 'container_updated_at']
+            if not container.container_delivery_recipient and delivery_order.delivery_order_consignee_name:
                 container.container_delivery_recipient = delivery_order.delivery_order_consignee_name
-            if not container.container_delivery_destination:
-                container.container_delivery_destination = f"{gate.gate_name} (Direct Quayside Exit)"
-            container.save(update_fields=['container_delivery_status', 'container_delivery_recipient', 'container_delivery_destination', 'container_updated_at'])
+                update_fields.append('container_delivery_recipient')
+            container.save(update_fields=update_fields)
 
             # Record tracking event
             ContainerTrackingEvent.objects.create(

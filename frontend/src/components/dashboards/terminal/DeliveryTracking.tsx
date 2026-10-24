@@ -544,9 +544,189 @@ export const UpdateDeliveryModal: React.FC<UpdateDeliveryModalProps> = ({
   );
 };
 
+interface DeliveryAddressModalProps {
+  container: DeliveryContainerListItem | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export const DeliveryAddressModal: React.FC<DeliveryAddressModalProps> = ({
+  container,
+  isOpen,
+  onClose,
+  onSuccess,
+}) => {
+  const [destinationAddress, setDestinationAddress] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && container) {
+      setDestinationAddress(container.container_delivery_destination || container.destination || '');
+      setRecipientName(container.container_delivery_recipient || '');
+      setError(null);
+    }
+  }, [isOpen, container]);
+
+  if (!isOpen || !container) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!destinationAddress.trim()) {
+      setError('Please provide a valid final delivery destination address.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await deliveryApi.updateAddress(container.container_id, {
+        destination_address: destinationAddress.trim(),
+        recipient_name: recipientName.trim() || undefined,
+      });
+
+      if (res.status === 'success') {
+        onSuccess();
+        onClose();
+      } else {
+        setError(res.message || 'Failed to save delivery address.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Network error while updating delivery address.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden">
+        {/* Modal Header */}
+        <div className="px-6 py-4 bg-gradient-to-r from-[#064e43] to-[#04332c] text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <MapPin className="w-5 h-5 text-emerald-300" />
+            <div>
+              <h3 className="text-base font-black uppercase tracking-tight">
+                {container.container_delivery_destination ? 'Edit Delivery Address' : 'Add Delivery Address'}
+              </h3>
+              <p className="text-[11px] text-emerald-100 font-medium">
+                Container {container.container_number} • Import Cargo
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Operational Separation Info Banner */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Port Operations &amp; Separation of Locations
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-[11px]">
+              <div>
+                <span className="text-slate-500 block">Port Yard Location:</span>
+                <span className="font-semibold text-slate-800">
+                  {container.yard_location || 'Port Terminal Yard'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">Physical Port Exit:</span>
+                <span className="font-semibold text-slate-800">
+                  {container.port_exit_point || 'Pending Gate Exit Checkpoint'}
+                </span>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 border-t border-slate-200/80 pt-1.5 mt-1">
+              Final delivery destination is managed independently from port yard slots and gate exit points.
+            </p>
+          </div>
+
+          {/* Consignee / Recipient Input */}
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 block mb-1">
+              Consignee / Recipient Name (Optional)
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                placeholder="e.g. Cochin Logistics Distribution / J. Paul"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#064e43] focus:ring-2 focus:ring-[#064e43]/15"
+              />
+            </div>
+          </div>
+
+          {/* Final Destination Address */}
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 block mb-1">
+              Final Destination Address <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={destinationAddress}
+              onChange={(e) => setDestinationAddress(e.target.value)}
+              placeholder="e.g. Plot 14, Kalamassery Industrial Estate, Kochi, Kerala - 683104"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#064e43] focus:ring-2 focus:ring-[#064e43]/15"
+              required
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Enter the exact inland facility or consignee delivery address for this import container.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2 rounded-xl bg-[#064e43] hover:bg-[#053d34] text-white text-xs font-bold uppercase tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Delivery Address</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export const DeliveryTracking: React.FC = () => {
   const [deliveryContainers, setDeliveryContainers] = useState<DeliveryContainerListItem[]>([]);
-  const containers = deliveryContainers;
   const [summary, setSummary] = useState<DeliverySummaryCounts>({
     all: 0,
     released: 0,
@@ -574,6 +754,10 @@ export const DeliveryTracking: React.FC = () => {
   const [selectedUpdateContainer, setSelectedUpdateContainer] = useState<DeliveryContainerListItem | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
+  // Add / Edit Delivery Address Modal state
+  const [selectedAddressContainer, setSelectedAddressContainer] = useState<DeliveryContainerListItem | null>(null);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+
   const fetchDeliveryContainers = async () => {
     setLoading(true);
     setError(null);
@@ -583,12 +767,6 @@ export const DeliveryTracking: React.FC = () => {
         search: searchQuery,
       });
 
-      // Defensive response mapping handling all backend formats:
-      // Format A: { status: 'success', data: { containers: [...], summary: {...} } }
-      // Format B: Paginated DRF: { count: 3, next: null, previous: null, results: [...] }
-      // Format C: Direct array: [...]
-      // Format D: { status: 'success', data: [...] }
-      // Format E: { containers: [...] }
       let records: DeliveryContainerListItem[] = [];
 
       if (Array.isArray(res)) {
@@ -605,7 +783,6 @@ export const DeliveryTracking: React.FC = () => {
         }
       }
 
-      // Check if response indicates an API error (e.g. { status: 'error', message: '...' } or DRF { detail: '...' })
       if (res && (res.status === 'error' || res.detail) && records.length === 0) {
         setError(res.message || res.detail || 'Failed to load delivery containers.');
         setDeliveryContainers([]);
@@ -614,7 +791,6 @@ export const DeliveryTracking: React.FC = () => {
 
       setDeliveryContainers(records);
 
-      // Extract or compute summary counts
       const summaryData = res?.data?.summary || res?.summary;
       if (summaryData && typeof summaryData === 'object') {
         setSummary({
@@ -629,7 +805,6 @@ export const DeliveryTracking: React.FC = () => {
           delivery_exception: summaryData.delivery_exception ?? summaryData.exceptions ?? 0,
         });
       } else {
-        // Fallback: Compute summary counts directly from the records
         const counts: DeliverySummaryCounts = {
           all: records.length,
           released: 0,
@@ -643,12 +818,9 @@ export const DeliveryTracking: React.FC = () => {
         };
         for (const item of records) {
           const st = item.container_delivery_status || item.current_status || 'RELEASED';
-          if (st === 'RELEASED') counts.released++;
-          else if (st === 'GATE_PASS_GENERATED') counts.gate_pass_generated++;
+          if (st === 'RELEASED' || st === 'GATE_PASS_GENERATED') counts.released++;
           else if (st === 'PICKED_UP') counts.picked_up++;
-          else if (st === 'DEPARTED_PORT') counts.departed_port++;
-          else if (st === 'IN_TRANSIT') counts.in_transit++;
-          else if (st === 'OUT_FOR_DELIVERY') counts.out_for_delivery++;
+          else if (st === 'DEPARTED_PORT' || st === 'IN_TRANSIT' || st === 'OUT_FOR_DELIVERY') counts.departed_port++;
           else if (st === 'DELIVERED') counts.delivered++;
           else if (st === 'DELIVERY_EXCEPTION') counts.delivery_exception++;
         }
@@ -681,6 +853,11 @@ export const DeliveryTracking: React.FC = () => {
     setIsUpdateModalOpen(true);
   };
 
+  const handleOpenAddressModal = (container: DeliveryContainerListItem) => {
+    setSelectedAddressContainer(container);
+    setIsAddressModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header */}
@@ -688,14 +865,14 @@ export const DeliveryTracking: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-black uppercase tracking-widest text-[#064e43]">
-              LOGISTICS & INLAND DISTRIBUTION
+              IMPORT LOGISTICS &amp; INLAND DISTRIBUTION
             </span>
           </div>
           <h2 className="text-2xl font-black uppercase tracking-tight text-[#08192d]">
-            Container Delivery Tracking
+            Import Delivery Tracking
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 font-medium">
-            Monitor and update the delivery progress of released containers.
+            Monitor collection and inland destination delivery for released import containers.
           </p>
         </div>
 
@@ -708,9 +885,9 @@ export const DeliveryTracking: React.FC = () => {
         </button>
       </div>
 
-      {/* 2. SUMMARY CARDS (6 required by spec) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Released */}
+      {/* 2. SUMMARY CARDS (5 simple statuses) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* 1. Released */}
         <div
           onClick={() => setSelectedStatus('RELEASED')}
           className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -729,7 +906,7 @@ export const DeliveryTracking: React.FC = () => {
           <div className="text-2xl font-black mt-1">{summary.released}</div>
         </div>
 
-        {/* Picked Up */}
+        {/* 2. Picked Up */}
         <div
           onClick={() => setSelectedStatus('PICKED_UP')}
           className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -748,45 +925,26 @@ export const DeliveryTracking: React.FC = () => {
           <div className="text-2xl font-black mt-1">{summary.picked_up}</div>
         </div>
 
-        {/* In Transit */}
+        {/* 3. Departed Port */}
         <div
-          onClick={() => setSelectedStatus('IN_TRANSIT')}
+          onClick={() => setSelectedStatus('DEPARTED_PORT')}
           className={`p-4 rounded-xl border transition-all cursor-pointer ${
-            selectedStatus === 'IN_TRANSIT'
-              ? 'bg-sky-700 text-white border-sky-800 shadow-md ring-2 ring-sky-700/20'
+            selectedStatus === 'DEPARTED_PORT'
+              ? 'bg-indigo-700 text-white border-indigo-800 shadow-md ring-2 ring-indigo-700/20'
               : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
           }`}
         >
           <span
             className={`text-[10px] font-bold uppercase tracking-wider ${
-              selectedStatus === 'IN_TRANSIT' ? 'text-sky-100' : 'text-slate-400'
+              selectedStatus === 'DEPARTED_PORT' ? 'text-indigo-100' : 'text-slate-400'
             }`}
           >
-            In Transit
+            Departed Port
           </span>
-          <div className="text-2xl font-black mt-1">{summary.in_transit}</div>
+          <div className="text-2xl font-black mt-1">{summary.departed_port}</div>
         </div>
 
-        {/* Out for Delivery */}
-        <div
-          onClick={() => setSelectedStatus('OUT_FOR_DELIVERY')}
-          className={`p-4 rounded-xl border transition-all cursor-pointer ${
-            selectedStatus === 'OUT_FOR_DELIVERY'
-              ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-md ring-2 ring-amber-500/20'
-              : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-          }`}
-        >
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider ${
-              selectedStatus === 'OUT_FOR_DELIVERY' ? 'text-slate-900 font-extrabold' : 'text-slate-400'
-            }`}
-          >
-            Out for Delivery
-          </span>
-          <div className="text-2xl font-black mt-1">{summary.out_for_delivery}</div>
-        </div>
-
-        {/* Delivered */}
+        {/* 4. Delivered */}
         <div
           onClick={() => setSelectedStatus('DELIVERED')}
           className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -805,7 +963,7 @@ export const DeliveryTracking: React.FC = () => {
           <div className="text-2xl font-black mt-1">{summary.delivered}</div>
         </div>
 
-        {/* Delivery Exceptions */}
+        {/* 5. Exception */}
         <div
           onClick={() => setSelectedStatus('EXCEPTION')}
           className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -819,7 +977,7 @@ export const DeliveryTracking: React.FC = () => {
               selectedStatus === 'EXCEPTION' ? 'text-rose-100' : 'text-slate-400'
             }`}
           >
-            Exceptions
+            Exception
           </span>
           <div className="text-2xl font-black mt-1">{summary.delivery_exception}</div>
         </div>
@@ -836,7 +994,7 @@ export const DeliveryTracking: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by Container Number, Cargo ID, Vessel, Gate Pass ID..."
+                placeholder="Search by Container Number, Cargo, Vessel, Gate Pass ID..."
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold placeholder-slate-400 focus:outline-none focus:border-[#064e43] focus:ring-2 focus:ring-[#064e43]/10"
               />
             </div>
@@ -848,16 +1006,13 @@ export const DeliveryTracking: React.FC = () => {
             </button>
           </form>
 
-          {/* All Status Filter Pills */}
+          {/* Simple Status Filter Pills */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1 lg:pb-0 text-xs font-bold shrink-0">
             {[
-              { id: 'ALL', label: 'All' },
+              { id: 'ALL', label: 'All Containers' },
               { id: 'RELEASED', label: 'Released' },
-              { id: 'GATE_PASS_GENERATED', label: 'Gate Pass' },
               { id: 'PICKED_UP', label: 'Picked Up' },
-              { id: 'DEPARTED_PORT', label: 'Departed' },
-              { id: 'IN_TRANSIT', label: 'In Transit' },
-              { id: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+              { id: 'DEPARTED_PORT', label: 'Departed Port' },
               { id: 'DELIVERED', label: 'Delivered' },
               { id: 'EXCEPTION', label: 'Exception' },
             ].map((st) => (
@@ -877,43 +1032,42 @@ export const DeliveryTracking: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. PROFESSIONAL CONTAINER TABLE */}
+      {/* 4. PROFESSIONAL IMPORT DELIVERY CONTAINER TABLE */}
       <div className="rounded-2xl bg-white border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="py-3.5 px-4">Container Number</th>
-                <th className="py-3.5 px-4">Cargo</th>
-                <th className="py-3.5 px-4">Vessel</th>
-                <th className="py-3.5 px-4">Gate Pass</th>
+                <th className="py-3.5 px-4">Container &amp; Cargo</th>
+                <th className="py-3.5 px-4">Vessel &amp; Gate Pass</th>
+                <th className="py-3.5 px-4">Yard &amp; Port Exit</th>
+                <th className="py-3.5 px-4">Delivery Destination</th>
                 <th className="py-3.5 px-4">Current Status</th>
                 <th className="py-3.5 px-4">Last Updated</th>
-                <th className="py-3.5 px-4">Updated By</th>
-                <th className="py-3.5 px-4 text-right">Action</th>
+                <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RotateCw className="w-6 h-6 animate-spin text-[#064e43]" />
-                      <span>Loading delivery tracking registry...</span>
+                      <span>Loading import delivery containers...</span>
                     </div>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-rose-600 font-semibold">
+                  <td colSpan={7} className="py-10 text-center text-rose-600 font-semibold">
                     {error}
                   </td>
                 </tr>
               ) : (deliveryContainers || []).length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <p className="font-semibold text-slate-600">No containers matching current filter.</p>
-                    <p className="text-[11px] mt-1">Containers will appear here automatically after Gate Release.</p>
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <p className="font-semibold text-slate-600">No import containers matching current filter.</p>
+                    <p className="text-[11px] mt-1">Import containers appear here after being authorized for collection.</p>
                   </td>
                 </tr>
               ) : (
@@ -923,8 +1077,8 @@ export const DeliveryTracking: React.FC = () => {
                     GATE_PASS_GENERATED: 'bg-teal-50 text-teal-800 border-teal-200',
                     PICKED_UP: 'bg-sky-50 text-sky-800 border-sky-200',
                     DEPARTED_PORT: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-                    IN_TRANSIT: 'bg-blue-50 text-blue-800 border-blue-200',
-                    OUT_FOR_DELIVERY: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold',
+                    IN_TRANSIT: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                    OUT_FOR_DELIVERY: 'bg-indigo-50 text-indigo-800 border-indigo-200',
                     DELIVERED: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold',
                     DELIVERY_EXCEPTION: 'bg-rose-100 text-rose-900 border-rose-300 font-bold',
                   };
@@ -936,42 +1090,103 @@ export const DeliveryTracking: React.FC = () => {
                     c.current_status_display ||
                     currentSt.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
 
+                  const destinationAddress =
+                    c.container_delivery_destination?.trim() ||
+                    c.destination?.trim() ||
+                    null;
+
                   return (
                     <tr key={c.container_id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Container Number */}
-                      <td className="py-3.5 px-4 font-black font-mono text-slate-900">
-                        {c.container_number}
-                        <span className="block text-[10px] font-normal text-slate-400">
+                      {/* 1. Container & Cargo */}
+                      <td className="py-3.5 px-4 font-mono text-slate-900">
+                        <span className="font-black text-sm block">{c.container_number}</span>
+                        <span className="text-[10px] font-sans text-slate-500 block">
                           {c.container_type || 'General'} • {c.container_gross_weight || '—'} MT
+                        </span>
+                        <span className="text-[11px] font-sans text-slate-700 block truncate max-w-[180px] mt-0.5">
+                          {c.cargo_description || 'Import Cargo'}
                         </span>
                       </td>
 
-                      {/* Cargo */}
-                      <td className="py-3.5 px-4 max-w-[200px] truncate text-slate-800">
-                        {c.cargo_description || 'General Cargo'}
-                      </td>
-
-                      {/* Vessel */}
+                      {/* 2. Vessel & Gate Pass */}
                       <td className="py-3.5 px-4 text-slate-700">
-                        {c.vessel_name || '—'}
-                        {c.arrival_request_id && (
-                          <span className="block text-[10px] font-mono text-slate-400">
-                            {c.arrival_request_id}
+                        <span className="font-bold text-slate-800 block">{c.vessel_name || '—'}</span>
+                        <div className="mt-1 space-y-0.5 text-[10px]">
+                          <span className="font-mono text-emerald-800 block font-semibold">
+                            Pass: {c.gate_pass_number || '—'}
                           </span>
+                          {c.truck_number && (
+                            <span className="text-slate-500 block">
+                              Truck: {c.truck_number}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* 3. Yard & Port Exit (Physically separated from destination) */}
+                      <td className="py-3.5 px-4 text-slate-700">
+                        <div className="space-y-1">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                              Yard Location
+                            </span>
+                            <span className="font-semibold text-slate-800 text-[11px] block">
+                              {c.yard_location || '—'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                              Port Exit Checkpoint
+                            </span>
+                            <span className="text-slate-600 font-mono text-[11px] block">
+                              {c.port_exit_point || 'Pending Gate Release'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 4. Delivery Destination (Final inland consignee address) */}
+                      <td className="py-3.5 px-4">
+                        {destinationAddress ? (
+                          <div className="max-w-[210px] space-y-0.5">
+                            <div className="flex items-start gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                              <span
+                                className="font-semibold text-slate-800 text-xs line-clamp-2"
+                                title={destinationAddress}
+                              >
+                                {destinationAddress}
+                              </span>
+                            </div>
+                            {c.container_delivery_recipient && (
+                              <span className="text-[10px] text-slate-500 pl-4.5 block truncate">
+                                Recipient: {c.container_delivery_recipient}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleOpenAddressModal(c)}
+                              className="text-[10px] text-[#064e43] hover:underline font-bold pl-4.5 block cursor-pointer"
+                            >
+                              Edit Address
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="max-w-[190px] space-y-1">
+                            <span className="text-slate-400 italic text-[11px] block">
+                              Destination address not provided
+                            </span>
+                            <button
+                              onClick={() => handleOpenAddressModal(c)}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold text-[#064e43] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <MapPin className="w-3 h-3 text-[#064e43]" />
+                              <span>+ Add Address</span>
+                            </button>
+                          </div>
                         )}
                       </td>
 
-                      {/* Gate Pass */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-800">
-                        {c.gate_pass_number || '—'}
-                        {c.truck_number && (
-                          <span className="block text-[10px] font-sans font-medium text-slate-500">
-                            {c.truck_number}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Current Status */}
+                      {/* 5. Current Status */}
                       <td className="py-3.5 px-4">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
@@ -983,22 +1198,32 @@ export const DeliveryTracking: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Last Updated */}
+                      {/* 6. Last Updated */}
                       <td className="py-3.5 px-4 text-slate-600 text-[11px]">
-                        {(() => {
-                          const formatted = formatTrackingDateTime(c.last_updated_iso || c.last_updated, c.last_updated);
-                          return formatted.full && !formatted.full.toLowerCase().includes('unavailable') ? formatted.full : (c.last_updated || '—');
-                        })()}
+                        <div>
+                          {(() => {
+                            const formatted = formatTrackingDateTime(c.last_updated_iso || c.last_updated, c.last_updated);
+                            return formatted.full && !formatted.full.toLowerCase().includes('unavailable') ? formatted.full : (c.last_updated || '—');
+                          })()}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          By: {c.last_updated_by || 'Operations'}
+                        </span>
                       </td>
 
-                      {/* Updated By */}
-                      <td className="py-3.5 px-4 text-slate-700 text-[11px] font-semibold">
-                        {c.last_updated_by || 'Operations Officer'}
-                      </td>
-
-                      {/* Action */}
+                      {/* 7. Action */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Address Action */}
+                          <button
+                            onClick={() => handleOpenAddressModal(c)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#064e43] border border-emerald-200 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Add or update destination address"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>Address</span>
+                          </button>
+
                           {/* Update Delivery Action */}
                           {currentSt !== 'DELIVERED' && (
                             <button
@@ -1015,7 +1240,7 @@ export const DeliveryTracking: React.FC = () => {
                           <button
                             onClick={() => handleOpenTrackingModal(c.container_id)}
                             className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
-                            title="View Amazon-style timeline and history"
+                            title="View timeline history"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>Track</span>
@@ -1031,7 +1256,20 @@ export const DeliveryTracking: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. Update Delivery Action Modal */}
+      {/* 5. Add / Edit Delivery Address Modal */}
+      <DeliveryAddressModal
+        container={selectedAddressContainer}
+        isOpen={isAddressModalOpen}
+        onClose={() => {
+          setIsAddressModalOpen(false);
+          setSelectedAddressContainer(null);
+        }}
+        onSuccess={() => {
+          fetchDeliveryContainers();
+        }}
+      />
+
+      {/* 6. Update Delivery Action Modal */}
       <UpdateDeliveryModal
         container={selectedUpdateContainer}
         isOpen={isUpdateModalOpen}
@@ -1044,7 +1282,7 @@ export const DeliveryTracking: React.FC = () => {
         }}
       />
 
-      {/* 6. Detailed Tracking & Amazon Timeline Modal */}
+      {/* 7. Detailed Tracking & Timeline Modal */}
       {selectedContainerId && (
         <ContainerTrackingModal
           containerId={selectedContainerId}
@@ -1061,3 +1299,4 @@ export const DeliveryTracking: React.FC = () => {
     </div>
   );
 };
+

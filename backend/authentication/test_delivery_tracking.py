@@ -899,5 +899,128 @@ class DeliveryTrackingTestCase(APITestCase):
         final_event_count = ContainerTrackingEvent.objects.filter(tracking_event_container_id=self.container).count()
         self.assertEqual(initial_event_count, final_event_count)
 
+    def test_delivery_tracking_strictly_excludes_export_containers(self):
+        """Delivery tracking worklist and KPIs must only include IMPORT containers, excluding EXPORT"""
+        now = timezone.now()
+
+        # Create an EXPORT cargo
+        export_cargo = Cargo.objects.create(
+            cargo_arrival_request_id=self.arrival_req,
+            cargo_origin_port_id=self.origin_port,
+            cargo_destination_port_id=self.dest_port,
+            cargo_type='CONTAINERIZED',
+            cargo_description='Outbound Export Spices and Tea',
+            cargo_quantity=50.0,
+            cargo_unit='TEU',
+            cargo_weight=600.0,
+            cargo_direction='EXPORT',
+            cargo_status='DEPARTED'
+        )
+
+        export_container = Container.objects.create(
+            container_cargo_id=export_cargo,
+            container_number='EXPU9988776',
+            container_type='40FT_HC',
+            container_gross_weight=20.0,
+            container_status='LOADED',
+            container_delivery_status='RELEASED'
+        )
+
+        headers_terminal = {
+            'HTTP_X_USER_ROLE': 'terminal_logistics_operator',
+            'HTTP_X_USER_ID': str(self.terminal_login.login_id),
+            'HTTP_X_USER_EMAIL': self.terminal_login.login_email
+        }
+
+        res = self.client.get('/api/delivery/containers/', **headers_terminal)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        containers = res.json().get('data', {}).get('containers', [])
+        container_numbers = [c['container_number'] for c in containers]
+
+        # Ensure export container is excluded
+        self.assertNotIn('EXPU9988776', container_numbers)
+        # Ensure our import container is present
+        self.assertIn(self.container.container_number, container_numbers)
+
+    def test_update_delivery_destination_address_success(self):
+        """Directly update final delivery destination address without modifying cargo registration or forcing status change"""
+        headers_terminal = {
+            'HTTP_X_USER_ROLE': 'terminal_logistics_operator',
+            'HTTP_X_USER_ID': str(self.terminal_login.login_id),
+            'HTTP_X_USER_EMAIL': self.terminal_login.login_email
+        }
+
+        cid = self.container.container_id
+        url = f"/api/delivery/containers/{cid}/update-address/"
+
+        new_addr = "Consignee Warehouse, Plot 14, Kalamassery Industrial Estate, Kochi, Kerala - 683104"
+        new_recip = "Eastern Maritime Imports Pvt Ltd"
+
+        res = self.client.post(url, {
+            'destination_address': new_addr,
+            'recipient_name': new_recip
+        }, format='json', **headers_terminal)
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json().get('data', {})
+        self.assertEqual(data.get('destination'), new_addr)
+        self.assertEqual(data.get('container_delivery_recipient'), new_recip)
+
+        # Verify DB persistence
+        self.container.refresh_from_db()
+        self.assertEqual(self.container.container_delivery_destination, new_addr)
+        self.assertEqual(self.container.container_delivery_recipient, new_recip)
+
+        # Verify Audit Log
+        audit = AuditLog.objects.filter(
+            audit_log_category='DELIVERY_TRACKING',
+            audit_log_target_id=str(cid),
+            audit_log_description__contains='Updated delivery address'
+        ).first()
+        self.assertIsNotNone(audit)
+
+    def test_update_delivery_address_validation(self):
+        """Updating delivery address requires a valid non-empty destination address"""
+        headers_terminal = {
+            'HTTP_X_USER_ROLE': 'terminal_logistics_operator',
+            'HTTP_X_USER_ID': str(self.terminal_login.login_id),
+            'HTTP_X_USER_EMAIL': self.terminal_login.login_email
+        }
+
+        cid = self.container.container_id
+        url = f"/api/delivery/containers/{cid}/update-address/"
+
+        # Missing or blank address
+        res = self.client.post(url, {'destination_address': '   '}, format='json', **headers_terminal)
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_empty_destination_returns_none_instead_of_fake_string(self):
+        """When destination address is not provided, serializer returns None so frontend can display fallback message"""
+        from authentication.serializers import ContainerDeliveryListSerializer
+
+        self.container.container_delivery_destination = ''
+        self.container.save(update_fields=['container_delivery_destination'])
+
+        serializer = ContainerDeliveryListSerializer(self.container)
+        data = serializer.data
+        self.assertIsNone(data.get('destination'))
+        self.assertIsNone(data.get('container_delivery_destination'))
+
+    def test_physical_separation_of_yard_gate_and_destination(self):
+        """Yard location, gate exit checkpoint, and final delivery destination are stored and returned separately"""
+        from authentication.serializers import ContainerDeliveryListSerializer
+
+        self.container.container_delivery_destination = "Final Warehouse Hub"
+        self.container.container_delivery_location = "Gate 1 Exit Checkpoint"
+        self.container.save()
+
+        serializer = ContainerDeliveryListSerializer(self.container)
+        data = serializer.data
+
+        self.assertEqual(data.get('destination'), "Final Warehouse Hub")
+        self.assertEqual(data.get('container_delivery_location'), "Gate 1 Exit Checkpoint")
+        self.assertNotEqual(data.get('destination'), data.get('container_delivery_location'))
+
+
 
 

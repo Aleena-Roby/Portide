@@ -238,6 +238,14 @@ export const deliveryApi = {
     return res.json();
   },
 
+  updateAddress: async (containerId: number, data: { destination_address: string; recipient_name?: string }) => {
+    const res = await apiFetch(`/api/delivery/containers/${containerId}/update-address/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
   trackPublicContainer: async (containerNumber: string) => {
     const clean = encodeURIComponent(containerNumber.trim());
     const res = await fetch(`${API_BASE_URL}/api/containers/track/?number=${clean}`);

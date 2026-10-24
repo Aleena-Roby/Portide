@@ -2534,6 +2534,7 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
     cargo_id = serializers.IntegerField(source='container_cargo_id.cargo_id', read_only=True)
     cargo_description = serializers.CharField(source='container_cargo_id.cargo_description', read_only=True)
     cargo_type = serializers.CharField(source='container_cargo_id.get_cargo_type_display', read_only=True)
+    trade_direction = serializers.CharField(read_only=True)
     vessel_name = serializers.SerializerMethodField()
     arrival_request_id = serializers.SerializerMethodField()
     gate_pass_id = serializers.SerializerMethodField()
@@ -2545,6 +2546,8 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
     container_delivery_status = serializers.SerializerMethodField()
     container_delivery_status_display = serializers.SerializerMethodField()
     last_known_location = serializers.SerializerMethodField()
+    yard_location = serializers.SerializerMethodField()
+    port_exit_point = serializers.SerializerMethodField()
     destination = serializers.SerializerMethodField()
     expected_delivery_date = serializers.DateTimeField(source='container_expected_delivery_date', read_only=True)
     expected_delivery_date_formatted = serializers.SerializerMethodField()
@@ -2554,6 +2557,8 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
     final_delivery_destination = serializers.SerializerMethodField()
     container_expected_delivery_date = serializers.SerializerMethodField()
     container_delivery_destination = serializers.SerializerMethodField()
+    container_delivery_recipient = serializers.CharField(read_only=True)
+    container_delivery_location = serializers.CharField(read_only=True)
     last_updated = serializers.SerializerMethodField()
     last_updated_iso = serializers.SerializerMethodField()
     last_updated_by = serializers.SerializerMethodField()
@@ -2565,6 +2570,7 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
             'container_number',
             'container_type',
             'container_gross_weight',
+            'trade_direction',
             'cargo_id',
             'cargo_description',
             'cargo_type',
@@ -2579,6 +2585,8 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
             'container_delivery_status',
             'container_delivery_status_display',
             'last_known_location',
+            'yard_location',
+            'port_exit_point',
             'destination',
             'expected_delivery_date',
             'expected_delivery_date_formatted',
@@ -2588,6 +2596,8 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
             'final_delivery_destination',
             'container_expected_delivery_date',
             'container_delivery_destination',
+            'container_delivery_recipient',
+            'container_delivery_location',
             'last_updated',
             'last_updated_iso',
             'last_updated_by',
@@ -2667,13 +2677,34 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
             return gp.gate_pass_gate_id.gate_name
         return "Port Terminal"
 
+    def get_yard_location(self, obj):
+        alloc = obj.active_yard_allocation
+        if alloc and alloc.yard_allocation_slot_id:
+            slot = alloc.yard_allocation_slot_id
+            block = slot.yard_slot_block_id
+            yard = block.yard_block_yard_id
+            return f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code}"
+        released_alloc = obj.yard_allocations.filter(yard_allocation_status='RELEASED').order_by('-yard_allocation_id').first()
+        if released_alloc and released_alloc.yard_allocation_slot_id:
+            slot = released_alloc.yard_allocation_slot_id
+            block = slot.yard_slot_block_id
+            yard = block.yard_block_yard_id
+            return f"{yard.yard_code} / {block.yard_block_code} / {slot.yard_slot_code} (Released)"
+        return None
+
+    def get_port_exit_point(self, obj):
+        latest_release = obj.gate_releases.order_by('-gate_release_time', '-gate_release_id').first()
+        if latest_release and latest_release.gate_release_exit_point:
+            return latest_release.gate_release_exit_point
+        gp = obj.latest_gate_pass
+        if gp and gp.gate_pass_gate_id:
+            return gp.gate_pass_gate_id.gate_name
+        return None
+
     def get_destination(self, obj):
-        if obj.container_delivery_destination:
-            return obj.container_delivery_destination
-        cargo = obj.container_cargo_id
-        if cargo and cargo.cargo_destination_port_id:
-            return f"{cargo.cargo_destination_port_id.port_name} Logistics Hub"
-        return "Regional Logistics & Distribution Facility"
+        if obj.container_delivery_destination and obj.container_delivery_destination.strip():
+            return obj.container_delivery_destination.strip()
+        return None
 
     def get_expected_delivery_date_formatted(self, obj):
         dt = obj.container_expected_delivery_date
@@ -2687,12 +2718,10 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
         return self.get_expected_delivery_datetime(obj)
 
     def get_expected_delivery_destination(self, obj):
-        if obj.container_delivery_destination:
-            return obj.container_delivery_destination
         return self.get_destination(obj)
 
     def get_container_delivery_destination(self, obj):
-        return self.get_expected_delivery_destination(obj)
+        return self.get_destination(obj)
 
     def get_actual_delivery_datetime(self, obj):
         status = self.get_current_status(obj)
@@ -2707,11 +2736,10 @@ class ContainerDeliveryListSerializer(serializers.ModelSerializer):
     def get_final_delivery_destination(self, obj):
         status = self.get_current_status(obj)
         if status == 'DELIVERED':
-            if obj.container_delivery_destination:
-                return obj.container_delivery_destination
-            if obj.container_delivery_location:
-                return obj.container_delivery_location
-            return self.get_destination(obj)
+            if obj.container_delivery_destination and obj.container_delivery_destination.strip():
+                return obj.container_delivery_destination.strip()
+            if obj.container_delivery_location and obj.container_delivery_location.strip():
+                return obj.container_delivery_location.strip()
         return None
 
     def get_last_updated(self, obj):
@@ -3006,6 +3034,29 @@ class ContainerDeliveryDetailSerializer(ContainerDeliveryListSerializer):
                 })
 
         return actions
+
+
+class DeliveryUpdateAddressSerializer(serializers.Serializer):
+    destination_address = serializers.CharField(
+        max_length=255,
+        required=True,
+        allow_blank=False,
+        error_messages={
+            'required': 'Delivery destination address is required.',
+            'blank': 'Delivery destination address cannot be blank.'
+        }
+    )
+    recipient_name = serializers.CharField(
+        max_length=150,
+        required=False,
+        allow_blank=True,
+        default=''
+    )
+    remarks = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default=''
+    )
 
 
 class DeliveryConfirmDepartureSerializer(serializers.Serializer):
