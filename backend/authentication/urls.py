@@ -123,6 +123,10 @@ from authentication.views import (
     DirectTransferExecuteAPIView,
     DirectTransferListAPIView,
     DirectTransferDetailAPIView,
+    NotificationListAPIView,
+    NotificationMarkReadAPIView,
+    NotificationMarkAllReadAPIView,
+    DashboardStatsAPIView,
 )
 
 urlpatterns = [
@@ -565,6 +569,18 @@ urlpatterns = [
     path('terminal/direct-transfer/<int:pk>', DirectTransferDetailAPIView.as_view(), name='terminal_direct_transfer_detail_noslash'),
     path('direct-transfer/<int:pk>/', DirectTransferDetailAPIView.as_view(), name='direct_transfer_detail'),
     path('direct-transfer/<int:pk>', DirectTransferDetailAPIView.as_view(), name='direct_transfer_detail_noslash'),
+
+    # In-App Notifications Feed & Mark-as-read Endpoints
+    path('notifications/', NotificationListAPIView.as_view(), name='notifications_list'),
+    path('notifications', NotificationListAPIView.as_view(), name='notifications_list_noslash'),
+    path('notifications/<int:pk>/read/', NotificationMarkReadAPIView.as_view(), name='notification_mark_read'),
+    path('notifications/<int:pk>/read', NotificationMarkReadAPIView.as_view(), name='notification_mark_read_noslash'),
+    path('notifications/read-all/', NotificationMarkAllReadAPIView.as_view(), name='notification_mark_all_read'),
+    path('notifications/read-all', NotificationMarkAllReadAPIView.as_view(), name='notification_mark_all_read_noslash'),
+
+    # Operational Dashboard Unified Statistics & Metrics
+    path('dashboard/stats/', DashboardStatsAPIView.as_view(), name='dashboard_stats'),
+    path('dashboard/stats', DashboardStatsAPIView.as_view(), name='dashboard_stats_noslash'),
 ]
 
 

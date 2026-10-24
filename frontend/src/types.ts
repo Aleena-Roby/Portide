@@ -552,13 +552,18 @@ export interface GatePass {
 }
 
 export interface NotificationItem {
-  id: string;
+  id: string | number;
   title: string;
   message: string;
   time: string;
-  type: 'info' | 'success' | 'warning' | 'alert';
+  type: 'info' | 'success' | 'warning' | 'alert' | 'danger';
   read: boolean;
   roleTarget?: UserRole | 'all';
+  category?: string;
+  action_route?: string;
+  target_type?: string;
+  target_id?: string;
+  event_key?: string;
 }
 
 export interface ActivityLog {

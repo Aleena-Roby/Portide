@@ -48,6 +48,7 @@ from authentication.models import (
     PreArrivalCustomsDeclaration,
     DeliveryOrder,
     DirectShipToTruckTransfer,
+    Notification,
     get_min_arrival_advance_days
 )
 from authentication.serializers import (
@@ -138,7 +139,10 @@ from authentication.serializers import (
     DirectShipToTruckTransferSerializer,
     DirectShipToTruckExecuteSerializer,
     EligibleDirectTransferContainerSerializer,
+    NotificationSerializer,
 )
+from authentication.notification_service import create_notification
+from django.db.models import Q, Sum, Count
 from authentication.email_service import (
     send_registration_submitted_email,
     send_registration_action_required_email,
@@ -2048,6 +2052,18 @@ class ArrivalRequestListCreateAPIView(APIView):
             request=request
         )
 
+        create_notification(
+            title="New Vessel Arrival Request",
+            message=f"Vessel '{vessel_obj.vessel_name}' submitted arrival request #{arrival_request.vessel_arrival_request_id} ({arrival_request.vessel_arrival_request_cargo_type}).",
+            recipient_role='port_operations_officer',
+            notification_type='info',
+            category='VESSEL',
+            target_type='arrival_request',
+            target_id=str(arrival_request.vessel_arrival_request_id),
+            action_route='arrival-requests',
+            event_key=f"arrival_req_created_{arrival_request.vessel_arrival_request_id}"
+        )
+
         return Response(
             {
                 "status": "success",
@@ -2334,6 +2350,20 @@ class ArrivalRequestApproveAPIView(APIView):
             request=request
         )
 
+        vessel_obj = arrival_request.vessel_arrival_request_vessel_id
+        shipping_company = getattr(vessel_obj, 'vessel_shipping_company_id', None)
+        create_notification(
+            title="Vessel Arrival Request Approved",
+            message=f"Arrival request #{arrival_request.vessel_arrival_request_id} for '{vessel_obj.vessel_name}' has been approved{alloc_detail}.",
+            recipient_company=shipping_company,
+            notification_type='success',
+            category='VESSEL',
+            target_type='arrival_request',
+            target_id=str(arrival_request.vessel_arrival_request_id),
+            action_route='arrival-requests',
+            event_key=f"arrival_req_approved_{arrival_request.vessel_arrival_request_id}"
+        )
+
         return Response(
             {
                 "status": "success",
@@ -2395,6 +2425,20 @@ class ArrivalRequestRejectAPIView(APIView):
             description=f"Arrival request #{arrival_request.vessel_arrival_request_id} for vessel '{arrival_request.vessel_arrival_request_vessel_id.vessel_name}' rejected. Remarks: {remarks}",
             status='SUCCESS',
             request=request
+        )
+
+        vessel_obj = arrival_request.vessel_arrival_request_vessel_id
+        shipping_company = getattr(vessel_obj, 'vessel_shipping_company_id', None)
+        create_notification(
+            title="Vessel Arrival Request Rejected",
+            message=f"Arrival request #{arrival_request.vessel_arrival_request_id} for '{vessel_obj.vessel_name}' was rejected. Reason: {remarks}",
+            recipient_company=shipping_company,
+            notification_type='danger',
+            category='VESSEL',
+            target_type='arrival_request',
+            target_id=str(arrival_request.vessel_arrival_request_id),
+            action_route='arrival-requests',
+            event_key=f"arrival_req_rejected_{arrival_request.vessel_arrival_request_id}"
         )
 
         return Response(
@@ -5243,6 +5287,19 @@ class CustomsSubmitInspectionAPIView(APIView):
                 # Send email notification
                 send_customs_cleared_notification(container, officer_name)
 
+                create_notification(
+                    title="Customs Clearance Granted",
+                    message=f"Container {container.container_number} cleared by Customs Officer {officer_name}.",
+                    recipient_company=getattr(container, 'shipping_company', None),
+                    recipient_role='terminal_operator',
+                    notification_type='success',
+                    category='CUSTOMS',
+                    target_type='container',
+                    target_id=str(container.container_id),
+                    action_route='containers',
+                    event_key=f"customs_cleared_{container.container_id}_{inspection.customs_inspection_id}"
+                )
+
                 return Response(
                     {
                         "status": "success",
@@ -5282,6 +5339,19 @@ class CustomsSubmitInspectionAPIView(APIView):
 
                 # Send email notification
                 send_customs_hold_notification(container, inspection.get_customs_inspection_hold_reason_display(), officer_name)
+
+                create_notification(
+                    title="Customs Hold Placed",
+                    message=f"Container {container.container_number} placed on Customs Hold by {officer_name}. Reason: {inspection.get_customs_inspection_hold_reason_display()}.",
+                    recipient_company=getattr(container, 'shipping_company', None),
+                    recipient_role='terminal_operator',
+                    notification_type='warning',
+                    category='CUSTOMS',
+                    target_type='container',
+                    target_id=str(container.container_id),
+                    action_route='containers',
+                    event_key=f"customs_hold_{container.container_id}_{inspection.customs_inspection_id}"
+                )
 
                 return Response(
                     {
@@ -5805,6 +5875,18 @@ class CustomsDocumentReviewAPIView(APIView):
                 ))
             except Exception as mail_err:
                 logger.error(f"Failed to queue customs document review email: {mail_err}", exc_info=True)
+
+            create_notification(
+                title=f"Customs Document {review_status.title()}",
+                message=f"Document '{doc.document_name}' for Container {container.container_number} was marked as {review_status}. Remarks: {remarks or 'None'}",
+                recipient_company=getattr(container, 'shipping_company', None),
+                notification_type='success' if review_status == 'VERIFIED' else 'danger',
+                category='CUSTOMS',
+                target_type='container',
+                target_id=str(container.container_id),
+                action_route='customs-review',
+                event_key=f"customs_doc_{doc.document_id}_{review_status}"
+            )
 
             return Response(
                 {
@@ -13639,6 +13721,384 @@ class LoadingHistoryAPIView(APIView):
             "count": len(serializer.data),
             "data": serializer.data
         }, status=status.HTTP_200_OK)
+
+
+class NotificationListAPIView(APIView):
+    """
+    List in-app notifications for the authenticated user/role/company.
+    Endpoint: GET /api/notifications/
+    """
+    def get(self, request):
+        login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
+        if not login_obj:
+            return Response({"status": "error", "message": "Authentication credentials required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user_role = (request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else '')).strip().lower()
+
+        # Company-specific isolation:
+        if company_obj or user_role == 'shipping_company':
+            if company_obj:
+                filter_q = Q(notification_recipient_company=company_obj) | (Q(notification_recipient_user=user_obj) if user_obj else Q(pk__isnull=True))
+            else:
+                filter_q = Q(notification_recipient_user=user_obj) if user_obj else Q(pk__isnull=True)
+        else:
+            role_variants = [user_role, 'all', '']
+            if user_role in ['terminal_operator', 'terminal_logistics_operator']:
+                role_variants.extend(['terminal_operator', 'terminal_logistics_operator'])
+            elif user_role in ['gate_officer', 'gate_truck_officer']:
+                role_variants.extend(['gate_officer', 'gate_truck_officer'])
+            elif user_role in ['port_operations_officer', 'operations_officer']:
+                role_variants.extend(['port_operations_officer', 'operations_officer'])
+            elif user_role in ['admin', 'port_administrator']:
+                role_variants.extend(['admin', 'port_administrator'])
+
+            filter_q = Q(notification_recipient_role__in=role_variants)
+            if user_obj:
+                filter_q |= Q(notification_recipient_user=user_obj)
+
+        notifications_qs = Notification.objects.filter(filter_q).order_by('-notification_created_at', '-notification_id')
+        unread_count = notifications_qs.filter(notification_is_read=False).count()
+        recent_notifications = notifications_qs[:50]
+
+        serializer = NotificationSerializer(recent_notifications, many=True)
+        return Response({
+            "status": "success",
+            "unread_count": unread_count,
+            "count": len(serializer.data),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class NotificationMarkReadAPIView(APIView):
+    """
+    Mark an individual notification as read.
+    Endpoint: POST /api/notifications/<int:pk>/read/
+    """
+    def post(self, request, pk):
+        login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
+        if not login_obj:
+            return Response({"status": "error", "message": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        notif = Notification.objects.filter(notification_id=pk).first()
+        if not notif:
+            return Response({"status": "error", "message": "Notification not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if company_obj and notif.notification_recipient_company and notif.notification_recipient_company != company_obj:
+            return Response({"status": "error", "message": "Unauthorized access to notification."}, status=status.HTTP_403_FORBIDDEN)
+
+        notif.notification_is_read = True
+        notif.notification_read_at = timezone.now()
+        notif.save(update_fields=['notification_is_read', 'notification_read_at'])
+
+        return Response({
+            "status": "success",
+            "message": "Notification marked as read.",
+            "data": NotificationSerializer(notif).data
+        }, status=status.HTTP_200_OK)
+
+
+class NotificationMarkAllReadAPIView(APIView):
+    """
+    Mark all visible notifications as read for current user/company/role.
+    Endpoint: POST /api/notifications/read-all/
+    """
+    def post(self, request):
+        login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
+        if not login_obj:
+            return Response({"status": "error", "message": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user_role = (request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else '')).strip().lower()
+
+        if company_obj or user_role == 'shipping_company':
+            if company_obj:
+                filter_q = Q(notification_recipient_company=company_obj) | (Q(notification_recipient_user=user_obj) if user_obj else Q(pk__isnull=True))
+            else:
+                filter_q = Q(notification_recipient_user=user_obj) if user_obj else Q(pk__isnull=True)
+        else:
+            role_variants = [user_role, 'all', '']
+            if user_role in ['terminal_operator', 'terminal_logistics_operator']:
+                role_variants.extend(['terminal_operator', 'terminal_logistics_operator'])
+            elif user_role in ['gate_officer', 'gate_truck_officer']:
+                role_variants.extend(['gate_officer', 'gate_truck_officer'])
+            elif user_role in ['port_operations_officer', 'operations_officer']:
+                role_variants.extend(['port_operations_officer', 'operations_officer'])
+            elif user_role in ['admin', 'port_administrator']:
+                role_variants.extend(['admin', 'port_administrator'])
+
+            filter_q = Q(notification_recipient_role__in=role_variants)
+            if user_obj:
+                filter_q |= Q(notification_recipient_user=user_obj)
+
+        updated_count = Notification.objects.filter(filter_q, notification_is_read=False).update(
+            notification_is_read=True,
+            notification_read_at=timezone.now()
+        )
+
+        return Response({
+            "status": "success",
+            "message": "All notifications marked as read.",
+            "updated_count": updated_count
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardStatsAPIView(APIView):
+    """
+    Unified Operational Dashboard Statistics & Telemetry API View.
+    Endpoint: GET /api/dashboard/stats/
+    Provides role-specific KPIs, real database metrics, and visualization distributions.
+    """
+    def get(self, request):
+        login_obj, user_obj, company_obj = get_authenticated_user_and_company(request)
+        if not login_obj:
+            return Response({"status": "error", "message": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user_role = (request.headers.get('X-User-Role') or (login_obj.login_role if login_obj else '')).strip().lower()
+
+        total_berths = Berth.objects.count()
+        occupied_berths = Berth.objects.filter(berth_status__in=['OCCUPIED', 'RESERVED']).count()
+        available_berths = Berth.objects.filter(berth_status='AVAILABLE').count()
+        maintenance_berths = Berth.objects.filter(berth_status__in=['MAINTENANCE', 'INACTIVE']).count()
+        berth_occupancy_rate = round((occupied_berths / total_berths * 100), 1) if total_berths > 0 else 0
+
+        yards = Yard.objects.all()
+        yard_capacity = sum([y.yard_capacity for y in yards]) if yards.exists() else 0
+        yard_occupied = sum([y.yard_occupied for y in yards]) if yards.exists() else 0
+        yard_occupancy_rate = round((yard_occupied / yard_capacity * 100), 1) if yard_capacity > 0 else 0
+
+        data = {
+            "role": user_role,
+            "kpis": {},
+            "charts": {}
+        }
+
+        if company_obj or user_role == 'shipping_company':
+            company_filter = Q(vessel_shipping_company_id=company_obj) if company_obj else Q(pk__isnull=True)
+            vessels_qs = Vessel.objects.filter(company_filter)
+            reqs_qs = VesselArrivalRequest.objects.filter(vessel_arrival_request_vessel_id__in=vessels_qs)
+            cargo_qs = Cargo.objects.filter(cargo_arrival_request_id__in=reqs_qs)
+            containers_qs = Container.objects.filter(container_cargo_id__in=cargo_qs)
+
+            total_vessels = vessels_qs.count()
+            pending_requests = reqs_qs.filter(vessel_arrival_request_status='PENDING').count()
+            approved_requests = reqs_qs.filter(vessel_arrival_request_status='APPROVED').count()
+            rejected_requests = reqs_qs.filter(vessel_arrival_request_status='REJECTED').count()
+            total_cargo = cargo_qs.count()
+            total_containers = containers_qs.count()
+            cleared_containers = containers_qs.filter(container_customs_status='CLEARED').count()
+            held_containers = containers_qs.filter(container_customs_status__in=['HOLD', 'CUSTOMS_HOLD']).count()
+
+            data["kpis"] = {
+                "total_vessels": total_vessels,
+                "pending_arrival_requests": pending_requests,
+                "approved_arrival_requests": approved_requests,
+                "rejected_arrival_requests": rejected_requests,
+                "total_cargo": total_cargo,
+                "total_containers": total_containers,
+                "cleared_containers": cleared_containers,
+                "held_containers": held_containers
+            }
+            data["charts"] = {
+                "arrival_status": [
+                    {"name": "Pending", "value": pending_requests},
+                    {"name": "Approved", "value": approved_requests},
+                    {"name": "Rejected", "value": rejected_requests}
+                ],
+                "cargo_direction": [
+                    {"name": "Import", "value": cargo_qs.filter(cargo_direction='IMPORT').count()},
+                    {"name": "Export", "value": cargo_qs.filter(cargo_direction='EXPORT').count()}
+                ]
+            }
+
+        elif user_role in ['admin', 'port_administrator']:
+            total_vessels = Vessel.objects.count()
+            pending_requests = VesselArrivalRequest.objects.filter(vessel_arrival_request_status='PENDING').count()
+            approved_requests = VesselArrivalRequest.objects.filter(vessel_arrival_request_status='APPROVED').count()
+            total_cargo = Cargo.objects.count()
+            total_containers = Container.objects.count()
+            customs_pending = Container.objects.filter(container_customs_status__in=['NOT_SUBMITTED', 'PENDING', 'AWAITING_CUSTOMS']).count()
+            customs_cleared = Container.objects.filter(container_customs_status='CLEARED').count()
+            customs_hold = Container.objects.filter(container_customs_status__in=['CUSTOMS_HOLD', 'HOLD']).count()
+            pending_registrations = RegistrationRequest.objects.filter(registration_request_status='PENDING').count()
+            active_gate_passes = GatePass.objects.filter(gate_pass_status__in=['GENERATED', 'ENTRY_APPROVED', 'IN_TERMINAL']).count()
+
+            containerized_count = Cargo.objects.filter(Q(cargo_type__icontains='CONTAINER') | Q(cargo_type='CONTAINERIZED') | Q(cargo_type='CONTAINERIZED_CARGO')).count()
+            bulk_count = Cargo.objects.filter(Q(cargo_type__icontains='BULK')).count()
+            general_count = Cargo.objects.filter(Q(cargo_type__icontains='GENERAL')).count()
+
+            import_count = Cargo.objects.filter(cargo_direction='IMPORT').count()
+            export_count = Cargo.objects.filter(cargo_direction='EXPORT').count()
+
+            container_statuses = [
+                {"name": "At Terminal", "value": Container.objects.filter(container_status='AT_TERMINAL').count()},
+                {"name": "Under Inspection", "value": Container.objects.filter(container_status='UNDER_INSPECTION').count()},
+                {"name": "Cleared", "value": Container.objects.filter(container_status='CLEARED').count()},
+                {"name": "Customs Hold", "value": Container.objects.filter(container_status='CUSTOMS_HOLD').count()},
+                {"name": "Released / Exit", "value": Container.objects.filter(container_status='RELEASED').count()},
+            ]
+
+            data["kpis"] = {
+                "total_vessels": total_vessels,
+                "pending_arrival_requests": pending_requests,
+                "approved_arrival_requests": approved_requests,
+                "total_berths": total_berths,
+                "occupied_berths": occupied_berths,
+                "available_berths": available_berths,
+                "maintenance_berths": maintenance_berths,
+                "berth_occupancy_rate": berth_occupancy_rate,
+                "total_cargo": total_cargo,
+                "total_containers": total_containers,
+                "customs_pending": customs_pending,
+                "customs_cleared": customs_cleared,
+                "customs_hold": customs_hold,
+                "yard_capacity": yard_capacity,
+                "yard_occupied": yard_occupied,
+                "yard_occupancy_rate": yard_occupancy_rate,
+                "pending_registrations": pending_registrations,
+                "active_gate_passes": active_gate_passes
+            }
+            data["charts"] = {
+                "berth_utilization": [
+                    {"name": "Occupied", "value": occupied_berths},
+                    {"name": "Available", "value": available_berths},
+                    {"name": "Maintenance", "value": maintenance_berths}
+                ],
+                "cargo_classification": [
+                    {"name": "Containerized", "value": containerized_count},
+                    {"name": "Bulk Cargo", "value": bulk_count},
+                    {"name": "General Cargo", "value": general_count}
+                ],
+                "cargo_direction": [
+                    {"name": "Import Cargo", "value": import_count},
+                    {"name": "Export Cargo", "value": export_count}
+                ],
+                "container_status_distribution": container_statuses,
+                "arrival_status": [
+                    {"name": "Pending", "value": pending_requests},
+                    {"name": "Approved", "value": approved_requests},
+                    {"name": "Rejected", "value": VesselArrivalRequest.objects.filter(vessel_arrival_request_status='REJECTED').count()}
+                ]
+            }
+
+        elif user_role in ['port_operations_officer', 'operations_officer']:
+            total_vessels = Vessel.objects.count()
+            pending_requests = VesselArrivalRequest.objects.filter(vessel_arrival_request_status='PENDING').count()
+            approved_requests = VesselArrivalRequest.objects.filter(vessel_arrival_request_status='APPROVED').count()
+            rejected_requests = VesselArrivalRequest.objects.filter(vessel_arrival_request_status='REJECTED').count()
+            schedules_qs = VesselSchedule.objects.all()
+            scheduled_count = schedules_qs.filter(vessel_schedule_status='SCHEDULED').count()
+            arrived_count = schedules_qs.filter(vessel_schedule_status='ARRIVED').count()
+            at_berth_count = schedules_qs.filter(vessel_schedule_status='AT_BERTH').count()
+            departed_count = schedules_qs.filter(vessel_schedule_status='DEPARTED').count()
+
+            data["kpis"] = {
+                "total_vessels": total_vessels,
+                "pending_arrival_requests": pending_requests,
+                "approved_arrival_requests": approved_requests,
+                "rejected_arrival_requests": rejected_requests,
+                "total_berths": total_berths,
+                "occupied_berths": occupied_berths,
+                "available_berths": available_berths,
+                "berth_occupancy_rate": berth_occupancy_rate,
+                "scheduled_vessels": scheduled_count,
+                "at_berth_vessels": at_berth_count
+            }
+            data["charts"] = {
+                "vessel_arrivals": [
+                    {"name": "Pending", "value": pending_requests},
+                    {"name": "Approved", "value": approved_requests},
+                    {"name": "Rejected", "value": rejected_requests}
+                ],
+                "berth_status": [
+                    {"name": "Available", "value": available_berths},
+                    {"name": "Occupied", "value": occupied_berths},
+                    {"name": "Maintenance", "value": maintenance_berths}
+                ],
+                "schedule_lifecycle": [
+                    {"name": "Scheduled", "value": scheduled_count},
+                    {"name": "Arrived", "value": arrived_count},
+                    {"name": "At Berth", "value": at_berth_count},
+                    {"name": "Departed", "value": departed_count}
+                ]
+            }
+
+        elif user_role in ['terminal_operator', 'terminal_logistics_operator']:
+            active_allocations = YardAllocation.objects.filter(yard_allocation_status='ACTIVE').count()
+            unallocated_containers = Container.objects.filter(container_status__in=['ARRIVED', 'AT_TERMINAL'], active_yard_allocation__isnull=True).count()
+            discharged_movements = YardMovementHistory.objects.filter(yard_movement_movement_type='DISCHARGE').count()
+            loading_movements = YardMovementHistory.objects.filter(yard_movement_movement_type='LOADING').count()
+
+            data["kpis"] = {
+                "yard_capacity": yard_capacity,
+                "yard_occupied": yard_occupied,
+                "yard_occupancy_rate": yard_occupancy_rate,
+                "active_allocations": active_allocations,
+                "unallocated_containers": unallocated_containers,
+                "discharged_movements": discharged_movements,
+                "loading_movements": loading_movements
+            }
+            data["charts"] = {
+                "yard_utilization": [
+                    {"name": "Occupied Slots", "value": yard_occupied},
+                    {"name": "Available Slots", "value": max(0, yard_capacity - yard_occupied)}
+                ],
+                "crane_operations": [
+                    {"name": "Discharge (Unloading)", "value": discharged_movements},
+                    {"name": "Stowage (Loading)", "value": loading_movements}
+                ]
+            }
+
+        elif user_role in ['gate_officer', 'gate_truck_officer']:
+            total_passes = GatePass.objects.count()
+            active_passes = GatePass.objects.filter(gate_pass_status__in=['GENERATED', 'ENTRY_APPROVED', 'IN_TERMINAL']).count()
+            completed_passes = GatePass.objects.filter(gate_pass_status='COMPLETED').count()
+            expired_passes = GatePass.objects.filter(gate_pass_status='EXPIRED').count()
+            gate_in_count = GateIn.objects.count()
+            cleared_containers = Container.objects.filter(container_customs_status='CLEARED', container_status='CLEARED').count()
+
+            data["kpis"] = {
+                "total_passes": total_passes,
+                "active_passes": active_passes,
+                "completed_passes": completed_passes,
+                "expired_passes": expired_passes,
+                "gate_in_count": gate_in_count,
+                "cleared_containers": cleared_containers
+            }
+            data["charts"] = {
+                "pass_status_distribution": [
+                    {"name": "Active Passes", "value": active_passes},
+                    {"name": "Completed Exits", "value": completed_passes},
+                    {"name": "Expired / Cancelled", "value": expired_passes}
+                ]
+            }
+
+        elif user_role in ['customs_officer']:
+            pending_customs = Container.objects.filter(container_customs_status__in=['NOT_SUBMITTED', 'PENDING', 'AWAITING_CUSTOMS']).count()
+            under_inspection = Container.objects.filter(container_customs_status='UNDER_INSPECTION').count()
+            cleared_customs = Container.objects.filter(container_customs_status='CLEARED').count()
+            held_customs = Container.objects.filter(container_customs_status__in=['CUSTOMS_HOLD', 'HOLD']).count()
+            pre_arrival_declarations = PreArrivalCustomsDeclaration.objects.count()
+
+            data["kpis"] = {
+                "pending_customs": pending_customs,
+                "under_inspection": under_inspection,
+                "cleared_customs": cleared_customs,
+                "held_customs": held_customs,
+                "pre_arrival_declarations": pre_arrival_declarations
+            }
+            data["charts"] = {
+                "customs_pipeline": [
+                    {"name": "Pending", "value": pending_customs},
+                    {"name": "Under Inspection", "value": under_inspection},
+                    {"name": "Cleared", "value": cleared_customs},
+                    {"name": "Customs Hold", "value": held_customs}
+                ]
+            }
+
+        return Response({
+            "status": "success",
+            "data": data
+        }, status=status.HTTP_200_OK)
+
 
 
 

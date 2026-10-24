@@ -21,13 +21,15 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen }) => {
+export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen, setActiveTab }) => {
   const { 
     currentUser, 
     activeRole, 
     notifications, 
     logoutUser,
-    addToast
+    addToast,
+    markNotificationAsRead,
+    markAllNotificationsAsRead
   } = useApp();
 
   const navigate = useNavigate();
@@ -38,6 +40,20 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen 
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const currentRoleInfo = USER_ROLES_INFO.find(r => r.id === activeRole) || USER_ROLES_INFO[0];
+
+  const handleNotificationClick = async (n: NotificationItem) => {
+    if (!n.read) {
+      await markNotificationAsRead(n.id);
+    }
+    setShowNotifications(false);
+    if (n.action_route) {
+      if (n.action_route.startsWith('/')) {
+        navigate(n.action_route);
+      } else if (setActiveTab) {
+        setActiveTab(n.action_route);
+      }
+    }
+  };
 
   const handleLogout = async () => {
     setShowUserMenu(false);
@@ -102,7 +118,9 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen 
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900 animate-pulse" />
+              <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center ring-2 ring-white dark:ring-slate-900 animate-pulse">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
             )}
           </button>
 
@@ -111,13 +129,17 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen 
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white">Notifications</h4>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">
-                    {unreadCount} new
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    unreadCount > 0 
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300' 
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                  }`}>
+                    {unreadCount} unread
                   </span>
                 </div>
                 <button
                   onClick={() => setShowNotifications(false)}
-                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-lg cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -125,42 +147,65 @@ export const Header: React.FC<HeaderProps> = ({ isSidebarOpen, setIsSidebarOpen 
 
               <div className="py-2 space-y-2.5 max-h-80 overflow-y-auto my-1">
                 {notifications.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    No new notifications.
+                  <div className="py-8 text-center text-xs text-slate-400 space-y-1">
+                    <p className="font-semibold text-slate-500 dark:text-slate-400">All caught up</p>
+                    <p className="text-[11px]">No operational alerts or notifications at this time.</p>
                   </div>
                 ) : (
                   notifications.map((n) => (
                     <div
                       key={n.id}
-                      className={`p-3 rounded-xl border text-xs space-y-1 transition-all ${
+                      onClick={() => handleNotificationClick(n)}
+                      className={`p-3 rounded-xl border text-xs space-y-1.5 transition-all cursor-pointer group hover:border-[#D49A24]/60 ${
                         n.read
-                          ? 'bg-slate-50 dark:bg-slate-800/40 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400'
-                          : 'bg-sky-50/70 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/60 text-slate-900 dark:text-slate-200'
+                          ? 'bg-slate-50/60 dark:bg-slate-800/30 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 opacity-80'
+                          : 'bg-sky-50/80 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800/70 text-slate-900 dark:text-slate-100 shadow-xs'
                       }`}
                     >
-                      <div className="flex items-center justify-between font-bold">
-                        <span>{n.title}</span>
-                        <span className="text-[10px] opacity-70 flex items-center gap-1">
+                      <div className="flex items-center justify-between font-bold gap-2">
+                        <div className="flex items-center gap-1.5 truncate">
+                          {!n.read && (
+                            <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+                          )}
+                          <span className="truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                            {n.title}
+                          </span>
+                        </div>
+                        <span className="text-[10px] opacity-70 flex items-center gap-1 shrink-0 font-normal">
                           <Clock className="w-3 h-3" /> {n.time}
                         </span>
                       </div>
-                      <p className="text-slate-600 dark:text-slate-300 leading-snug">{n.message}</p>
+                      <p className="text-slate-600 dark:text-slate-300 leading-snug line-clamp-2">{n.message}</p>
+                      {n.category && (
+                        <div className="flex items-center justify-between pt-1 text-[9px] uppercase tracking-wider font-bold text-slate-400">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                            {n.category}
+                          </span>
+                          {n.action_route && (
+                            <span className="text-sky-600 dark:text-sky-400 group-hover:underline">
+                              Open View →
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
               </div>
 
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
-                <button
-                  onClick={() => {
-                    setShowNotifications(false);
-                    addToast('info', 'Notifications Cleared', 'All alerts marked as read.');
-                  }}
-                  className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
-                >
-                  Mark All Alerts as Read
-                </button>
-              </div>
+              {unreadCount > 0 && (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+                  <button
+                    onClick={async () => {
+                      await markAllNotificationsAsRead();
+                      addToast('info', 'Notifications Cleared', 'All alerts marked as read.');
+                    }}
+                    className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                  >
+                    Mark All Alerts as Read
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

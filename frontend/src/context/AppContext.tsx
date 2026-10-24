@@ -30,6 +30,9 @@ interface AppContextType {
   // Real-time notification & toast alerts
   notifications: NotificationItem[];
   addNotification: (title: string, message: string, type?: NotificationItem['type']) => void;
+  fetchNotifications: () => Promise<void>;
+  markNotificationAsRead: (id: string | number) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
   toasts: ToastAlert[];
   addToast: (type: ToastAlert['type'] | string, title?: string, message?: string) => void;
   removeToast: (id: string) => void;
@@ -312,6 +315,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  const fetchNotifications = async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await apiFetch('/api/notifications/');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'success' && Array.isArray(json.data)) {
+          const mapped: NotificationItem[] = json.data.map((item: any) => ({
+            id: item.notification_id,
+            title: item.notification_title,
+            message: item.notification_message,
+            time: item.created_at_human || 'Recent',
+            type: (item.notification_type === 'danger' ? 'alert' : item.notification_type) as any,
+            read: !!item.notification_is_read,
+            roleTarget: item.notification_recipient_role || 'all',
+            category: item.notification_category,
+            action_route: item.notification_action_route,
+            target_type: item.notification_target_type,
+            target_id: item.notification_target_id,
+            event_key: item.notification_event_key
+          }));
+          setNotifications(mapped);
+        }
+      }
+    } catch {
+      // Graceful background sync
+    }
+  };
+
+  const markNotificationAsRead = async (id: string | number) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    if (typeof id === 'number' || !String(id).startsWith('notif-')) {
+      try {
+        await apiFetch(`/api/notifications/${id}/read/`, { method: 'POST' });
+      } catch {
+        // Silently persist
+      }
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await apiFetch('/api/notifications/read-all/', { method: 'POST' });
+    } catch {
+      // Silently persist
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, activeRole]);
+
   const addNotification = (title: string, message: string, type: NotificationItem['type'] = 'info') => {
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
@@ -338,6 +398,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toggleDarkMode,
       notifications,
       addNotification,
+      fetchNotifications,
+      markNotificationAsRead,
+      markAllNotificationsAsRead,
       toasts,
       addToast,
       removeToast,

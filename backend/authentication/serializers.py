@@ -40,6 +40,7 @@ from authentication.models import (
     PreArrivalCustomsDeclaration,
     DeliveryOrder,
     DirectShipToTruckTransfer,
+    Notification,
     get_min_arrival_advance_days
 )
 from authentication.qr_service import generate_qr_svg, generate_qr_png_base64
@@ -5400,6 +5401,41 @@ class YardLoadingContainerSerializer(serializers.ModelSerializer):
     def get_vessel_name(self, obj):
         v = obj.vessel
         return v.vessel_name if v else None
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    created_at_human = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            'notification_id',
+            'notification_recipient_role',
+            'notification_title',
+            'notification_message',
+            'notification_type',
+            'notification_category',
+            'notification_target_type',
+            'notification_target_id',
+            'notification_action_route',
+            'notification_is_read',
+            'notification_event_key',
+            'notification_created_at',
+            'notification_read_at',
+            'created_at_human',
+        ]
+        read_only_fields = [
+            'notification_id',
+            'notification_created_at',
+            'notification_read_at',
+            'created_at_human',
+        ]
+
+    def get_created_at_human(self, obj):
+        if not obj.notification_created_at:
+            return ""
+        return obj.notification_created_at.strftime('%Y-%m-%d %H:%M')
+
 
 
 

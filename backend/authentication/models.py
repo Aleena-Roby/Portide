@@ -2554,6 +2554,64 @@ class DirectShipToTruckTransfer(models.Model):
         return f"Direct Transfer {self.transfer_reference} ({self.transfer_status}) - Container: {self.transfer_container_id.container_number} -> Truck: {self.transfer_truck_id.truck_number}"
 
 
+class Notification(models.Model):
+    TYPE_CHOICES = (
+        ('info', 'Information'),
+        ('success', 'Success'),
+        ('warning', 'Warning'),
+        ('danger', 'Danger / Alert'),
+    )
+    CATEGORY_CHOICES = (
+        ('VESSEL', 'Vessel Operations'),
+        ('BERTH', 'Berth Management'),
+        ('CUSTOMS', 'Customs Clearance'),
+        ('CARGO', 'Cargo Operations'),
+        ('CONTAINER', 'Container Tracking'),
+        ('GATE', 'Gate & Logistics'),
+        ('SYSTEM', 'System Alert'),
+    )
+
+    notification_id = models.AutoField(primary_key=True)
+    notification_recipient_user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_column='notification_recipient_user_id',
+        related_name='notifications'
+    )
+    notification_recipient_company = models.ForeignKey(
+        'ShippingCompany',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_column='notification_recipient_company_id',
+        related_name='company_notifications'
+    )
+    notification_recipient_role = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    notification_title = models.CharField(max_length=200)
+    notification_message = models.TextField()
+    notification_type = models.CharField(max_length=30, default='info', choices=TYPE_CHOICES)
+    notification_category = models.CharField(max_length=50, default='SYSTEM', choices=CATEGORY_CHOICES, db_index=True)
+    notification_target_type = models.CharField(max_length=50, blank=True, default='')
+    notification_target_id = models.CharField(max_length=100, blank=True, default='')
+    notification_action_route = models.CharField(max_length=255, blank=True, default='')
+    notification_is_read = models.BooleanField(default=False, db_index=True)
+    notification_event_key = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    notification_created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    notification_read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'tbl_notification'
+        verbose_name = 'In-App Notification'
+        verbose_name_plural = 'In-App Notifications'
+        ordering = ['-notification_created_at', '-notification_id']
+
+    def __str__(self):
+        return f"[{self.notification_category}] {self.notification_title} ({'Read' if self.notification_is_read else 'Unread'})"
+
+
+
 
 
 
