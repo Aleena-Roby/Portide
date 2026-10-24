@@ -3336,6 +3336,33 @@ class PortSettingsAPIView(APIView):
         auto_clearance = get_setting_val('AUTO_CLEARANCE_THRESHOLD', '500000')
         gate_sla = get_setting_val('GATE_PASS_SLA_MINS', '15')
 
+        cargo_classifications = [
+            {
+                "code": "CONTAINERIZED",
+                "name": "Containerized Cargo",
+                "category": "ISO Intermodal Container Freight",
+                "supported_units": ["TEU", "FEU", "UNITS"],
+                "description": "Standardized ISO freight containers (Dry Van, High Cube, Reefer, Flat Rack, ISO Tanks)",
+                "downstream_workflow": "ISO Container Registration, Yard Allocation, Gate Pass & Tracking"
+            },
+            {
+                "code": "BULK_CARGO",
+                "name": "Bulk Cargo",
+                "category": "Homogeneous Dry & Liquid Bulk Commodities",
+                "supported_units": ["TONNES", "KG"],
+                "description": "Unpackaged homogeneous cargo (Ore, grain, cement, clinker, liquids)",
+                "downstream_workflow": "Dispatched to Bulk Berths, Silos, or Direct Transfer"
+            },
+            {
+                "code": "GENERAL_CARGO",
+                "name": "General Cargo",
+                "category": "Break-bulk, Palletized & Crated Consignments",
+                "supported_units": ["PACKAGES", "UNITS", "TONNES", "KG"],
+                "description": "Break-bulk, machinery, steel coils, palletized/bagged goods",
+                "downstream_workflow": "Dispatched to General Cargo Berths & Transit Warehouses"
+            }
+        ]
+
         return Response(
             {
                 "status": "success",
@@ -3347,7 +3374,8 @@ class PortSettingsAPIView(APIView):
                     "gate_pass_sla_mins": gate_sla,
                     "port_timezone": str(timezone.get_current_timezone_name()),
                     "server_current_time": now_local.isoformat(),
-                    "server_today_date": now_local.date().isoformat()
+                    "server_today_date": now_local.date().isoformat(),
+                    "cargo_classifications": cargo_classifications
                 }
             },
             status=status.HTTP_200_OK

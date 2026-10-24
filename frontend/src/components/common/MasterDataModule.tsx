@@ -6,10 +6,110 @@ import {
   Save, 
   Loader2,
   RefreshCw,
-  Boxes
+  Boxes,
+  Package,
+  Ship,
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { BackendBerth, CraneItem } from '../../types';
+
+interface MasterCargoClassification {
+  code: 'CONTAINERIZED' | 'BULK_CARGO' | 'GENERAL_CARGO';
+  name: string;
+  category: string;
+  supportedUnits: { code: string; label: string; desc: string }[];
+  operationalScope: string;
+  downstreamWorkflow: string;
+  status: string;
+}
+
+const MASTER_CARGO_CLASSIFICATIONS: MasterCargoClassification[] = [
+  {
+    code: 'CONTAINERIZED',
+    name: 'Containerized Cargo',
+    category: 'ISO Intermodal Container Freight',
+    supportedUnits: [
+      { code: 'TEU', label: 'TEU', desc: 'Twenty-foot Equivalent Unit' },
+      { code: 'FEU', label: 'FEU', desc: 'Forty-foot Equivalent Unit' },
+      { code: 'UNITS', label: 'UNITS', desc: 'Physical Container Count' }
+    ],
+    operationalScope: 'Dry Van, High Cube, Reefer, Flat Rack, ISO Tanks',
+    downstreamWorkflow: 'Proceeds to ISO Container Registration, Yard Block Allocation, Gate Pass & Delivery Tracking',
+    status: 'Active'
+  },
+  {
+    code: 'BULK_CARGO',
+    name: 'Bulk Cargo',
+    category: 'Homogeneous Dry & Liquid Bulk Commodities',
+    supportedUnits: [
+      { code: 'TONNES', label: 'TONNES', desc: 'Metric Tonnes (MT)' },
+      { code: 'KG', label: 'KG', desc: 'Kilograms' }
+    ],
+    operationalScope: 'Ores, Grain, Cement, Clinker, Minerals, Liquid Bulk',
+    downstreamWorkflow: 'Dispatched to Bulk Berths, Silos, or Direct Ship-to-Truck/Conveyor Transfer (No Yard Allocation)',
+    status: 'Active'
+  },
+  {
+    code: 'GENERAL_CARGO',
+    name: 'General Cargo',
+    category: 'Break-bulk, Palletized & Crated Consignments',
+    supportedUnits: [
+      { code: 'PACKAGES', label: 'PACKAGES', desc: 'Cartons / Crates / Bags' },
+      { code: 'UNITS', label: 'UNITS', desc: 'Machinery & Equipment Pieces' },
+      { code: 'TONNES', label: 'TONNES', desc: 'Consignment Metric Tonnes' },
+      { code: 'KG', label: 'KG', desc: 'Consignment Kilograms' }
+    ],
+    operationalScope: 'Bagged Cargo, Drums, Heavy Machinery, Steel Coils, Project Cargo',
+    downstreamWorkflow: 'Dispatched to General Cargo Berths & Covered Transit Sheds (No Standard Container Allocation)',
+    status: 'Active'
+  }
+];
+
+const formatBerthType = (type?: string): string => {
+  if (!type) return 'Container Terminal';
+  const map: Record<string, string> = {
+    'CONTAINER_TERMINAL': 'Container Terminal',
+    'BULK_CARGO': 'Bulk Cargo Terminal',
+    'OIL_TANKER': 'Oil & Liquid Tanker',
+    'GENERAL_CARGO': 'General Cargo Berth',
+    'RO_RO': 'Ro-Ro Berth',
+    'MULTI_PURPOSE': 'Multi-Purpose Berth'
+  };
+  return map[type] || type.replace(/_/g, ' ');
+};
+
+const getBerthStatusBadge = (status: string) => {
+  switch (status) {
+    case 'AVAILABLE':
+      return {
+        label: 'Available',
+        className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+      };
+    case 'OCCUPIED':
+      return {
+        label: 'Occupied',
+        className: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border-sky-200 dark:border-sky-800'
+      };
+    case 'MAINTENANCE':
+      return {
+        label: 'Maintenance',
+        className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+      };
+    case 'RESERVED':
+      return {
+        label: 'Reserved',
+        className: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+      };
+    case 'INACTIVE':
+    default:
+      return {
+        label: status || 'Inactive',
+        className: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+      };
+  }
+};
 
 export const MasterDataModule: React.FC = () => {
   const { addToast } = useApp();
@@ -30,25 +130,25 @@ export const MasterDataModule: React.FC = () => {
   const [portTimezone, setPortTimezone] = useState('UTC');
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Cargo Classifications
-  const cargoTypes = [
-    { id: '1', name: 'Containerized (TEU/FEU)', category: 'General Freight', hazardousPermit: false, activeStatus: 'Active' },
-    { id: '2', name: 'Bulk Dry Cargo (Ore, Grain)', category: 'Bulk Freight', hazardousPermit: false, activeStatus: 'Active' },
-    { id: '3', name: 'Petroleum & Liquid Gas', category: 'Tanker Freight', hazardousPermit: true, activeStatus: 'Active' },
-    { id: '4', name: 'Ro-Ro Vehicles & Machinery', category: 'Automotive', hazardousPermit: false, activeStatus: 'Active' },
-    { id: '5', name: 'Class 3 Flammable Liquids', category: 'Dangerous Goods', hazardousPermit: true, activeStatus: 'Active' }
-  ];
-
   const fetchMasterData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch real berths
+      // 1. Fetch real berths from database
+      let berthList: BackendBerth[] = [];
       const berthRes = await apiFetch('/api/berths/');
       if (berthRes.ok) {
         const berthJson = await berthRes.json();
-        const list = Array.isArray(berthJson?.data) ? berthJson.data : (Array.isArray(berthJson) ? berthJson : []);
-        setBerths(list);
+        berthList = Array.isArray(berthJson?.data) ? berthJson.data : (Array.isArray(berthJson) ? berthJson : []);
+      } else {
+        const adminBerthRes = await apiFetch('/api/admin/berths/');
+        if (adminBerthRes.ok) {
+          const adminJson = await adminBerthRes.json();
+          berthList = Array.isArray(adminJson?.data) ? adminJson.data : (Array.isArray(adminJson) ? adminJson : []);
+        }
       }
+      // Sort berths ascending by berth_id for natural operational sequence
+      berthList.sort((a, b) => (Number(a.berth_id) || 0) - (Number(b.berth_id) || 0));
+      setBerths(berthList);
 
       // 2. Fetch real equipment / cranes
       const craneRes = await apiFetch('/api/terminal/cranes/');
@@ -160,37 +260,72 @@ export const MasterDataModule: React.FC = () => {
           
           {/* Master Cargo Types Table */}
           <div className="lg:col-span-7 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Master Cargo Classifications</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Package className="w-4 h-4 text-sky-500" />
+                  <span>Master Cargo Classifications & Unit Standards</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Official classification taxonomy matching Cargo Management models, validation rules, and downstream routing
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800 self-start sm:self-auto flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> System Synchronized
+              </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
                 <thead className="text-[11px] font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="p-3">Cargo Type</th>
-                    <th className="p-3">Category</th>
-                    <th className="p-3">HazMat License</th>
+                    <th className="p-3">Cargo Classification</th>
+                    <th className="p-3">Supported Units</th>
+                    <th className="p-3">Operational Routing & Scope</th>
                     <th className="p-3 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {cargoTypes.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className="p-3 font-bold text-slate-900 dark:text-white">{c.name}</td>
-                      <td className="p-3">{c.category}</td>
-                      <td className="p-3">
-                        {c.hazardousPermit ? (
-                          <span className="text-[10px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-800">
-                            HazMat Mandated
+                  {MASTER_CARGO_CLASSIFICATIONS.map(c => (
+                    <tr key={c.code} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="p-3 align-top">
+                        <div className="font-bold text-slate-900 dark:text-white text-xs">{c.name}</div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 font-semibold">
+                            {c.code}
                           </span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">Standard</span>
-                        )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                          {c.category}
+                        </div>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="p-3 align-top">
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {c.supportedUnits.map(u => (
+                            <span 
+                              key={u.code}
+                              title={u.desc}
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800"
+                            >
+                              {u.code}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+                          {c.supportedUnits.map(u => u.label).join(' • ')}
+                        </div>
+                      </td>
+                      <td className="p-3 align-top">
+                        <div className="text-[11px] text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                          {c.downstreamWorkflow}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                          {c.operationalScope}
+                        </div>
+                      </td>
+                      <td className="p-3 align-top text-right">
                         <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
-                          {c.activeStatus}
+                          {c.status}
                         </span>
                       </td>
                     </tr>
@@ -198,20 +333,36 @@ export const MasterDataModule: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Operational Rule Callout */}
+            <div className="p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 text-[11px] text-sky-900 dark:text-sky-200 flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold">Operational Rule & Downstream Integrity:</span>
+                <p className="text-sky-800 dark:text-sky-300 text-[10px] leading-relaxed">
+                  Cargo classification determines valid quantity units and downstream terminal handling. Only <strong>Containerized Cargo</strong> proceeds into ISO container registration, yard stack allocation, and gate tracking. <strong>Bulk</strong> and <strong>General</strong> cargo are routed to dedicated berths, silos, or direct ship-to-truck conveyor transfers.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Master Berths Summary */}
           <div className="lg:col-span-5 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Anchor className="w-4 h-4 text-sky-500" />
-                <span>Master Quay Berths Registry</span>
-              </h3>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Anchor className="w-4 h-4 text-sky-500" />
+                  <span>Master Quay Berths Registry</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Live berth records, terminal types & draft from port database
+                </p>
+              </div>
               <button
                 onClick={fetchMasterData}
                 disabled={loading}
-                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
-                title="Refresh"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                title="Refresh Master Berths"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
@@ -219,33 +370,60 @@ export const MasterDataModule: React.FC = () => {
 
             <div className="space-y-3">
               {berths.length === 0 ? (
-                <div className="p-4 text-center text-slate-400 text-xs">
-                  {loading ? 'Loading berths...' : 'No berths configured.'}
+                <div className="p-6 text-center text-slate-400 text-xs bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                  {loading ? 'Loading real berth infrastructure...' : 'No berths configured in database.'}
                 </div>
               ) : (
-                berths.map(b => (
-                  <div key={b.berth_id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between">
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {b.berth_name} {b.berth_code ? `(${b.berth_code})` : ''}
+                berths.map(b => {
+                  const badge = getBerthStatusBadge(b.berth_status);
+                  const maxDraft = Number(b.berth_max_draft || 0).toFixed(1);
+                  const maxLength = Number(b.berth_max_length || 0).toFixed(0);
+                  const terminalDisplay = b.berth_type_display || formatBerthType(b.berth_type);
+
+                  return (
+                    <div 
+                      key={b.berth_id} 
+                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-xs space-y-2 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>{b.berth_name}</span>
+                            {b.berth_code && (
+                              <span className="font-mono text-[10px] text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950 px-1.5 py-0.2 rounded border border-sky-200 dark:border-sky-800 font-bold">
+                                {b.berth_code}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mt-0.5">
+                            {terminalDisplay}
+                          </div>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${badge.className}`}>
+                          {badge.label}
+                        </span>
                       </div>
-                      <div className="text-[10px] text-slate-400">
-                        {b.berth_type || 'CONTAINER_TERMINAL'} • Max Draft: {b.berth_max_draft}m
+
+                      <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center gap-3">
+                          <span>Max Draft: <strong className="text-slate-700 dark:text-slate-200">{maxDraft}m</strong></span>
+                          {Number(maxLength) > 0 && (
+                            <span>Length: <strong className="text-slate-700 dark:text-slate-200">{maxLength}m</strong></span>
+                          )}
+                        </div>
+
+                        {b.current_vessel && b.current_vessel.vessel_name && (
+                          <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950 px-2 py-0.5 rounded border border-sky-200 dark:border-sky-800">
+                            <Ship className="w-3 h-3 text-sky-500" />
+                            <span className="truncate max-w-[110px]" title={b.current_vessel.vessel_name}>
+                              {b.current_vessel.vessel_name}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        b.berth_status === 'AVAILABLE' 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                          : b.berth_status === 'OCCUPIED'
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                          : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
-                      }`}>
-                        {b.berth_status}
-                      </span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
