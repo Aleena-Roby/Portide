@@ -204,8 +204,14 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
         body: JSON.stringify(payload)
       });
 
-      const json = await res.json();
-      if (res.ok && json.status === 'success') {
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
+      }
+
+      if (res.ok && json && json.status === 'success') {
         setSubmitSuccess(json.message || `Container ${targetContainerNumber} successfully gated in.`);
         addToast(
           'success',
@@ -232,13 +238,17 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
           onGateInSuccess();
         }
       } else {
-        const errorMsg = json.message || (json.errors ? Object.values(json.errors).flat().join(', ') : 'Gate-in failed.');
+        const errorMsg =
+          json?.message ||
+          (json?.errors ? Object.values(json.errors).flat().join(', ') : null) ||
+          (res.status ? `Server responded with error status ${res.status}.` : 'Gate-in processing failed.');
         setSubmitError(errorMsg);
         addToast('error', 'Gate-In Denied', errorMsg);
       }
-    } catch {
-      setSubmitError('Network error connecting to gate-in service.');
-      addToast('error', 'Network Error', 'Could not record export gate-in.');
+    } catch (err: any) {
+      const errMsg = err?.message || 'Network error connecting to gate-in service.';
+      setSubmitError(errMsg);
+      addToast('error', 'Network Error', errMsg);
     } finally {
       setSubmitting(false);
     }

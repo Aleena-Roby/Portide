@@ -6630,12 +6630,11 @@ class ExportGateInAPIView(APIView):
         with transaction.atomic():
             c_filter = models.Q(container_id=cid) if cid else models.Q(container_number__iexact=cnum)
             try:
-                container = Container.objects.select_for_update().select_related(
+                container = Container.objects.select_for_update(of=('self',)).select_related(
                     'container_cargo_id',
                     'container_cargo_id__cargo_arrival_request_id',
                     'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id',
-                    'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id__vessel_shipping_company_id',
-                    'container_cargo_id__cargo_arrival_request_id__schedule'
+                    'container_cargo_id__cargo_arrival_request_id__vessel_arrival_request_vessel_id__vessel_shipping_company_id'
                 ).get(c_filter)
             except Container.DoesNotExist:
                 return Response(
