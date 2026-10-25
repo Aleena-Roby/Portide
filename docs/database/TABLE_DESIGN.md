@@ -87,7 +87,24 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 6. tbl_vessel
+### 6. tbl_port
+**Primary key:** `port_id`  
+**Foreign key:** Nil  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | port_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for standardized international maritime seaports. |
+| 2 | port_name | Varchar (200) | Not Null | Full official title of the commercial seaport (e.g., Port of Singapore, Port of Rotterdam). |
+| 3 | port_code | Varchar (20) | Unique, Not Null | UN/LOCODE standard five-character international port location code (e.g., `SGSIN`, `NLRTM`). |
+| 4 | port_country | Varchar (100) | Not Null | Sovereign country jurisdiction where the port facility operates. |
+| 5 | port_city | Varchar (100) | Not Null | Municipality or metropolitan area where the harbor is situated. |
+| 6 | port_timezone | Varchar (50) | Not Null | Standard IANA timezone identifier for berthing ETA conversions (e.g., `Asia/Singapore`). |
+| 7 | port_is_active | Boolean | Not Null | Operational availability flag for marine route scheduling. |
+| 8 | port_created_at | Timestamp | Default Current_Timestamp | Timestamp when the seaport was registered in master data. |
+
+---
+
+### 7. tbl_vessel
 **Primary key:** `vessel_id`  
 **Foreign key:** `vessel_shipping_company_id` references table `tbl_shipping_company`  
 
@@ -109,7 +126,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 7. tbl_berth
+### 8. tbl_berth
 **Primary key:** `berth_id`  
 **Foreign key:** Nil  
 
@@ -128,7 +145,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 8. tbl_vessel_arrival_request
+### 9. tbl_vessel_arrival_request
 **Primary key:** `vessel_arrival_request_id`  
 **Foreign key:** `vessel_arrival_request_vessel_id` references table `tbl_vessel`, `vessel_arrival_request_reviewed_by` references table `tbl_user`, `vessel_arrival_request_preferred_berth_id` references table `tbl_berth`  
 
@@ -149,7 +166,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 9. tbl_vessel_schedule
+### 10. tbl_vessel_schedule
 **Primary key:** `vessel_schedule_id`  
 **Foreign key:** `vessel_schedule_arrival_request_id` references table `tbl_vessel_arrival_request`, `vessel_schedule_berth_id` references table `tbl_berth`, `vessel_schedule_created_by` references table `tbl_user`  
 
@@ -171,7 +188,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 10. tbl_cargo
+### 11. tbl_cargo
 **Primary key:** `cargo_id`  
 **Foreign key:** `cargo_arrival_request_id` references table `tbl_vessel_arrival_request`, `cargo_origin_port_id` references table `tbl_port`, `cargo_destination_port_id` references table `tbl_port`  
 
@@ -193,7 +210,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 11. tbl_container
+### 12. tbl_container
 **Primary key:** `container_id`  
 **Foreign key:** `container_cargo_id` references table `tbl_cargo`, `container_delivered_by` references table `tbl_user`  
 
@@ -219,7 +236,48 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 12. tbl_customs_document
+### 13. tbl_container_tracking_event
+**Primary key:** `tracking_event_id`  
+**Foreign key:** `tracking_event_container_id` references table `tbl_container`, `tracking_event_gate_pass_id` references table `tbl_gate_pass`, `tracking_event_updated_by` references table `tbl_user`  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | tracking_event_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for immutable container movement audit events. |
+| 2 | tracking_event_container_id | BigInt (20) | Foreign Key, Not Null | References `container_id` of `tbl_container` undergoing movement. |
+| 3 | tracking_event_gate_pass_id | BigInt (20) | Foreign Key, Null | References `gate_pass_id` of `tbl_gate_pass` associated with landside exit. |
+| 4 | tracking_event_status | Varchar (50) | Not Null | Operational milestone achieved (`UNLOADED_FROM_VESSEL`, `STACKED_IN_YARD`, `CUSTOMS_CLEARED`, `GATE_OUT`). |
+| 5 | tracking_event_timestamp | DateTime | Not Null | Exact GPS or clock timestamp when the physical action occurred. |
+| 6 | tracking_event_location | Varchar (200) | Not Null | Physical quayside, yard slot, scanner tunnel, or terminal gate location. |
+| 7 | tracking_event_description | Text | Null | Operational narrative describing the crane move, vehicle transfer, or ruling. |
+| 8 | tracking_event_exception_reason | Varchar (100) | Null | Exception alert category (e.g., `CUSTOMS_HOLD_FLAG`, `SEAL_TAMPERED`). |
+| 9 | tracking_event_updated_by | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` who logged or supervised the event. |
+| 10 | tracking_event_created_at | DateTime | Not Null, Default Current_Timestamp | System record creation timestamp. |
+
+---
+
+### 14. tbl_customs_inspection
+**Primary key:** `customs_inspection_id`  
+**Foreign key:** `customs_inspection_container_id` references table `tbl_container`, `customs_inspection_officer_id` references table `tbl_user`  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | customs_inspection_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for statutory cargo inspection workflows. |
+| 2 | customs_inspection_container_id | BigInt (20) | Foreign Key, Not Null | References `container_id` of `tbl_container` selected for physical or non-intrusive examination. |
+| 3 | customs_inspection_officer_id | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` (Customs Officer) conducting the examination. |
+| 4 | customs_inspection_status | Varchar (50) | Not Null | Inspection lifecycle (`PENDING_EXAMINATION`, `UNDER_INSPECTION`, `COMPLETED`, `HOLD_APPLIED`). |
+| 5 | customs_inspection_result | Varchar (50) | Null | Formal inspection finding (`PASSED`, `FAILED`, `DISCREPANCY_NOTED`, `CONTRABAND_SUSPECTED`). |
+| 6 | customs_inspection_document_status | Varchar (50) | Not Null | Regulatory documentary verification state (`VERIFIED`, `AMENDMENT_REQUESTED`). |
+| 7 | customs_inspection_remarks | Text | Null | Officer's physical inspection observations, seal integrity notes, or unstuffing findings. |
+| 8 | customs_inspection_hold_reason | Varchar (100) | Null | Formal legal justification cited when a statutory detention or hold is placed. |
+| 9 | customs_inspection_started_at | DateTime | Not Null | Timestamp when container was positioned at inspection bay or scanner tunnel. |
+| 10 | customs_inspection_completed_at | DateTime | Null | Timestamp when inspection examination was formally concluded. |
+| 11 | customs_inspection_clearance_date | DateTime | Null | Official date and time when customs release stamp was recorded. |
+| 12 | customs_inspection_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when inspection record was initiated. |
+| 13 | customs_inspection_updated_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when inspection finding was last recorded. |
+
+---
+
+### 15. tbl_customs_document
 **Primary key:** `document_id`  
 **Foreign key:** `document_container_id` references table `tbl_container`, `document_uploaded_by` references table `tbl_user`, `document_reviewed_by` references table `tbl_user`  
 
@@ -244,7 +302,7 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 13. tbl_yard
+### 16. tbl_yard
 **Primary key:** `yard_id`  
 **Foreign key:** Nil  
 
@@ -262,26 +320,45 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 14. tbl_crane
-**Primary key:** `crane_id`  
-**Foreign key:** `crane_assigned_berth_id` references table `tbl_berth`, `crane_created_by` references table `tbl_user`  
+### 17. tbl_yard_slot
+**Primary key:** `yard_slot_id`  
+**Foreign key:** `yard_slot_block_id` references table `tbl_yard_block`  
 
 | No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | crane_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for heavy quayside and yard handling equipment. |
-| 2 | crane_code | Varchar (50) | Unique, Not Null | Physical equipment serial asset code (e.g., `QC-STS-01`, `RTG-04`). |
-| 3 | crane_name | Varchar (150) | Not Null | Display title of the crane equipment (e.g., Ship-to-Shore Gantry Crane 01). |
-| 4 | crane_type | Varchar (50) | Not Null | Machinery classification (`STS_GANTRY`, `MOBILE_HARBOUR`, `RTG_YARD`, `REACH_STACKER`). |
-| 5 | crane_max_lifting_capacity_mt | Decimal (10,2) | Not Null | Maximum safe working load rating in metric tonnes (SWL). |
-| 6 | crane_capacity_unit | Varchar (20) | Not Null | Engineering load unit (`MT`, `TONNES`). |
-| 7 | crane_status | Varchar (30) | Not Null | Equipment operational status (`AVAILABLE`, `OPERATIONAL`, `MAINTENANCE`, `OUT_OF_SERVICE`). |
-| 8 | crane_assigned_berth_id | BigInt (20) | Foreign Key, Null | References `berth_id` of `tbl_berth` where the crane is actively positioned. |
-| 9 | crane_is_active | Boolean | Not Null | Flag indicating whether the crane is certified for active lifting operations. |
-| 10 | crane_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when the crane asset was registered in the inventory. |
+| 1 | yard_slot_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for exact physical 3D container stacking slot cells. |
+| 2 | yard_slot_block_id | BigInt (20) | Foreign Key, Not Null | References `yard_block_id` of `tbl_yard_block` housing the slot. |
+| 3 | yard_slot_code | Varchar (50) | Not Null | Standardized slot identifier coordinate (e.g., `B04-R02-T03`). |
+| 4 | yard_slot_bay | Int (11) | Not Null | Longitudinal bay coordinate number (parallel to container length). |
+| 5 | yard_slot_row | Int (11) | Not Null | Lateral row position number across the yard block width. |
+| 6 | yard_slot_tier | Int (11) | Not Null | Vertical stacking elevation tier height level (1 = ground, 2-5 = stacked above). |
+| 7 | yard_slot_status | Varchar (20) | Not Null | Occupancy availability state (`AVAILABLE`, `OCCUPIED`, `RESERVED`, `BLOCKED`). |
+| 8 | yard_slot_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when slot coordinate was mapped into Yard Master. |
+| 9 | yard_slot_updated_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when slot occupancy status was last transitioned. |
 
 ---
 
-### 15. tbl_truck
+### 18. tbl_yard_allocation
+**Primary key:** `yard_allocation_id`  
+**Foreign key:** `yard_allocation_container_id` references table `tbl_container`, `yard_allocation_slot_id` references table `tbl_yard_slot`, `yard_allocation_allocated_by_id` references table `tbl_user`, `yard_allocation_released_by_id` references table `tbl_user`  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | yard_allocation_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for container yard slotting assignment records. |
+| 2 | yard_allocation_container_id | BigInt (20) | Foreign Key, Not Null | References `container_id` of `tbl_container` stacked in the yard slot. |
+| 3 | yard_allocation_slot_id | BigInt (20) | Foreign Key, Not Null | References `yard_slot_id` of `tbl_yard_slot` where the container is positioned. |
+| 4 | yard_allocation_status | Varchar (20) | Not Null | Slot allocation state (`ACTIVE`, `RELEASED`, `RELOCATED`). |
+| 5 | yard_allocation_allocated_at | DateTime | Not Null | Timestamp when RTG or reach stacker completed container grounding. |
+| 6 | yard_allocation_allocated_by_id | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` (Terminal Operator) assigning the location. |
+| 7 | yard_allocation_released_at | DateTime | Null | Timestamp when container was picked from stack for truck dispatch. |
+| 8 | yard_allocation_released_by_id | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` authorising quayside or yard unstacking. |
+| 9 | yard_allocation_remarks | Text | Not Null | Special handling remarks (e.g., HazMat isolation, reefer power plug-in confirmed). |
+| 10 | yard_allocation_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when allocation record was created. |
+| 11 | yard_allocation_updated_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when allocation was last updated. |
+
+---
+
+### 19. tbl_truck
 **Primary key:** `truck_id`  
 **Foreign key:** Nil  
 
@@ -296,7 +373,39 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 
 ---
 
-### 16. tbl_gate_pass
+### 20. tbl_driver
+**Primary key:** `driver_id`  
+**Foreign key:** Nil  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | driver_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for authorized transport truck drivers. |
+| 2 | driver_name | Varchar (150) | Not Null | Driver's full legal name. |
+| 3 | driver_license_number | Varchar (100) | Unique, Not Null | Heavy Commercial Vehicle (HCV) commercial driving license number. |
+| 4 | driver_phone | Varchar (50) | Not Null | Driver's active mobile phone number for SMS gate appointment alerts. |
+| 5 | driver_email | Varchar (255) | Not Null | Driver or dispatcher email address where digital QR gate pass is delivered. |
+| 6 | driver_status | Varchar (30) | Not Null | Statutory driver access authorization (`ACTIVE`, `SUSPENDED`, `BLACKLISTED`). |
+| 7 | driver_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when driver profile was registered. |
+| 8 | driver_updated_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when driver profile was last updated. |
+
+---
+
+### 21. tbl_gate
+**Primary key:** `gate_id`  
+**Foreign key:** Nil  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | gate_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for physical port perimeter security gates. |
+| 2 | gate_name | Varchar (150) | Unique, Not Null | Display name of the gate facility (e.g., North Inbound Terminal Gate 01). |
+| 3 | gate_code | Varchar (50) | Unique, Not Null | Operational gate code (e.g., `GT-IN-01`, `GT-OUT-02`). |
+| 4 | gate_type | Varchar (50) | Not Null | Access direction category (`INBOUND_GATE`, `OUTBOUND_GATE`, `RAIL_PORTAL`). |
+| 5 | gate_is_active | Boolean | Not Null | Flag indicating whether optical OCR scanner and boom barrier are active. |
+| 6 | gate_created_at | DateTime | Not Null, Default Current_Timestamp | Timestamp when the gate facility was added to terminal infrastructure. |
+
+---
+
+### 22. tbl_gate_pass
 **Primary key:** `gate_pass_id`  
 **Foreign key:** `gate_pass_truck_id` references table `tbl_truck`, `gate_pass_driver_id` references table `tbl_driver`, `gate_pass_issued_by` references table `tbl_user`  
 
@@ -317,3 +426,46 @@ This section documents the prioritized database table schemas for the **PORTIDE 
 | 13 | gate_pass_verified_at | DateTime | Null | Timestamp recorded when optical scanner validated the driver QR code at inbound gate. |
 | 14 | gate_pass_used_at | DateTime | Null | Timestamp recorded when container physically departed through the outbound boom barrier. |
 | 15 | gate_pass_created_at | DateTime | Not Null, Default Current_Timestamp | System record creation timestamp. |
+
+---
+
+### 23. tbl_gate_release
+**Primary key:** `gate_release_id`  
+**Foreign key:** `gate_release_container_id` references table `tbl_container`, `gate_release_gate_pass_id` references table `tbl_gate_pass`, `gate_release_officer_id` references table `tbl_user`  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | gate_release_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for physical boom barrier release transaction logs. |
+| 2 | gate_release_container_id | BigInt (20) | Foreign Key, Not Null | References `container_id` of `tbl_container` physically leaving the port premises. |
+| 3 | gate_release_gate_pass_id | BigInt (20) | Foreign Key, Null | References `gate_pass_id` of `tbl_gate_pass` verified during the release. |
+| 4 | gate_release_officer_id | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` (Gate Security Officer) commanding the barrier lift. |
+| 5 | gate_release_previous_status | Varchar (50) | Not Null | Container physical state before gate departure (`LOADED_ON_TRUCK`). |
+| 6 | gate_release_new_status | Varchar (50) | Not Null | Updated container physical state recorded after passing gate (`DEPARTED`). |
+| 7 | gate_release_truck_number | Varchar (50) | Not Null | License plate number verified through optical character recognition (OCR). |
+| 8 | gate_release_driver_name | Varchar (150) | Not Null | Verified full name of driver operating the transport vehicle. |
+| 9 | gate_release_driver_license | Varchar (100) | Not Null | Verified driver license number matched against gate pass records. |
+| 10 | gate_release_exit_point | Varchar (100) | Not Null | Outbound terminal gate lane where release occurred (e.g., Gate 2 Outbound Lane A). |
+| 11 | gate_release_remarks | Text | Null | Gate officer inspection remarks, container seal serial verification, or notes. |
+| 12 | gate_release_time | DateTime | Not Null | Exact timestamp when physical boom barrier opened for vehicle egress. |
+| 13 | gate_release_created_at | DateTime | Not Null, Default Current_Timestamp | System audit creation timestamp. |
+
+---
+
+### 24. tbl_audit_log
+**Primary key:** `audit_log_id`  
+**Foreign key:** `audit_log_user_id` references table `tbl_user`  
+
+| No: | Field name | Datatype (Size) | Key Constraints | Description of the field |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | audit_log_id | BigInt (20) | Primary Key, Auto_increment | Unique identifier for immutable platform compliance and security audit logs. |
+| 2 | audit_log_timestamp | DateTime | Not Null, Default Current_Timestamp | Exact UTC clock timestamp when the system transaction was executed. |
+| 3 | audit_log_user_id | BigInt (20) | Foreign Key, Null | References `user_id` of `tbl_user` who performed the action. |
+| 4 | audit_log_actor_name | Varchar (150) | Null | Recorded full name or system process identifier of the actor. |
+| 5 | audit_log_role | Varchar (100) | Not Null | Security role assumed by the actor during execution (e.g., `port_administrator`). |
+| 6 | audit_log_action | Varchar (100) | Not Null | Action performed (`LOGIN_SUCCESS`, `BERTH_ALLOCATED`, `CUSTOMS_CLEARED`, `GATE_PASS_ISSUED`). |
+| 7 | audit_log_category | Varchar (100) | Not Null | Audit module classification (`AUTHENTICATION`, `VESSEL_OPERATIONS`, `CUSTOMS`, `GATE`). |
+| 8 | audit_log_target_type | Varchar (100) | Not Null | Entity type affected by the transaction (`Container`, `VesselArrivalRequest`, `GatePass`). |
+| 9 | audit_log_target_id | Varchar (100) | Null | Primary key or reference token of the affected entity. |
+| 10 | audit_log_description | Text | Not Null | Detailed chronological narrative of payload data or status transitions. |
+| 11 | audit_log_status | Varchar (30) | Not Null | Transaction execution outcome (`SUCCESS`, `FAILED`, `UNAUTHORIZED`). |
+| 12 | audit_log_ip_address | Varchar (50) | Null | Originating IPv4 or IPv6 client network address for forensic accountability. |
