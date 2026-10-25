@@ -1,16 +1,37 @@
+import sys
 import time
 import unittest
+from pathlib import Path
+
+# Ensure both project root and test directory are on sys.path
+TEST_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = TEST_DIR.parent
+for p in (str(PROJECT_ROOT), str(TEST_DIR)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from test.config import (
-    BASE_URL,
-    get_driver,
-    capture_screenshot,
-    clear_session,
-    login_as_admin,
-    logout_user
-)
+
+try:
+    from test.config import (
+        BASE_URL,
+        get_driver,
+        capture_screenshot,
+        clear_session,
+        login_as_admin,
+        logout_user
+    )
+except (ImportError, ModuleNotFoundError):
+    from config import (
+        BASE_URL,
+        get_driver,
+        capture_screenshot,
+        clear_session,
+        login_as_admin,
+        logout_user
+    )
 
 
 class TestAuthentication(unittest.TestCase):
