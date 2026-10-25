@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 850" width="1140" height="850" style="background:#ffffff; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;">
+  <defs>
+    <style>
+      .obj-box { fill: #f8fafc; stroke: #0284c7; stroke-width: 2; rx: 6px; }
+      .obj-title { font-size: 13.5px; font-weight: bold; fill: #0f172a; text-anchor: middle; text-decoration: underline; }
+      .obj-sub { font-size: 11px; fill: #475569; text-anchor: middle; }
+      .actor-box { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2; rx: 6px; }
+      .db-box { fill: #fefce8; stroke: #ca8a04; stroke-width: 2; rx: 6px; }
+      
+      .link-line { stroke: #64748b; stroke-width: 2; fill: none; }
+      .link-line-orange { stroke: #ea580c; stroke-width: 1.8; stroke-dasharray: 6,4; fill: none; }
+      
+      .msg-text { font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; font-weight: 600; fill: #0f172a; }
+      .msg-num { font-weight: bold; fill: #0284c7; }
+      .msg-num-green { font-weight: bold; fill: #16a34a; }
+      .msg-num-orange { font-weight: bold; fill: #ea580c; }
+      
+      .diag-title { font-size: 17px; font-weight: 800; fill: #0f172a; text-anchor: middle; letter-spacing: 0.5px; }
+      .diag-subtitle { font-size: 11.5px; fill: #64748b; text-anchor: middle; }
+      
+      .legend-box { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1; rx: 6px; }
+      .legend-title { font-size: 11.5px; font-weight: bold; fill: #1e293b; }
+      .legend-text { font-size: 10.5px; fill: #475569; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#0284c7" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#16a34a" />
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#ea580c" />
+    </marker>
+  </defs>
+
+  <!-- ==================== HEADER BANNER ==================== -->
+  <rect x="270" y="14" width="600" height="46" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2" />
+  <text x="570" y="33" class="diag-title">PORTIDE : UML Collaboration / Communication Diagram</text>
+  <text x="570" y="50" class="diag-subtitle">Vessel Arrival Clearance, Berth Allocation, Cargo Discharge &amp; Landside Gate Pass Workflow</text>
+
+  <!-- ==================== STRUCTURAL ASSOCIATION LINKS ==================== -->
+  
+  <!-- Link 1: ShippingAgent <-> VesselController -->
+  <line x1="180" y1="280" x2="410" y2="280" class="link-line" />
+  
+  <!-- Link 2: VesselController <-> BerthScheduler (vertical) -->
+  <line x1="500" y1="245" x2="500" y2="135" class="link-line" />
+  
+  <!-- Link 3: BerthScheduler <-> HarborMaster (horizontal) -->
+  <line x1="590" y1="102" x2="780" y2="102" class="link-line" />
+  
+  <!-- Link 4: VesselController <-> TerminalYard (horizontal) -->
+  <line x1="590" y1="280" x2="780" y2="280" class="link-line" />
+  
+  <!-- Link 5: VesselController <-> DatabaseService (vertical) -->
+  <line x1="500" y1="315" x2="500" y2="425" class="link-line" />
+
+  <!-- Link 6: TerminalYard <-> CustomsOfficer (vertical) -->
+  <line x1="870" y1="315" x2="870" y2="425" class="link-line" />
+
+  <!-- Link 7: CustomsOfficer <-> DatabaseService (horizontal) -->
+  <line x1="780" y1="460" x2="590" y2="460" class="link-line" />
+
+  <!-- Link 8: CustomsOfficer <-> GateSecurity (vertical) -->
+  <line x1="870" y1="495" x2="870" y2="605" class="link-line" />
+
+  <!-- Link 9: GateSecurity -> ShippingAgent (dispatch digital pass - routed along bottom/left) -->
+  <path d="M 780 645 L 100 645 L 100 315" class="link-line" />
+
+  <!-- Link 10: GateSecurity -> DatabaseService (log barrier release) -->
+  <path d="M 810 605 L 810 545 L 545 545 L 545 495" class="link-line-orange" />
+
+
+  <!-- ==================== PARTICIPATING OBJECTS / LIFELINES ==================== -->
+
+  <!-- Top-Center: :BerthScheduler -->
+  <g id="obj-berth-scheduler">
+    <rect x="410" y="70" width="180" height="65" class="obj-box" />
+    <text x="500" y="98" class="obj-title">:BerthScheduler</text>
+    <text x="500" y="118" class="obj-sub">[Berth Allocation Engine]</text>
+  </g>
+
+  <!-- Top-Right: :HarborMaster -->
+  <g id="obj-harbor-master">
+    <rect x="780" y="70" width="180" height="65" class="actor-box" />
+    <text x="870" y="98" class="obj-title">:HarborMaster</text>
+    <text x="870" y="118" class="obj-sub">[Port Safety &amp; Navigation]</text>
+  </g>
+
+  <!-- Middle-Left: :ShippingAgent -->
+  <g id="obj-shipping-agent">
+    <rect x="20" y="245" width="160" height="70" class="actor-box" />
+    <text x="100" y="275" class="obj-title">:ShippingAgent</text>
+    <text x="100" y="295" class="obj-sub">[Carrier Representative]</text>
+  </g>
+
+  <!-- Middle-Center: :VesselController -->
+  <g id="obj-vessel-controller">
+    <rect x="410" y="245" width="180" height="70" class="obj-box" />
+    <text x="500" y="275" class="obj-title">:VesselController</text>
+    <text x="500" y="295" class="obj-sub">[Marine Traffic Service]</text>
+  </g>
+
+  <!-- Middle-Right: :TerminalYard -->
+  <g id="obj-terminal-yard">
+    <rect x="780" y="245" width="180" height="70" class="obj-box" />
+    <text x="870" y="275" class="obj-title">:TerminalYard</text>
+    <text x="870" y="295" class="obj-sub">[Crane &amp; Stacking System]</text>
+  </g>
+
+  <!-- Lower-Center: :DatabaseService -->
+  <g id="obj-database-service">
+    <rect x="410" y="425" width="180" height="70" class="db-box" />
+    <text x="500" y="453" class="obj-title">:DatabaseService</text>
+    <text x="500" y="471" class="obj-sub">[Supabase PostgreSQL 16]</text>
+    <text x="500" y="485" class="obj-sub">Dual-State Persistence</text>
+  </g>
+
+  <!-- Lower-Right: :CustomsOfficer -->
+  <g id="obj-customs-officer">
+    <rect x="780" y="425" width="180" height="70" class="actor-box" />
+    <text x="870" y="455" class="obj-title">:CustomsOfficer</text>
+    <text x="870" y="475" class="obj-sub">[Regulatory Authority]</text>
+  </g>
+
+  <!-- Bottom-Right: :GateSecurity -->
+  <g id="obj-gate-security">
+    <rect x="780" y="605" width="180" height="70" class="obj-box" />
+    <text x="870" y="635" class="obj-title">:GateSecurity</text>
+    <text x="870" y="655" class="obj-sub">[Boom Barrier &amp; Scanner]</text>
+  </g>
+
+
+  <!-- ==================== NUMBERED MESSAGES & DIRECTION ARROWS ==================== -->
+
+  <!-- Message 1: ShippingAgent -> VesselController -->
+  <g id="msg-1">
+    <text x="195" y="258" class="msg-text"><tspan class="msg-num">1: </tspan>submitArrivalNotice()</text>
+    <text x="195" y="273" class="msg-text">   (imo, eta, cargo)</text>
+    <line x1="340" y1="275" x2="385" y2="275" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 2: VesselController -> BerthScheduler (Up) -->
+  <g id="msg-2">
+    <text x="260" y="180" class="msg-text"><tspan class="msg-num">2: </tspan>requestBerth()</text>
+    <text x="260" y="195" class="msg-text">   (draft, length, eta)</text>
+    <line x1="488" y1="210" x2="488" y2="170" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 3: BerthScheduler -> HarborMaster (Right) -->
+  <g id="msg-3">
+    <text x="605" y="90" class="msg-text"><tspan class="msg-num">3: </tspan>verifyTideClearance()</text>
+    <line x1="655" y1="95" x2="700" y2="95" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 4: HarborMaster -> BerthScheduler (Left) -->
+  <g id="msg-4">
+    <text x="595" y="125" class="msg-text"><tspan class="msg-num-green">4: </tspan>grantNavigationClearance()</text>
+    <line x1="700" y1="110" x2="655" y2="110" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)" />
+  </g>
+
+  <!-- Message 5: BerthScheduler -> VesselController (Down) -->
+  <g id="msg-5">
+    <text x="515" y="180" class="msg-text"><tspan class="msg-num">5: </tspan>confirmBerthSlot()</text>
+    <text x="515" y="195" class="msg-text">   (berthId, window)</text>
+    <line x1="512" y1="170" x2="512" y2="210" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 6: VesselController -> DatabaseService (Down) -->
+  <g id="msg-6">
+    <text x="250" y="375" class="msg-text"><tspan class="msg-num">6: </tspan>updateScheduleStatus("BERTHED")</text>
+    <line x1="512" y1="350" x2="512" y2="390" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 7: VesselController -> TerminalYard (Right) -->
+  <g id="msg-7">
+    <text x="600" y="268" class="msg-text"><tspan class="msg-num">7: </tspan>initiateDischarge(manifestNo)</text>
+    <line x1="650" y1="273" x2="705" y2="273" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 8: TerminalYard -> CustomsOfficer (Down) -->
+  <g id="msg-8">
+    <text x="892" y="375" class="msg-text"><tspan class="msg-num">8: </tspan>notifyContainerDischarged(cntrId, slot)</text>
+    <line x1="882" y1="350" x2="882" y2="390" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 9: CustomsOfficer -> DatabaseService (Left) -->
+  <g id="msg-9">
+    <text x="605" y="450" class="msg-text"><tspan class="msg-num">9: </tspan>recordClearance("CLEARED")</text>
+    <line x1="710" y1="455" x2="660" y2="455" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 10: CustomsOfficer -> GateSecurity (Down) -->
+  <g id="msg-10">
+    <text x="892" y="555" class="msg-text"><tspan class="msg-num">10: </tspan>authorizeGatePass(cntrId, truckId)</text>
+    <line x1="882" y1="535" x2="882" y2="575" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 11: GateSecurity -> ShippingAgent (Left along bottom) -->
+  <g id="msg-11">
+    <text x="210" y="635" class="msg-text"><tspan class="msg-num">11: </tspan>dispatchDigitalQRPass(token, appointmentWindow)</text>
+    <line x1="490" y1="640" x2="430" y2="640" stroke="#0284c7" stroke-width="2" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- Message 12: GateSecurity -> DatabaseService (Up/Left along orange dashed) -->
+  <g id="msg-12">
+    <text x="560" y="535" class="msg-text"><tspan class="msg-num-orange">12: </tspan>logBarrierRelease(passId, truckId)</text>
+    <line x1="680" y1="540" x2="630" y2="540" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)" />
+  </g>
+
+
+  <!-- ==================== LEGEND & COLLABORATION PRINCIPLES ==================== -->
+  <rect x="30" y="725" width="1080" height="100" class="legend-box" />
+  <text x="45" y="746" class="legend-title">UML Collaboration (Communication) Model Rules &amp; Operational Flow:</text>
+  <text x="45" y="766" class="legend-text">• <tspan font-weight="bold">Numbered Sequenced Messages (1 to 12)</tspan>: Models runtime collaboration between distributed micro-services and actors rather than static code hierarchy.</text>
+  <text x="45" y="783" class="legend-text">• <tspan font-weight="bold">Regulatory Pre-Condition</tspan>: Step 10 strictly requires Step 9 (:CustomsOfficer recording "CLEARED") before :GateSecurity can authorize pass generation.</text>
+  <text x="45" y="800" class="legend-text">• <tspan font-weight="bold">Physical Gate Verification</tspan>: Step 11 transmits the cryptographically signed QR token to the transport agent, which Step 12 optically validates before physical barrier release.</text>
+  <text x="45" y="817" class="legend-text">• <tspan font-weight="bold">Color Coding</tspan>: Green boxes represent External/Regulatory Actors, Blue boxes represent Internal Subsystems, and Gold represents Persistence Layer.</text>
+</svg>
