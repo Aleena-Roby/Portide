@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction, models
 from django.utils import timezone
+import logging
 import secrets
 import hashlib
 import datetime
@@ -180,6 +181,9 @@ from authentication.permissions import (
 )
 from authentication.validators import generate_unique_employee_id
 from authentication.audit_service import create_audit_log
+
+logger = logging.getLogger(__name__)
+
 
 class LoginAPIView(APIView):
     """

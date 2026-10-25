@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { USER_ROLES_INFO } from '../../data/rolesConfig';
 import { ProfileModal } from '../profile/ProfileModal';
+import { NotificationItem } from '../../types';
 import { 
   Bell, 
   ChevronDown, 
