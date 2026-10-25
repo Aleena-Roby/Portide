@@ -768,6 +768,12 @@ export interface DeliveryContainerListItem {
   container_delivery_location: string;
   container_delivery_recipient?: string | null;
   delivery_recipient?: string | null;
+  last_known_location?: string | null;
+  yard_location?: string | null;
+  port_exit_point?: string | null;
+  trade_direction?: string | null;
+  cargo_id?: number | null;
+  cargo_type?: string | null;
   expected_delivery_datetime?: string | null;
   expected_delivery_destination?: string;
   actual_delivery_datetime?: string | null;
