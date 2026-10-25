@@ -398,7 +398,7 @@ export const LoadingOperations: React.FC<LoadingOperationsProps> = ({
                         <div>
                           <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Call Sign</span>
                           <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
-                            {v.call_sign || 'N/A'}
+                            {v.vessel_call_sign || 'N/A'}
                           </span>
                         </div>
                         <div>

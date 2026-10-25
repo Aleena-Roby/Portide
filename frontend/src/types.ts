@@ -1347,6 +1347,7 @@ export interface EligibleLoadingVessel {
   vessel_name: string;
   vessel_imo_number: string;
   vessel_call_sign: string;
+  call_sign?: string;
   shipping_company_name: string;
   berth_id: number;
   berth_name: string;
