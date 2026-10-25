@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 920" width="1060" height="920" style="background:#ffffff; font-family: 'Segoe UI', Arial, sans-serif;">
+  <defs>
+    <style>
+      .cls-box { fill: #ffffff; stroke: #1e293b; stroke-width: 1.5; }
+      .cls-header { fill: #f8fafc; stroke: #1e293b; stroke-width: 1.5; }
+      .cls-title { font-size: 13px; font-weight: bold; fill: #0f172a; text-anchor: middle; }
+      .cls-text { font-size: 11px; fill: #334155; font-family: 'Consolas', 'Courier New', monospace; }
+      .cls-op { font-size: 11px; fill: #1e293b; font-family: 'Consolas', 'Courier New', monospace; }
+      .assoc-line { stroke: #334155; stroke-width: 1.3; fill: none; }
+      .multiplicity { font-size: 11px; font-weight: 600; fill: #475569; }
+      .role-label { font-size: 10px; font-style: italic; fill: #64748b; }
+      .diag-title { font-size: 16px; font-weight: bold; fill: #0f172a; text-anchor: middle; letter-spacing: 0.5px; }
+      .diag-subtitle { font-size: 11px; fill: #64748b; text-anchor: middle; }
+      .section-badge { font-size: 10px; font-weight: bold; fill: #0369a1; letter-spacing: 0.5px; }
+    </style>
+  </defs>
+
+  <!-- Title Banner -->
+  <rect x="250" y="10" width="560" height="42" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1" />
+  <text x="530" y="27" class="diag-title">PORTIDE : Core Domain Class Diagram</text>
+  <text x="530" y="43" class="diag-subtitle">Maritime Port Operations Intelligence Platform — Structural Architecture</text>
+
+  <!-- ==================== ROW 1: AUTHENTICATION & USER ==================== -->
+  
+  <!-- Class: Login -->
+  <g id="class-login">
+    <rect x="360" y="70" width="165" height="110" class="cls-box" />
+    <rect x="360" y="70" width="165" height="26" class="cls-header" />
+    <text x="442" y="87" class="cls-title">Login</text>
+    <line x1="360" y1="96" x2="525" y2="96" stroke="#1e293b" stroke-width="1" />
+    <text x="368" y="111" class="cls-text">- login_id: int</text>
+    <text x="368" y="125" class="cls-text">- email: string</text>
+    <text x="368" y="139" class="cls-text">- password_hash: string</text>
+    <text x="368" y="153" class="cls-text">- role: string</text>
+    <line x1="360" y1="158" x2="525" y2="158" stroke="#cbd5e1" stroke-width="1" />
+    <text x="368" y="172" class="cls-op">+ authenticate(): bool</text>
+  </g>
+
+  <!-- Class: User -->
+  <g id="class-user">
+    <rect x="585" y="70" width="180" height="110" class="cls-box" />
+    <rect x="585" y="70" width="180" height="26" class="cls-header" />
+    <text x="675" y="87" class="cls-title">User</text>
+    <line x1="585" y1="96" x2="765" y2="96" stroke="#1e293b" stroke-width="1" />
+    <text x="593" y="111" class="cls-text">- user_id: int</text>
+    <text x="593" y="125" class="cls-text">- full_name: string</text>
+    <text x="593" y="139" class="cls-text">- department: string</text>
+    <text x="593" y="153" class="cls-text">- phone: string</text>
+    <line x1="585" y1="158" x2="765" y2="158" stroke="#cbd5e1" stroke-width="1" />
+    <text x="593" y="172" class="cls-op">+ updateProfile(): void</text>
+  </g>
+
+  <!-- Association: Login - User -->
+  <line x1="525" y1="125" x2="585" y2="125" class="assoc-line" />
+  <text x="532" y="120" class="multiplicity">1</text>
+  <text x="572" y="120" class="multiplicity">1</text>
+  <text x="555" y="140" class="role-label" text-anchor="middle">has profile</text>
+
+  <!-- ==================== MARINE & BERTHING CLUSTER (LEFT) ==================== -->
+  
+  <!-- Class: Vessel -->
+  <g id="class-vessel">
+    <rect x="40" y="220" width="190" height="140" class="cls-box" />
+    <rect x="40" y="220" width="190" height="26" class="cls-header" />
+    <text x="135" y="237" class="cls-title">Vessel</text>
+    <line x1="40" y1="246" x2="230" y2="246" stroke="#1e293b" stroke-width="1" />
+    <text x="48" y="261" class="cls-text">- vessel_id: int</text>
+    <text x="48" y="275" class="cls-text">- imo_number: string</text>
+    <text x="48" y="289" class="cls-text">- vessel_name: string</text>
+    <text x="48" y="303" class="cls-text">- vessel_type: string</text>
+    <text x="48" y="317" class="cls-text">- max_draft: float</text>
+    <line x1="40" y1="323" x2="230" y2="323" stroke="#cbd5e1" stroke-width="1" />
+    <text x="48" y="337" class="cls-op">+ registerVessel(): void</text>
+    <text x="48" y="351" class="cls-op">+ updateStatus(): void</text>
+  </g>
+
+  <!-- Class: Schedule (Vessel Arrival Request & Berthing Call) -->
+  <g id="class-schedule">
+    <rect x="280" y="220" width="190" height="140" class="cls-box" />
+    <rect x="280" y="220" width="190" height="26" class="cls-header" />
+    <text x="375" y="237" class="cls-title">Schedule</text>
+    <line x1="280" y1="246" x2="470" y2="246" stroke="#1e293b" stroke-width="1" />
+    <text x="288" y="261" class="cls-text">- schedule_id: int</text>
+    <text x="288" y="275" class="cls-text">- eta: datetime</text>
+    <text x="288" y="289" class="cls-text">- etd: datetime</text>
+    <text x="288" y="303" class="cls-text">- operational_status: string</text>
+    <text x="288" y="317" class="cls-text">- docking_berth_id: int</text>
+    <line x1="280" y1="323" x2="470" y2="323" stroke="#cbd5e1" stroke-width="1" />
+    <text x="288" y="337" class="cls-op">+ createSchedule(): void</text>
+    <text x="288" y="351" class="cls-op">+ updateStage(): void</text>
+  </g>
+
+  <!-- Class: Berth -->
+  <g id="class-berth">
+    <rect x="280" y="420" width="190" height="130" class="cls-box" />
+    <rect x="280" y="420" width="190" height="26" class="cls-header" />
+    <text x="375" y="437" class="cls-title">Berth</text>
+    <line x1="280" y1="446" x2="470" y2="446" stroke="#1e293b" stroke-width="1" />
+    <text x="288" y="461" class="cls-text">- berth_id: int</text>
+    <text x="288" y="475" class="cls-text">- berth_name: string</text>
+    <text x="288" y="489" class="cls-text">- max_length: float</text>
+    <text x="288" y="503" class="cls-text">- max_draft: float</text>
+    <text x="288" y="517" class="cls-text">- status: string</text>
+    <line x1="280" y1="523" x2="470" y2="523" stroke="#cbd5e1" stroke-width="1" />
+    <text x="288" y="539" class="cls-op">+ allocateBerth(): bool</text>
+  </g>
+
+  <!-- Class: Equipment (Quayside Cranes & RTG) -->
+  <g id="class-equipment">
+    <rect x="40" y="420" width="190" height="130" class="cls-box" />
+    <rect x="40" y="420" width="190" height="26" class="cls-header" />
+    <text x="135" y="437" class="cls-title">Equipment</text>
+    <line x1="40" y1="446" x2="230" y2="446" stroke="#1e293b" stroke-width="1" />
+    <text x="48" y="461" class="cls-text">- equip_id: int</text>
+    <text x="48" y="475" class="cls-text">- equip_name: string</text>
+    <text x="48" y="489" class="cls-text">- equip_type: string</text>
+    <text x="48" y="503" class="cls-text">- operational_scope: string</text>
+    <text x="48" y="517" class="cls-text">- status: string</text>
+    <line x1="40" y1="523" x2="230" y2="523" stroke="#cbd5e1" stroke-width="1" />
+    <text x="48" y="539" class="cls-op">+ assignToBerth(): void</text>
+  </g>
+
+  <!-- Association: Vessel - Schedule -->
+  <line x1="230" y1="290" x2="280" y2="290" class="assoc-line" />
+  <text x="236" y="284" class="multiplicity">1</text>
+  <text x="268" y="284" class="multiplicity">1..*</text>
+
+  <!-- Association: Schedule - Berth -->
+  <line x1="375" y1="360" x2="375" y2="420" class="assoc-line" />
+  <text x="382" y="375" class="multiplicity">*</text>
+  <text x="382" y="412" class="multiplicity">1</text>
+  <text x="390" y="394" class="role-label">assigned</text>
+
+  <!-- Association: Berth - Equipment -->
+  <line x1="280" y1="485" x2="230" y2="485" class="assoc-line" />
+  <text x="266" y="479" class="multiplicity">1</text>
+  <text x="238" y="479" class="multiplicity">1..*</text>
+  <text x="255" y="502" class="role-label" text-anchor="middle">deploys</text>
+
+  <!-- ==================== CARGO & CONTAINER CLUSTER (RIGHT) ==================== -->
+  
+  <!-- Class: Cargo (Manifest Consignment) -->
+  <g id="class-cargo">
+    <rect x="560" y="220" width="180" height="130" class="cls-box" />
+    <rect x="560" y="220" width="180" height="26" class="cls-header" />
+    <text x="650" y="237" class="cls-title">Cargo</text>
+    <line x1="560" y1="246" x2="740" y2="246" stroke="#1e293b" stroke-width="1" />
+    <text x="568" y="261" class="cls-text">- cargo_id: int</text>
+    <text x="568" y="275" class="cls-text">- manifest_no: string</text>
+    <text x="568" y="289" class="cls-text">- cargo_type: string</text>
+    <text x="568" y="303" class="cls-text">- total_weight: float</text>
+    <text x="568" y="317" class="cls-text">- origin_port: string</text>
+    <line x1="560" y1="323" x2="740" y2="323" stroke="#cbd5e1" stroke-width="1" />
+    <text x="568" y="339" class="cls-op">+ uploadManifest(): void</text>
+  </g>
+
+  <!-- Class: Container (Dual-State Physical + Statutory) -->
+  <g id="class-container">
+    <rect x="800" y="215" width="220" height="150" class="cls-box" />
+    <rect x="800" y="215" width="220" height="26" class="cls-header" />
+    <text x="910" y="232" class="cls-title">Container</text>
+    <line x1="800" y1="241" x2="1020" y2="241" stroke="#1e293b" stroke-width="1" />
+    <text x="808" y="256" class="cls-text">- container_id: int</text>
+    <text x="808" y="270" class="cls-text">- container_number: string</text>
+    <text x="808" y="284" class="cls-text">- size_type: string</text>
+    <text x="808" y="298" class="cls-text">- weight_tonnes: float</text>
+    <text x="808" y="312" class="cls-text">- container_status: string</text>
+    <text x="808" y="326" class="cls-text">- customs_status: string</text>
+    <line x1="800" y1="332" x2="1020" y2="332" stroke="#cbd5e1" stroke-width="1" />
+    <text x="808" y="347" class="cls-op">+ updatePhysicalState(): void</text>
+    <text x="808" y="359" class="cls-op">+ canBeReleased(): bool</text>
+  </g>
+
+  <!-- Class: CustomsClearance -->
+  <g id="class-customs">
+    <rect x="800" y="420" width="220" height="135" class="cls-box" />
+    <rect x="800" y="420" width="220" height="26" class="cls-header" />
+    <text x="910" y="437" class="cls-title">Customs</text>
+    <line x1="800" y1="446" x2="1020" y2="446" stroke="#1e293b" stroke-width="1" />
+    <text x="808" y="461" class="cls-text">- customs_id: int</text>
+    <text x="808" y="475" class="cls-text">- declaration_no: string</text>
+    <text x="808" y="489" class="cls-text">- clearance_status: string</text>
+    <text x="808" y="503" class="cls-text">- inspected_by: string</text>
+    <text x="808" y="517" class="cls-text">- inspection_date: datetime</text>
+    <line x1="800" y1="523" x2="1020" y2="523" stroke="#cbd5e1" stroke-width="1" />
+    <text x="808" y="539" class="cls-op">+ verifyClearance(): bool</text>
+  </g>
+
+  <!-- Class: TerminalYard -->
+  <g id="class-yard">
+    <rect x="560" y="420" width="180" height="130" class="cls-box" />
+    <rect x="560" y="420" width="180" height="26" class="cls-header" />
+    <text x="650" y="437" class="cls-title">TerminalYard</text>
+    <line x1="560" y1="446" x2="740" y2="446" stroke="#1e293b" stroke-width="1" />
+    <text x="568" y="461" class="cls-text">- yard_id: int</text>
+    <text x="568" y="475" class="cls-text">- yard_code: string</text>
+    <text x="568" y="489" class="cls-text">- total_capacity: int</text>
+    <text x="568" y="503" class="cls-text">- occupied_slots: int</text>
+    <text x="568" y="517" class="cls-text">- bay_row_tier: string</text>
+    <line x1="560" y1="523" x2="740" y2="523" stroke="#cbd5e1" stroke-width="1" />
+    <text x="568" y="539" class="cls-op">+ allocateYardSlot(): string</text>
+  </g>
+
+  <!-- Association: Cargo - Container -->
+  <line x1="740" y1="285" x2="800" y2="285" class="assoc-line" />
+  <text x="746" y="279" class="multiplicity">1</text>
+  <text x="786" y="279" class="multiplicity">1..*</text>
+
+  <!-- Association: Container - Customs -->
+  <line x1="910" y1="365" x2="910" y2="420" class="assoc-line" />
+  <text x="918" y="380" class="multiplicity">1</text>
+  <text x="918" y="412" class="multiplicity">1</text>
+  <text x="922" y="396" class="role-label">cleared by</text>
+
+  <!-- Association: Container - TerminalYard -->
+  <line x1="800" y1="340" x2="740" y2="440" class="assoc-line" />
+  <text x="780" y="350" class="multiplicity">*</text>
+  <text x="745" y="430" class="multiplicity">1</text>
+  <text x="745" y="380" class="role-label">stacked in</text>
+
+  <!-- Association: Vessel - Cargo (Top Bridge Route) -->
+  <path d="M 135 220 L 135 195 L 650 195 L 650 220" class="assoc-line" />
+  <text x="142" y="210" class="multiplicity">1</text>
+  <text x="658" y="212" class="multiplicity">1..*</text>
+  <text x="390" y="190" class="role-label" text-anchor="middle">carries manifest</text>
+
+  <!-- ==================== GATE & LANDSIDE DISPATCH CLUSTER (BOTTOM) ==================== -->
+  
+  <!-- Class: GatePass -->
+  <g id="class-gatepass">
+    <rect x="670" y="630" width="210" height="145" class="cls-box" />
+    <rect x="670" y="630" width="210" height="26" class="cls-header" />
+    <text x="775" y="647" class="cls-title">GatePass</text>
+    <line x1="670" y1="656" x2="880" y2="656" stroke="#1e293b" stroke-width="1" />
+    <text x="678" y="671" class="cls-text">- pass_id: int</text>
+    <text x="678" y="685" class="cls-text">- pass_number: string</text>
+    <text x="678" y="699" class="cls-text">- qr_security_token: string</text>
+    <text x="678" y="713" class="cls-text">- appointment_window: string</text>
+    <text x="678" y="727" class="cls-text">- pass_status: string</text>
+    <line x1="670" y1="733" x2="880" y2="733" stroke="#cbd5e1" stroke-width="1" />
+    <text x="678" y="749" class="cls-op">+ generateQRPass(): void</text>
+    <text x="678" y="763" class="cls-op">+ verifyPassAtBarrier(): bool</text>
+  </g>
+
+  <!-- Class: Truck -->
+  <g id="class-truck">
+    <rect x="360" y="630" width="200" height="145" class="cls-box" />
+    <rect x="360" y="630" width="200" height="26" class="cls-header" />
+    <text x="460" y="647" class="cls-title">Truck</text>
+    <line x1="360" y1="656" x2="560" y2="656" stroke="#1e293b" stroke-width="1" />
+    <text x="368" y="671" class="cls-text">- truck_id: int</text>
+    <text x="368" y="685" class="cls-text">- license_plate: string</text>
+    <text x="368" y="699" class="cls-text">- transport_company: string</text>
+    <text x="368" y="713" class="cls-text">- driver_name: string</text>
+    <text x="368" y="727" class="cls-text">- driver_license_no: string</text>
+    <line x1="360" y1="733" x2="560" y2="733" stroke="#cbd5e1" stroke-width="1" />
+    <text x="368" y="749" class="cls-op">+ registerTruck(): void</text>
+    <text x="368" y="763" class="cls-op">+ verifyDriverCredentials(): bool</text>
+  </g>
+
+  <!-- Association: Container - GatePass -->
+  <path d="M 880 555 L 880 600 L 775 600 L 775 630" class="assoc-line" />
+  <text x="888" y="575" class="multiplicity">1</text>
+  <text x="782" y="622" class="multiplicity">0..1</text>
+  <text x="825" y="594" class="role-label" text-anchor="middle">authorizes release</text>
+
+  <!-- Association: GatePass - Truck -->
+  <line x1="670" y1="702" x2="560" y2="702" class="assoc-line" />
+  <text x="652" y="696" class="multiplicity">1..*</text>
+  <text x="568" y="696" class="multiplicity">1</text>
+  <text x="615" y="720" class="role-label" text-anchor="middle">assigned vehicle</text>
+
+  <!-- ==================== LEGEND / FOOTNOTE ==================== -->
+  <rect x="40" y="810" width="980" height="85" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+  <text x="55" y="830" font-size="11" font-weight="bold" fill="#0f172a">Portide Architecture Principles Enforced:</text>
+  <text x="55" y="848" font-size="10.5" fill="#475569">1. Dual-State Container Security: A Container cannot obtain a GatePass unless Customs.clearance_status is strictly 'CLEARED'.</text>
+  <text x="55" y="864" font-size="10.5" fill="#475569">2. Physical Terminal Handling: Vessel discharge is executed via Equipment (STS Cranes) into TerminalYard slot coordinates (Bay-Row-Tier).</text>
+  <text x="55" y="880" font-size="10.5" fill="#475569">3. Landside Dispatch: GatePass encodes digital cryptographic QR verification before physical boom barrier release for the assigned Truck.</text>
+</svg>

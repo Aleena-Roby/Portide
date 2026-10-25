@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 920" width="1060" height="920" style="background:#ffffff; font-family: 'Segoe UI', Arial, sans-serif;">
+  <defs>
+    <style>
+      .obj-box { fill: #ffffff; stroke: #0f172a; stroke-width: 1.5; }
+      .obj-header { fill: #f1f5f9; stroke: #0f172a; stroke-width: 1.5; }
+      .obj-title { font-size: 12.5px; font-weight: bold; fill: #0f172a; text-anchor: middle; text-decoration: underline; }
+      .obj-attr { font-size: 11px; fill: #1e293b; font-family: 'Consolas', 'Courier New', monospace; }
+      .link-line { stroke: #334155; stroke-width: 1.4; fill: none; }
+      .link-label { font-size: 10px; font-style: italic; fill: #64748b; }
+      .diag-title { font-size: 16px; font-weight: bold; fill: #0f172a; text-anchor: middle; letter-spacing: 0.5px; }
+      .diag-subtitle { font-size: 11px; fill: #64748b; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <!-- Title Banner -->
+  <rect x="230" y="10" width="600" height="42" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" />
+  <text x="530" y="27" class="diag-title">PORTIDE : Runtime Object Diagram</text>
+  <text x="530" y="43" class="diag-subtitle">Instance Snapshot: "MV Ocean Star" Cargo Discharge &amp; Customs Gate-Out Scenario</text>
+
+  <!-- ==================== ROW 1: AUTHENTICATION INSTANCES ==================== -->
+  
+  <!-- Instance: login101 : Login -->
+  <g id="obj-login">
+    <rect x="360" y="70" width="165" height="95" class="obj-box" />
+    <rect x="360" y="70" width="165" height="26" class="obj-header" />
+    <text x="442" y="87" class="obj-title">login101 : Login</text>
+    <line x1="360" y1="96" x2="525" y2="96" stroke="#0f172a" stroke-width="1" />
+    <text x="368" y="112" class="obj-attr">login_id = 101</text>
+    <text x="368" y="127" class="obj-attr">email = "ops@portide.io"</text>
+    <text x="368" y="142" class="obj-attr">role = "operations_officer"</text>
+    <text x="368" y="157" class="obj-attr">is_active = True</text>
+  </g>
+
+  <!-- Instance: user1 : User -->
+  <g id="obj-user">
+    <rect x="585" y="70" width="180" height="95" class="obj-box" />
+    <rect x="585" y="70" width="180" height="26" class="obj-header" />
+    <text x="675" y="87" class="obj-title">user1 : User</text>
+    <line x1="585" y1="96" x2="765" y2="96" stroke="#0f172a" stroke-width="1" />
+    <text x="593" y="112" class="obj-attr">user_id = 1</text>
+    <text x="593" y="127" class="obj-attr">full_name = "Rajesh Kumar"</text>
+    <text x="593" y="142" class="obj-attr">department = "Marine Traffic"</text>
+    <text x="593" y="157" class="obj-attr">phone = "+91 98470 12345"</text>
+  </g>
+
+  <!-- Link: login101 - user1 -->
+  <line x1="525" y1="117" x2="585" y2="117" class="link-line" />
+
+  <!-- ==================== MARINE & BERTHING INSTANCES (LEFT) ==================== -->
+  
+  <!-- Instance: vessel201 : Vessel -->
+  <g id="obj-vessel">
+    <rect x="40" y="210" width="190" height="115" class="obj-box" />
+    <rect x="40" y="210" width="190" height="26" class="obj-header" />
+    <text x="135" y="227" class="obj-title">vessel201 : Vessel</text>
+    <line x1="40" y1="236" x2="230" y2="236" stroke="#0f172a" stroke-width="1" />
+    <text x="48" y="252" class="obj-attr">vessel_id = 201</text>
+    <text x="48" y="267" class="obj-attr">imo_number = "IMO9843214"</text>
+    <text x="48" y="282" class="obj-attr">vessel_name = "MV Ocean Star"</text>
+    <text x="48" y="297" class="obj-attr">vessel_type = "Container Ship"</text>
+    <text x="48" y="312" class="obj-attr">max_draft = 13.8</text>
+  </g>
+
+  <!-- Instance: sched301 : Schedule -->
+  <g id="obj-schedule">
+    <rect x="280" y="210" width="190" height="115" class="obj-box" />
+    <rect x="280" y="210" width="190" height="26" class="obj-header" />
+    <text x="375" y="227" class="obj-title">sched301 : Schedule</text>
+    <line x1="280" y1="236" x2="470" y2="236" stroke="#0f172a" stroke-width="1" />
+    <text x="288" y="252" class="obj-attr">schedule_id = 301</text>
+    <text x="288" y="267" class="obj-attr">eta = "2026-10-25 08:00"</text>
+    <text x="288" y="282" class="obj-attr">etd = "2026-10-26 20:00"</text>
+    <text x="288" y="297" class="obj-attr">status = "AT_BERTH"</text>
+    <text x="288" y="312" class="obj-attr">docking_bay = "Berth 01"</text>
+  </g>
+
+  <!-- Instance: berthA : Berth -->
+  <g id="obj-berth">
+    <rect x="280" y="390" width="190" height="115" class="obj-box" />
+    <rect x="280" y="390" width="190" height="26" class="obj-header" />
+    <text x="375" y="407" class="obj-title">berthA : Berth</text>
+    <line x1="280" y1="416" x2="470" y2="416" stroke="#0f172a" stroke-width="1" />
+    <text x="288" y="432" class="obj-attr">berth_id = 1</text>
+    <text x="288" y="447" class="obj-attr">berth_name = "Berth 01 (Deep)"</text>
+    <text x="288" y="462" class="obj-attr">max_length = 360.0</text>
+    <text x="288" y="477" class="obj-attr">max_draft = 15.0</text>
+    <text x="288" y="492" class="obj-attr">status = "OCCUPIED"</text>
+  </g>
+
+  <!-- Instance: crane1 : Equipment -->
+  <g id="obj-equipment">
+    <rect x="40" y="390" width="190" height="115" class="obj-box" />
+    <rect x="40" y="390" width="190" height="26" class="obj-header" />
+    <text x="135" y="407" class="obj-title">crane1 : Equipment</text>
+    <line x1="40" y1="416" x2="230" y2="416" stroke="#0f172a" stroke-width="1" />
+    <text x="48" y="432" class="obj-attr">equip_id = 501</text>
+    <text x="48" y="447" class="obj-attr">equip_name = "STS Quay Crane 1"</text>
+    <text x="48" y="462" class="obj-attr">equip_type = "Gantry Crane"</text>
+    <text x="48" y="477" class="obj-attr">scope = "UNLOADING"</text>
+    <text x="48" y="492" class="obj-attr">status = "OPERATIONAL"</text>
+  </g>
+
+  <!-- Link: vessel201 - sched301 -->
+  <line x1="230" y1="267" x2="280" y2="267" class="link-line" />
+
+  <!-- Link: sched301 - berthA -->
+  <line x1="375" y1="325" x2="375" y2="390" class="link-line" />
+
+  <!-- Link: berthA - crane1 -->
+  <line x1="280" y1="447" x2="230" y2="447" class="link-line" />
+
+  <!-- ==================== CARGO & CONTAINER INSTANCES (RIGHT) ==================== -->
+  
+  <!-- Instance: cargo501 : Cargo -->
+  <g id="obj-cargo">
+    <rect x="560" y="210" width="180" height="115" class="obj-box" />
+    <rect x="560" y="210" width="180" height="26" class="obj-header" />
+    <text x="650" y="227" class="obj-title">cargo501 : Cargo</text>
+    <line x1="560" y1="236" x2="740" y2="236" stroke="#0f172a" stroke-width="1" />
+    <text x="568" y="252" class="obj-attr">cargo_id = 501</text>
+    <text x="568" y="267" class="obj-attr">manifest_no = "MNF-2026-88"</text>
+    <text x="568" y="282" class="obj-attr">cargo_type = "Containerized"</text>
+    <text x="568" y="297" class="obj-attr">total_weight = 450.5</text>
+    <text x="568" y="312" class="obj-attr">origin_port = "Singapore"</text>
+  </g>
+
+  <!-- Instance: cont701 : Container -->
+  <g id="obj-container">
+    <rect x="800" y="205" width="220" height="125" class="obj-box" />
+    <rect x="800" y="205" width="220" height="26" class="obj-header" />
+    <text x="910" y="222" class="obj-title">cont701 : Container</text>
+    <line x1="800" y1="231" x2="1020" y2="231" stroke="#0f172a" stroke-width="1" />
+    <text x="808" y="247" class="obj-attr">container_id = 701</text>
+    <text x="808" y="262" class="obj-attr">container_number = "MSKU9082341"</text>
+    <text x="808" y="277" class="obj-attr">size_type = "40ft High Cube"</text>
+    <text x="808" y="292" class="obj-attr">weight_tonnes = 28.4</text>
+    <text x="808" y="307" class="obj-attr">container_status = "IN_YARD"</text>
+    <text x="808" y="322" class="obj-attr">customs_status = "CLEARED"</text>
+  </g>
+
+  <!-- Instance: customs401 : Customs -->
+  <g id="obj-customs">
+    <rect x="800" y="390" width="220" height="115" class="obj-box" />
+    <rect x="800" y="390" width="220" height="26" class="obj-header" />
+    <text x="910" y="407" class="obj-title">customs401 : Customs</text>
+    <line x1="800" y1="416" x2="1020" y2="416" stroke="#0f172a" stroke-width="1" />
+    <text x="808" y="432" class="obj-attr">customs_id = 401</text>
+    <text x="808" y="447" class="obj-attr">declaration_no = "DEC-2026-092"</text>
+    <text x="808" y="462" class="obj-attr">clearance_status = "CLEARED"</text>
+    <text x="808" y="477" class="obj-attr">inspected_by = "Officer Verma"</text>
+    <text x="808" y="492" class="obj-attr">inspection_date = "2026-10-25"</text>
+  </g>
+
+  <!-- Instance: yard1 : TerminalYard -->
+  <g id="obj-yard">
+    <rect x="560" y="390" width="180" height="115" class="obj-box" />
+    <rect x="560" y="390" width="180" height="26" class="obj-header" />
+    <text x="650" y="407" class="obj-title">yard1 : TerminalYard</text>
+    <line x1="560" y1="416" x2="740" y2="416" stroke="#0f172a" stroke-width="1" />
+    <text x="568" y="432" class="obj-attr">yard_id = 1</text>
+    <text x="568" y="447" class="obj-attr">yard_code = "Yard A"</text>
+    <text x="568" y="462" class="obj-attr">capacity = 5000</text>
+    <text x="568" y="477" class="obj-attr">occupied_slots = 3420</text>
+    <text x="568" y="492" class="obj-attr">bay_row_tier = "B04-R02-T03"</text>
+  </g>
+
+  <!-- Link: cargo501 - cont701 -->
+  <line x1="740" y1="267" x2="800" y2="267" class="link-line" />
+
+  <!-- Link: cont701 - customs401 -->
+  <line x1="910" y1="330" x2="910" y2="390" class="link-line" />
+
+  <!-- Link: cont701 - yard1 -->
+  <line x1="800" y1="315" x2="740" y2="410" class="link-line" />
+
+  <!-- Link: vessel201 - cargo501 -->
+  <path d="M 135 210 L 135 185 L 650 185 L 650 210" class="link-line" />
+
+  <!-- ==================== GATE & LANDSIDE INSTANCES (BOTTOM) ==================== -->
+  
+  <!-- Instance: pass601 : GatePass -->
+  <g id="obj-gatepass">
+    <rect x="670" y="580" width="210" height="125" class="obj-box" />
+    <rect x="670" y="580" width="210" height="26" class="obj-header" />
+    <text x="775" y="597" class="obj-title">pass601 : GatePass</text>
+    <line x1="670" y1="606" x2="880" y2="606" stroke="#0f172a" stroke-width="1" />
+    <text x="678" y="622" class="obj-attr">pass_id = 601</text>
+    <text x="678" y="637" class="obj-attr">pass_number = "GP-2026-4412"</text>
+    <text x="678" y="652" class="obj-attr">qr_security_token = "SEC-QR98"</text>
+    <text x="678" y="667" class="obj-attr">appointment = "14:00 - 16:00"</text>
+    <text x="678" y="682" class="obj-attr">status = "ISSUED"</text>
+    <text x="678" y="697" class="obj-attr">valid_until = "2026-10-25 18:00"</text>
+  </g>
+
+  <!-- Instance: truck1 : Truck -->
+  <g id="obj-truck">
+    <rect x="360" y="580" width="200" height="125" class="obj-box" />
+    <rect x="360" y="580" width="200" height="26" class="obj-header" />
+    <text x="460" y="597" class="obj-title">truck1 : Truck</text>
+    <line x1="360" y1="606" x2="560" y2="606" stroke="#0f172a" stroke-width="1" />
+    <text x="368" y="622" class="obj-attr">truck_id = 801</text>
+    <text x="368" y="637" class="obj-attr">license_plate = "KL-07-AB-1234"</text>
+    <text x="368" y="652" class="obj-attr">company = "Kerala Freight Logistics"</text>
+    <text x="368" y="667" class="obj-attr">driver_name = "Suresh Pillai"</text>
+    <text x="368" y="682" class="obj-attr">driver_license = "DL-KL072018"</text>
+    <text x="368" y="697" class="obj-attr">status = "WAITING_AT_IN_GATE"</text>
+  </g>
+
+  <!-- Link: customs401 - pass601 -->
+  <path d="M 880 505 L 880 550 L 775 550 L 775 580" class="link-line" />
+
+  <!-- Link: pass601 - truck1 -->
+  <line x1="670" y1="642" x2="560" y2="642" class="link-line" />
+
+  <!-- ==================== SCENARIO EXPLANATION BOX ==================== -->
+  <rect x="40" y="750" width="980" height="135" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+  <text x="55" y="772" font-size="11" font-weight="bold" fill="#0f172a">Runtime Operational Workflow Illustrated in this Object Diagram:</text>
+  <text x="55" y="792" font-size="10.5" fill="#334155">• Berth Assignment &amp; Discharge: Vessel MV Ocean Star (IMO9843214) is berthed at Berth 01. STS Quay Crane 1 is discharging manifested container MSKU9082341.</text>
+  <text x="55" y="810" font-size="10.5" fill="#334155">• Yard Stacking: Terminal logistics operator has stacked the container into Yard A slot coordinate B04-R02-T03 (Bay 4, Row 2, Tier 3).</text>
+  <text x="55" y="828" font-size="10.5" fill="#334155">• Customs Clearance: Customs Officer Verma completed inspection (DEC-2026-092) and set statutory customs_status = 'CLEARED'.</text>
+  <text x="55" y="846" font-size="10.5" fill="#334155">• QR Gate Pass Generation: Upon clearance, GatePass GP-2026-4412 was cryptographically generated with valid appointment window 14:00 - 16:00.</text>
+  <text x="55" y="864" font-size="10.5" fill="#334155">• Landside Pickup: Authorized transport truck KL-07-AB-1234 (Driver: Suresh Pillai) is presented at In-Gate for optical QR verification and boom barrier release.</text>
+</svg>
