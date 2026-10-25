@@ -45,3 +45,5 @@ coverage/
 .vercel/
 **/.vercel/
 tests/rendered_emails/
+~$*
+*.tmp

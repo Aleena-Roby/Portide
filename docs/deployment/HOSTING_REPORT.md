@@ -65,3 +65,14 @@ Continuously observe operational health and system logs through the Vercel and R
 | **Version Control & CI/CD**| GitHub | Continuous Integration & Automated Triggers | `https://github.com/Aleena-Roby/Portide` | **Active / Operational** |
 
 **Hosted Website:** Vercel (`https://portide.vercel.app`)
+
+---
+
+### 6.2.5 Live Hosted Platform QR Code Verification
+
+For project evaluation and instant access on mobile or tablet devices, scan the QR code below:
+
+<div align="center">
+  <img src="assets/portide_hosted_website_qr_card.png" alt="PORTIDE Live Hosted Platform QR Code" width="420" />
+  <p><em>Figure 6.1: PORTIDE Live Hosted Platform Access QR Code (<a href="https://portide.vercel.app/">https://portide.vercel.app/</a>)</em></p>
+</div>
