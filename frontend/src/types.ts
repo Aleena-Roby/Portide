@@ -766,6 +766,8 @@ export interface DeliveryContainerListItem {
   current_status_display?: string;
   container_delivery_destination: string;
   container_delivery_location: string;
+  container_delivery_recipient?: string | null;
+  delivery_recipient?: string | null;
   expected_delivery_datetime?: string | null;
   expected_delivery_destination?: string;
   actual_delivery_datetime?: string | null;
