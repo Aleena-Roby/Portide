@@ -8,6 +8,7 @@ from authentication.views import (
     AdminApproveRegistrationRequestAPIView,
     AdminRejectRegistrationRequestAPIView,
     AdminActionRequiredRegistrationRequestAPIView,
+    AdminRegistrationDocumentDownloadAPIView,
     PublicRegistrationStatusAPIView,
     ShippingCompanyResubmitAPIView,
     ForgotPasswordAPIView,
@@ -278,6 +279,10 @@ urlpatterns = [
     path('admin/registration-requests/<int:pk>/reject/', AdminRejectRegistrationRequestAPIView.as_view(), name='admin_registration_requests_reject'),
     path('admin/registration-requests/<int:pk>/action-required/', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_registration_requests_action_required'),
     path('admin/registration-requests/<int:pk>/action-required', AdminActionRequiredRegistrationRequestAPIView.as_view(), name='admin_registration_requests_action_required_noslash'),
+    path('admin/registration-requests/<int:pk>/documents/<str:doc_type>/', AdminRegistrationDocumentDownloadAPIView.as_view(), name='admin_registration_document'),
+    path('admin/registration-requests/<int:pk>/documents/<str:doc_type>', AdminRegistrationDocumentDownloadAPIView.as_view(), name='admin_registration_document_noslash'),
+    path('auth/registration-documents/<int:pk>/<str:doc_type>/', AdminRegistrationDocumentDownloadAPIView.as_view(), name='auth_registration_document'),
+    path('auth/registration-documents/<int:pk>/<str:doc_type>', AdminRegistrationDocumentDownloadAPIView.as_view(), name='auth_registration_document_noslash'),
     
     # Admin Staff Account Management & User Listing
     path('admin/users/next-employee-id/', AdminNextEmployeeIdAPIView.as_view(), name='admin_next_employee_id'),

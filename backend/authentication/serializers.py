@@ -1,5 +1,6 @@
 import re
 import datetime
+import base64
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from django.db import models, transaction
@@ -176,12 +177,31 @@ class RegistrationRequestSerializer(serializers.Serializer):
             )
 
             # 4. Create Registration Request record
+            license_b64 = None
+            id_b64 = None
+            if license_file:
+                try:
+                    license_file.seek(0)
+                    license_b64 = base64.b64encode(license_file.read()).decode('utf-8')
+                    license_file.seek(0)
+                except Exception:
+                    pass
+            if id_file:
+                try:
+                    id_file.seek(0)
+                    id_b64 = base64.b64encode(id_file.read()).decode('utf-8')
+                    id_file.seek(0)
+                except Exception:
+                    pass
+
             request_obj = RegistrationRequest.objects.create(
                 shipping_company_id=company,
                 registration_request_entity_type=entity_type,
                 registration_request_applicant_name=applicant_name,
                 registration_request_license_file=license_file,
                 registration_request_id_file=id_file,
+                registration_request_license_base64=license_b64,
+                registration_request_id_base64=id_b64,
                 registration_request_terms_accepted=terms_accepted,
                 registration_request_status='PENDING'
             )

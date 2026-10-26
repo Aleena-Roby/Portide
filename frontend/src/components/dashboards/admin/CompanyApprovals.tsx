@@ -306,9 +306,10 @@ export const CompanyApprovals: React.FC = () => {
     }
   };
 
-  const getFileUrl = (filePath: string | null) => {
+  const getFileUrl = (filePath: string | null, isDownload: boolean = false) => {
     if (!filePath) return '';
-    return filePath.startsWith('http') ? filePath : `${API_BASE_URL}${filePath.startsWith('/') ? filePath : '/' + filePath}`;
+    const base = filePath.startsWith('http') ? filePath : `${API_BASE_URL}${filePath.startsWith('/') ? filePath : '/' + filePath}`;
+    return isDownload ? `${base}${base.includes('?') ? '&' : '?'}download=1` : base;
   };
 
   return (
@@ -687,7 +688,7 @@ export const CompanyApprovals: React.FC = () => {
                     {selectedRequest.registration_request_license_file ? (
                       <div className="flex items-center gap-1.5">
                         <a
-                          href={getFileUrl(selectedRequest.registration_request_license_file)}
+                          href={getFileUrl(selectedRequest.registration_request_license_file, false)}
                           target="_blank"
                           rel="noreferrer"
                           className="px-2.5 py-1 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[10px] flex items-center gap-1 transition-colors"
@@ -695,7 +696,7 @@ export const CompanyApprovals: React.FC = () => {
                           <FileText className="w-3 h-3" /> View
                         </a>
                         <a
-                          href={getFileUrl(selectedRequest.registration_request_license_file)}
+                          href={getFileUrl(selectedRequest.registration_request_license_file, true)}
                           download
                           className="px-2.5 py-1 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"
                         >
@@ -714,7 +715,7 @@ export const CompanyApprovals: React.FC = () => {
                         <div className="text-[9px] text-slate-400">Archived copy prior to resubmission</div>
                       </div>
                       <a
-                        href={getFileUrl(selectedRequest.registration_request_previous_license_file)}
+                        href={getFileUrl(selectedRequest.registration_request_previous_license_file, false)}
                         target="_blank"
                         rel="noreferrer"
                         className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"
@@ -739,7 +740,7 @@ export const CompanyApprovals: React.FC = () => {
                     {selectedRequest.registration_request_id_file ? (
                       <div className="flex items-center gap-1.5">
                         <a
-                          href={getFileUrl(selectedRequest.registration_request_id_file)}
+                          href={getFileUrl(selectedRequest.registration_request_id_file, false)}
                           target="_blank"
                           rel="noreferrer"
                           className="px-2.5 py-1 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold text-[10px] flex items-center gap-1 transition-colors"
@@ -747,7 +748,7 @@ export const CompanyApprovals: React.FC = () => {
                           <FileText className="w-3 h-3" /> View
                         </a>
                         <a
-                          href={getFileUrl(selectedRequest.registration_request_id_file)}
+                          href={getFileUrl(selectedRequest.registration_request_id_file, true)}
                           download
                           className="px-2.5 py-1 rounded-md bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"
                         >
@@ -766,7 +767,7 @@ export const CompanyApprovals: React.FC = () => {
                         <div className="text-[9px] text-slate-400">Archived copy prior to resubmission</div>
                       </div>
                       <a
-                        href={getFileUrl(selectedRequest.registration_request_previous_id_file)}
+                        href={getFileUrl(selectedRequest.registration_request_previous_id_file, false)}
                         target="_blank"
                         rel="noreferrer"
                         className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center gap-1 transition-colors"

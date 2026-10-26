@@ -10,6 +10,7 @@ import secrets
 import hashlib
 import datetime
 import re
+import base64
 from django.core.mail import send_mail
 from django.conf import settings
 from django.http import FileResponse, Http404
@@ -929,13 +930,27 @@ class ShippingCompanyResubmitAPIView(APIView):
             if license_file:
                 if req_obj.registration_request_license_file:
                     req_obj.registration_request_previous_license_file = req_obj.registration_request_license_file
+                    req_obj.registration_request_previous_license_base64 = req_obj.registration_request_license_base64
                 req_obj.registration_request_license_file = license_file
+                try:
+                    license_file.seek(0)
+                    req_obj.registration_request_license_base64 = base64.b64encode(license_file.read()).decode('utf-8')
+                    license_file.seek(0)
+                except Exception:
+                    pass
 
             # If new ID file provided, preserve existing one in previous_id_file
             if id_file:
                 if req_obj.registration_request_id_file:
                     req_obj.registration_request_previous_id_file = req_obj.registration_request_id_file
+                    req_obj.registration_request_previous_id_base64 = req_obj.registration_request_id_base64
                 req_obj.registration_request_id_file = id_file
+                try:
+                    id_file.seek(0)
+                    req_obj.registration_request_id_base64 = base64.b64encode(id_file.read()).decode('utf-8')
+                    id_file.seek(0)
+                except Exception:
+                    pass
 
             req_obj.registration_request_status = 'PENDING'
             req_obj.registration_request_resubmitted_at = timezone.now()
@@ -974,6 +989,43 @@ class ShippingCompanyResubmitAPIView(APIView):
             "message": "Corrected documents submitted successfully! Your application is now pending Port Administrator review.",
             "data": RegistrationRequestDetailSerializer(req_obj).data
         }, status=status.HTTP_200_OK)
+
+
+class AdminRegistrationDocumentDownloadAPIView(APIView):
+    """
+    Download or View Supporting Document for a Registration Request.
+    GET /api/admin/registration-requests/<int:pk>/documents/<str:doc_type>/
+    GET /api/auth/registration-documents/<int:pk>/<str:doc_type>/
+    Supported doc_type: 'license', 'id', 'previous_license', 'previous_id'
+    Query Params:
+      ?download=1 (Attachment download)
+      ?preview=1 (Inline display, default)
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk, doc_type):
+        try:
+            req_obj = RegistrationRequest.objects.select_related('shipping_company_id').get(registration_request_id=pk)
+        except RegistrationRequest.DoesNotExist:
+            return Response(
+                {"status": "error", "message": f"Registration request #{pk} not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from authentication.registration_document_generator import ensure_registration_document_physical_file
+        try:
+            f_path, content_type, filename = ensure_registration_document_physical_file(req_obj, doc_type)
+            is_download = request.query_params.get('download') in ['1', 'true', True]
+            disp = 'attachment' if is_download else 'inline'
+            response = FileResponse(open(f_path, 'rb'), content_type=content_type)
+            response['Content-Disposition'] = f'{disp}; filename="{filename}"'
+            response['Access-Control-Allow-Origin'] = '*'
+            return response
+        except Exception as e:
+            return Response(
+                {"status": "error", "message": f"Error accessing registration document: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ForgotPasswordAPIView(APIView):
