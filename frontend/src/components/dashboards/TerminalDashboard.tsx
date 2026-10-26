@@ -13,30 +13,13 @@ import {
   Loader2, 
   BarChart3, 
   MapPin, 
-  ArrowRight,
-  TrendingUp,
-  Truck,
   Ship
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  CartesianGrid 
-} from 'recharts';
 
 interface TerminalDashboardProps {
   activeTab?: string;
   onNavigate?: (tab: string) => void;
 }
-
-const CHART_COLORS = ['#38BDF8', '#10B981', '#F59E0B', '#8B5CF6'];
 
 export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab = 'overview', onNavigate }) => {
   const [statsData, setStatsData] = useState<any>(null);
@@ -108,9 +91,6 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
   }
 
   const kpis = statsData?.kpis || {};
-  const charts = statsData?.charts || {};
-  const yardUtilData = (charts.yard_utilization || []).filter((d: any) => d.value > 0);
-  const craneOpsData = (charts.crane_operations || []).filter((d: any) => d.value > 0);
 
   return (
     <div className="space-y-6 font-sans selection:bg-[#D49A24] selection:text-white animate-fade-in">
@@ -219,86 +199,7 @@ export const TerminalDashboard: React.FC<TerminalDashboardProps> = ({ activeTab 
         </div>
       </div>
 
-      {/* 3. VISUALIZATIONS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Yard Utilization */}
-        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                Yard Storage Capacity Allocation
-              </h3>
-              <p className="text-xs text-slate-500">Occupied coordinates vs Available ground storage capacity</p>
-            </div>
-            <BarChart3 className="w-4 h-4 text-amber-500" />
-          </div>
-
-          {yardUtilData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs space-y-1">
-              <Boxes className="w-8 h-8 text-slate-300 dark:text-slate-600" />
-              <p className="font-semibold text-slate-500">No active yard slots configured</p>
-              <p className="text-[11px] text-slate-400">Configure yards and blocks in Yard Master.</p>
-            </div>
-          ) : (
-            <div className="h-64 w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={yardUtilData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={5}
-                    dataKey="value"
-                    label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {yardUtilData.map((_: any, index: number) => (
-                      <Cell key={`yard-cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        {/* Chart 2: Crane Movement Activity */}
-        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                Quay Crane Throughput (Discharge vs Stowage)
-              </h3>
-              <p className="text-xs text-slate-500">Recorded physical container lift operations</p>
-            </div>
-            <TrendingUp className="w-4 h-4 text-emerald-500" />
-          </div>
-
-          {craneOpsData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs space-y-1">
-              <TrendingUp className="w-8 h-8 text-slate-300 dark:text-slate-600" />
-              <p className="font-semibold text-slate-500">No crane movement history recorded</p>
-              <p className="text-[11px] text-slate-400">Movements are logged during container loading/unloading operations.</p>
-            </div>
-          ) : (
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={craneOpsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#10B981" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 4. QUICK MODULE LAUNCHPAD */}
+      {/* 3. QUICK MODULE LAUNCHPAD */}
       <div className="space-y-3 pt-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
           TERMINAL OPERATIONS & MODULE LAUNCHPAD
