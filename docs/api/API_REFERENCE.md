@@ -47,8 +47,8 @@ All API endpoints accept and return `application/json` unless handling multipart
 | `POST` | `/api/vessels/` | Register commercial vessel into fleet | Shipping Company |
 | `GET` | `/api/arrival-requests/` | List vessel arrival requests | Shipping, Operations |
 | `POST` | `/api/arrival-requests/` | Submit new vessel arrival request | Shipping Company |
-| `POST` | `/api/arrival-requests/{id}/approve/` | Approve arrival and assign berth | Port Operations |
-| `POST` | `/api/arrival-requests/{id}/reject/` | Reject arrival request with explanation | Port Operations |
+| `POST` | `/api/arrival-requests/{id}/approve/` | Approve arrival, assign berth, and notify shipping company via official email | Port Operations |
+| `POST` | `/api/arrival-requests/{id}/reject/` | Reject arrival request with explanation and notify shipping company via official email | Port Operations |
 | `GET` | `/api/berths/` | Public berth status and operational schedule | All |
 | `GET` | `/api/schedules/` | List active vessel berthing schedules | Port Operations |
 | `POST` | `/api/schedules/` | Create scheduled berth allocation | Port Operations |
