@@ -75,8 +75,12 @@ def main():
     # Always push to ensure origin/main has all commits
     run_cmd("git push origin main", cwd=root_dir)
 
+    # 5. Direct Deploy to Vercel Production
+    print("\n--- STEP 5: DEPLOYING DIRECTLY TO VERCEL PRODUCTION ---")
+    run_cmd("npx vercel --prod --yes", cwd=root_dir, exit_on_error=False)
+
     print("\n=======================================================")
-    print(" DEPLOYMENT TRIGGERED SUCCESSFULLY TO ORIGIN/MAIN!")
+    print(" DEPLOYMENT COMPLETED SUCCESSFULLY!")
     print(" - Render backend: https://portide-api.onrender.com")
     print(" - Vercel frontend: https://portide.vercel.app")
     print("=======================================================\n")
