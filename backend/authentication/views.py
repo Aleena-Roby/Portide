@@ -159,7 +159,9 @@ from authentication.email_service import (
     send_container_released_notification,
     send_gate_pass_driver_email,
     send_customs_document_review_notification,
-    send_customs_document_resubmitted_notification
+    send_customs_document_resubmitted_notification,
+    send_arrival_request_approved_email,
+    send_arrival_request_rejected_email
 )
 from authentication.qr_service import generate_verification_payload, generate_qr_svg, generate_qr_png_bytes
 from authentication.permissions import (
@@ -2420,6 +2422,17 @@ class ArrivalRequestApproveAPIView(APIView):
             event_key=f"arrival_req_approved_{arrival_request.vessel_arrival_request_id}"
         )
 
+        # Dispatch official notification email to shipping company's official registered email
+        try:
+            send_arrival_request_approved_email(
+                arrival_request=arrival_request,
+                berth_obj=berth_obj,
+                remarks=remarks,
+                officer_name=reviewer_name
+            )
+        except Exception as e:
+            logger.error(f"Failed to dispatch arrival request approval email: {e}", exc_info=True)
+
         return Response(
             {
                 "status": "success",
@@ -2496,6 +2509,16 @@ class ArrivalRequestRejectAPIView(APIView):
             action_route='arrival-requests',
             event_key=f"arrival_req_rejected_{arrival_request.vessel_arrival_request_id}"
         )
+
+        # Dispatch official notification email to shipping company's official registered email
+        try:
+            send_arrival_request_rejected_email(
+                arrival_request=arrival_request,
+                rejection_reason=remarks,
+                officer_name=reviewer_name
+            )
+        except Exception as e:
+            logger.error(f"Failed to dispatch arrival request rejection email: {e}", exc_info=True)
 
         return Response(
             {

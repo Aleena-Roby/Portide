@@ -2044,3 +2044,347 @@ PORTIDE Customs & Border Clearance Division
     except Exception as e:
         logger.error(f"Failed to queue customs document resubmission email: {str(e)}", exc_info=True)
         return False
+
+
+def send_arrival_request_approved_email(
+    arrival_request,
+    berth_obj=None,
+    remarks: str = None,
+    officer_name: str = None
+) -> bool:
+    """
+    Dispatches an official notification email to the shipping company's official registered email
+    when their Vessel Arrival Request is approved by a Port Operations Officer.
+    """
+    try:
+        vessel = arrival_request.vessel_arrival_request_vessel_id
+        company = getattr(vessel, 'vessel_shipping_company_id', None)
+        if not company:
+            logger.warning(
+                "No shipping company linked to vessel %s on arrival request #%s",
+                getattr(vessel, 'vessel_name', 'Unknown'),
+                arrival_request.vessel_arrival_request_id
+            )
+            return False
+
+        official_email = company.shipping_company_email
+        if not official_email:
+            # Fallback to active registered user for company
+            user_rec = User.objects.filter(shipping_company_id=company).select_related('login_id').first()
+            if user_rec and user_rec.login_id and user_rec.login_id.login_email:
+                official_email = user_rec.login_id.login_email
+
+        if not official_email:
+            logger.warning(
+                "No official email found for shipping company '%s' on arrival request #%s",
+                company.shipping_company_name,
+                arrival_request.vessel_arrival_request_id
+            )
+            return False
+
+        req_id = arrival_request.vessel_arrival_request_id
+        req_code = f"ARR-{req_id:05d}"
+        vessel_name = getattr(vessel, 'vessel_name', 'Vessel')
+        imo_number = getattr(vessel, 'vessel_imo_number', 'N/A')
+        call_sign = getattr(vessel, 'vessel_call_sign', None) or 'N/A'
+        flag = getattr(vessel, 'vessel_flag', None) or 'N/A'
+        company_name = company.shipping_company_name
+        officer = officer_name or "Port Operations Officer"
+
+        arr_time = arrival_request.vessel_arrival_request_requested_arrival_at
+        dep_time = arrival_request.vessel_arrival_request_requested_departure_at
+        arr_str = arr_time.strftime('%b %d, %Y %H:%M UTC') if arr_time else 'N/A'
+        dep_str = dep_time.strftime('%b %d, %Y %H:%M UTC') if dep_time else 'N/A'
+
+        cargo_type = getattr(arrival_request, 'vessel_arrival_request_cargo_type', 'General Cargo')
+        cargo_quantity = getattr(arrival_request, 'vessel_arrival_request_cargo_quantity', '0')
+        cargo_display = f"{cargo_quantity} TEU / Units • {cargo_type}"
+
+        if berth_obj:
+            berth_name = berth_obj.berth_name
+            berth_spec = f"{berth_name} (Max LOA: {berth_obj.berth_max_length}m, Draft: {berth_obj.berth_max_draft}m)"
+        elif arrival_request.vessel_arrival_request_preferred_berth_id:
+            berth_name = arrival_request.vessel_arrival_request_preferred_berth_id.berth_name
+            berth_spec = f"{berth_name} (Preferred Berth)"
+        else:
+            berth_name = "Anchorage / Quayside Allocation Pending"
+            berth_spec = "Pending final quayside assignment"
+
+        remarks_text = str(remarks).strip() if remarks else (
+            arrival_request.vessel_arrival_request_remarks or "All requested arrival coordinates and vessel clearance parameters approved."
+        )
+
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        portal_url = f"{frontend_url.rstrip('/')}/dashboard"
+
+        subject = f"PORTIDE Approval: Vessel Arrival Request #{req_code} Approved – {vessel_name}"
+
+        plain_message = f"""PORTIDE MARITIME PORT OPERATIONS – OFFICIAL NOTIFICATION
+
+Attention: {company_name}
+Vessel Arrival Request: {req_code}
+Status: APPROVED
+
+Vessel Details:
+• Vessel Name: {vessel_name}
+• IMO Number: {imo_number}
+• Flag / Call Sign: {flag} / {call_sign}
+• Allocated Berth: {berth_spec}
+• Arrival Window: {arr_str} to {dep_str}
+• Cargo Consignment: {cargo_display}
+• Port Operations Remarks: {remarks_text}
+• Approved By: {officer} (Port Operations Control)
+
+Operational Guidance:
+Vessel '{vessel_name}' has received formal port berthing clearance. Please ensure inbound cargo manifests and EDI pre-arrival customs declarations are submitted prior to arrival.
+
+Access Portal: {portal_url}
+
+Regards,
+PORTIDE Port Operations Intelligence Platform
+Vessel Traffic Management & Berthing Control
+"""
+
+        copy_box = _render_copyable_code_box(req_code, "Arrival Request Reference", "Select reference code to copy")
+
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Official Notice to <strong>{company_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            We are pleased to inform you that Port Operations Control has officially <strong>APPROVED</strong> the vessel arrival request for <strong>{vessel_name}</strong>.
+          </p>
+
+          {copy_box}
+
+          <div class="alert-box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #166534; line-height: 1.5; box-sizing: border-box;">
+            ⚓ <strong>Berth Clearance Authorized:</strong> Vessel <strong>{vessel_name}</strong> has been allocated quayside berthing coordinates for the requested operational window.
+          </div>
+
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Vessel Name</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{vessel_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">IMO &amp; Call Sign</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">IMO {imo_number} &bull; {call_sign}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Allocated Berth</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #0284c7; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{berth_spec}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Arrival Window</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{arr_str} &rarr; {dep_str}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Cargo Consignment</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{cargo_display}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Operational Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #059669; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">APPROVED &bull; SCHEDULED</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Operational Remarks</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{remarks_text}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Reviewing Officer</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">{officer}</td>
+            </tr>
+          </table>
+
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{portal_url}" class="btn-action" style="display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 13px 32px; border-radius: 10px; max-width: 100%; box-sizing: border-box; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.3);">
+              Open Shipping Portal &amp; View Schedule &rarr;
+            </a>
+          </div>
+        """
+
+        html_message = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Port Operations Officer",
+            header_title="ARRIVAL REQUEST APPROVED",
+            header_subtitle=f"Berth Allocated &amp; Vessel Clearance Authorized for {vessel_name}",
+            header_gradient="linear-gradient(135deg, #064e3b 0%, #047857 100%)",
+            header_kicker_color="#a7f3d0",
+            header_subtitle_color="#d1fae5",
+            body_content=body_html,
+            footer_text="PORTIDE Port Operations Intelligence Platform &bull; Vessel Traffic Management &amp; Berthing Control"
+        )
+
+        _send_mail_async(
+            subject=subject,
+            message=plain_message,
+            from_email=get_from_email(),
+            recipient_list=[official_email],
+            html_message=html_message
+        )
+        logger.info(
+            f"Queued arrival request approval email to {official_email} for request {req_code} (Vessel: {vessel_name})"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue arrival request approval email: {str(e)}", exc_info=True)
+        return False
+
+
+def send_arrival_request_rejected_email(
+    arrival_request,
+    rejection_reason: str,
+    officer_name: str = None
+) -> bool:
+    """
+    Dispatches an official notification email to the shipping company's official registered email
+    when their Vessel Arrival Request is rejected by a Port Operations Officer.
+    """
+    try:
+        vessel = arrival_request.vessel_arrival_request_vessel_id
+        company = getattr(vessel, 'vessel_shipping_company_id', None)
+        if not company:
+            logger.warning(
+                "No shipping company linked to vessel %s on arrival request #%s",
+                getattr(vessel, 'vessel_name', 'Unknown'),
+                arrival_request.vessel_arrival_request_id
+            )
+            return False
+
+        official_email = company.shipping_company_email
+        if not official_email:
+            user_rec = User.objects.filter(shipping_company_id=company).select_related('login_id').first()
+            if user_rec and user_rec.login_id and user_rec.login_id.login_email:
+                official_email = user_rec.login_id.login_email
+
+        if not official_email:
+            logger.warning(
+                "No official email found for shipping company '%s' on arrival request #%s",
+                company.shipping_company_name,
+                arrival_request.vessel_arrival_request_id
+            )
+            return False
+
+        req_id = arrival_request.vessel_arrival_request_id
+        req_code = f"ARR-{req_id:05d}"
+        vessel_name = getattr(vessel, 'vessel_name', 'Vessel')
+        imo_number = getattr(vessel, 'vessel_imo_number', 'N/A')
+        call_sign = getattr(vessel, 'vessel_call_sign', None) or 'N/A'
+        flag = getattr(vessel, 'vessel_flag', None) or 'N/A'
+        company_name = company.shipping_company_name
+        officer = officer_name or "Port Operations Officer"
+        rejection_reason_clean = str(rejection_reason).strip() if rejection_reason else "Operational scheduling constraint or berth capacity unavailable."
+
+        arr_time = arrival_request.vessel_arrival_request_requested_arrival_at
+        dep_time = arrival_request.vessel_arrival_request_requested_departure_at
+        arr_str = arr_time.strftime('%b %d, %Y %H:%M UTC') if arr_time else 'N/A'
+        dep_str = dep_time.strftime('%b %d, %Y %H:%M UTC') if dep_time else 'N/A'
+
+        cargo_type = getattr(arrival_request, 'vessel_arrival_request_cargo_type', 'General Cargo')
+        cargo_quantity = getattr(arrival_request, 'vessel_arrival_request_cargo_quantity', '0')
+        cargo_display = f"{cargo_quantity} TEU / Units • {cargo_type}"
+
+        frontend_url = getattr(settings, 'FRONTEND_URL', None) or 'https://portide.vercel.app'
+        portal_url = f"{frontend_url.rstrip('/')}/dashboard"
+
+        subject = f"PORTIDE Notice: Vessel Arrival Request #{req_code} Rejected – {vessel_name}"
+
+        plain_message = f"""PORTIDE MARITIME PORT OPERATIONS – OFFICIAL NOTIFICATION
+
+Attention: {company_name}
+Vessel Arrival Request: {req_code}
+Status: REJECTED
+
+Vessel Details:
+• Vessel Name: {vessel_name}
+• IMO Number: {imo_number}
+• Flag / Call Sign: {flag} / {call_sign}
+• Requested Window: {arr_str} to {dep_str}
+• Cargo Consignment: {cargo_display}
+• Rejection Reason / Operational Remarks:
+"{rejection_reason_clean}"
+• Reviewed By: {officer} (Port Operations Control)
+
+Operational Guidance:
+The vessel arrival request has been declined for the requested berthing window. You may review the operational remarks and submit a revised arrival schedule through the PORTIDE Shipping Portal or contact Port Operations Control.
+
+Access Portal: {portal_url}
+
+Regards,
+PORTIDE Port Operations Intelligence Platform
+Vessel Traffic Management & Berthing Control
+"""
+
+        copy_box = _render_copyable_code_box(req_code, "Arrival Request Reference", "Select reference code to copy")
+
+        body_html = f"""
+          <p style="margin: 0 0 16px 0; font-size: 15px;">Attention: <strong>{company_name}</strong>,</p>
+          <p style="margin: 0 0 20px 0; font-size: 14px; color: #64748b; line-height: 1.5;">
+            This is an official dispatch notice from Port Operations Control regarding your arrival request for <strong>{vessel_name}</strong>.
+          </p>
+
+          {copy_box}
+
+          <div class="alert-box" style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 14px 16px; margin: 18px 0; font-size: 13px; color: #991b1b; line-height: 1.5; box-sizing: border-box;">
+            ⚠️ <strong>Arrival Request Declined:</strong> The requested arrival schedule has been rejected by Port Operations Control.
+          </div>
+
+          <table role="presentation" class="data-table-stacked" style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; table-layout: auto;">
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word;">Vessel Name</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">{vessel_name}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">IMO &amp; Call Sign</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">IMO {imo_number} &bull; {call_sign}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Requested Window</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{arr_str} &rarr; {dep_str}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Status</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #dc2626; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">REJECTED</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Rejection Reason</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #b91c1c; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere; border-top: 1px solid #e2e8f0;">{rejection_reason_clean}</td>
+            </tr>
+            <tr>
+              <td class="data-label" style="padding: 10px 14px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; vertical-align: top; width: 38%; box-sizing: border-box; word-break: break-word; border-top: 1px solid #e2e8f0;">Reviewing Officer</td>
+              <td class="data-value" style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: right; vertical-align: top; width: 62%; box-sizing: border-box; border-top: 1px solid #e2e8f0;">{officer}</td>
+            </tr>
+          </table>
+
+          <div style="text-align: center; margin: 24px 0 10px 0;">
+            <a href="{portal_url}" class="btn-action" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 13px 32px; border-radius: 10px; max-width: 100%; box-sizing: border-box;">
+              Sign In to Submit Revised Arrival &rarr;
+            </a>
+          </div>
+        """
+
+        html_message = _render_responsive_email_layout(
+            subject=subject,
+            header_kicker="PORTIDE Port Operations Officer",
+            header_title="ARRIVAL REQUEST REJECTED",
+            header_subtitle=f"Vessel Berthing Clearance Declined for {vessel_name}",
+            header_gradient="linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)",
+            header_kicker_color="#fca5a5",
+            header_subtitle_color="#fecaca",
+            body_content=body_html,
+            footer_text="PORTIDE Port Operations Intelligence Platform &bull; Vessel Traffic Management &amp; Berthing Control"
+        )
+
+        _send_mail_async(
+            subject=subject,
+            message=plain_message,
+            from_email=get_from_email(),
+            recipient_list=[official_email],
+            html_message=html_message
+        )
+        logger.info(
+            f"Queued arrival request rejection email to {official_email} for request {req_code} (Vessel: {vessel_name})"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to queue arrival request rejection email: {str(e)}", exc_info=True)
+        return False
+
