@@ -12,13 +12,16 @@ from django.http import JsonResponse, FileResponse, Http404
 def api_root(request):
     return JsonResponse({
         "status": "online",
+        "version": "1.1.0",
+        "build": "2026-10-27-media-self-heal",
         "name": "PortIDE Maritime Port Operations Intelligence Platform API",
-        "frontend_url": "http://localhost:3000",
-        "admin_url": "http://localhost:8000/admin/",
+        "frontend_url": os.getenv("FRONTEND_URL", "https://portide.vercel.app"),
+        "admin_url": "/admin/",
         "endpoints": {
-            "auth": "http://localhost:8000/api/auth/",
-            "api": "http://localhost:8000/api/",
-            "health": "http://localhost:8000/api/health/"
+            "auth": "/api/auth/",
+            "api": "/api/",
+            "health": "/api/health/",
+            "media": "/media/"
         }
     })
 
@@ -42,6 +45,14 @@ def serve_media_file(request, path):
     Serves physical media files across cloud container lifecycles (Render),
     automatically self-healing registration and customs documents from base64 or certified dynamic generation.
     """
+    if request.method == 'OPTIONS':
+        from django.http import HttpResponse
+        res = HttpResponse()
+        res['Access-Control-Allow-Origin'] = '*'
+        res['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS'
+        res['Access-Control-Allow-Headers'] = '*'
+        return res
+
     clean_path = path.strip('/')
     full_path = os.path.normpath(os.path.join(str(settings.MEDIA_ROOT), clean_path))
 
@@ -64,6 +75,7 @@ def serve_media_file(request, path):
         response = FileResponse(open(full_path, 'rb'), content_type=content_type)
         response['Content-Disposition'] = f'{disp}; filename="{filename}"'
         response['Access-Control-Allow-Origin'] = '*'
+        response['Cache-Control'] = 'public, max-age=3600'
         return response
 
     # 2. Self-healing for registration supporting documents
@@ -76,9 +88,11 @@ def serve_media_file(request, path):
                 response = FileResponse(open(f_path, 'rb'), content_type=content_type)
                 response['Content-Disposition'] = f'{disp}; filename="{filename}"'
                 response['Access-Control-Allow-Origin'] = '*'
+                response['Cache-Control'] = 'public, max-age=3600'
                 return response
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Registration document self-heal error for %s: %s", clean_path, e)
 
     # 3. Self-healing for customs documents
     if clean_path.startswith('customs_docs/') or 'declarations/' in clean_path:
@@ -96,6 +110,7 @@ def serve_media_file(request, path):
                 response = FileResponse(open(f_path, 'rb'), content_type=content_type)
                 response['Content-Disposition'] = f'{disp}; filename="{filename}"'
                 response['Access-Control-Allow-Origin'] = '*'
+                response['Cache-Control'] = 'public, max-age=3600'
                 return response
 
             decl = (
@@ -108,9 +123,11 @@ def serve_media_file(request, path):
                 response = FileResponse(open(f_path, 'rb'), content_type=content_type)
                 response['Content-Disposition'] = f'{disp}; filename="{filename}"'
                 response['Access-Control-Allow-Origin'] = '*'
+                response['Cache-Control'] = 'public, max-age=3600'
                 return response
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Customs document self-heal error for %s: %s", clean_path, e)
 
     raise Http404("The requested resource was not found on this server.")
 
@@ -124,4 +141,5 @@ urlpatterns = [
     path('api/auth/', include('authentication.urls')),
     path('api/', include('authentication.urls')),
     re_path(r'^media/(?P<path>.*)$', serve_media_file, name='media_serve'),
+    re_path(r'^api/media/(?P<path>.*)$', serve_media_file, name='api_media_serve'),
 ]
