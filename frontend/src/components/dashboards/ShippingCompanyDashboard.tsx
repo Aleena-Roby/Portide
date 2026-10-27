@@ -184,13 +184,22 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     return Math.round(diffMs / (1000 * 60 * 60));
   };
 
+  const getMinArrivalDate = (): string => {
+    const now = new Date();
+    // If it's already 23:00 or later, no after-hours slots remain today, so min arrival date is tomorrow
+    if (now.getHours() >= 23) {
+      return getFutureDateString(1, getTodayDateString());
+    }
+    return getTodayDateString();
+  };
+
   const getAvailableArrivalTimes = (selectedDate: string): string[] => {
     const today = getTodayDateString();
     if (selectedDate === today) {
       const currentHour = new Date().getHours();
       return HOURLY_TIME_OPTIONS.filter((time) => {
         const hour = parseInt(time.split(':')[0], 10);
-        return hour >= currentHour;
+        return hour > currentHour;
       });
     }
     return HOURLY_TIME_OPTIONS;
@@ -215,7 +224,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
       const currentHour = new Date().getHours();
       return HOURLY_TIME_OPTIONS.filter((time) => {
         const hour = parseInt(time.split(':')[0], 10);
-        return hour >= currentHour + 1;
+        return hour > currentHour + 1;
       });
     }
 
@@ -223,7 +232,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
   };
 
   const getMinDepartureDate = (arrDate: string, arrTime: string): string => {
-    if (!arrDate) return getTodayDateString();
+    if (!arrDate) return getMinArrivalDate();
     // If arrival is at 23:00, departure cannot be same day (needs at least 1 hr), so min departure date is tomorrow
     if (arrTime === '23:00') {
       return getFutureDateString(1, arrDate);
@@ -232,25 +241,30 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
   };
 
   const handleArrivalDateChange = (newArrDate: string) => {
-    setArrivalDate(newArrDate);
+    let effectiveDate = newArrDate;
+    const minDate = getMinArrivalDate();
+    if (effectiveDate < minDate) {
+      effectiveDate = minDate;
+    }
+    setArrivalDate(effectiveDate);
     if (requestFormError) setRequestFormError('');
 
-    const availableArr = getAvailableArrivalTimes(newArrDate);
+    const availableArr = getAvailableArrivalTimes(effectiveDate);
     let nextArrTime = arrivalTime;
     if (!availableArr.includes(arrivalTime)) {
-      nextArrTime = availableArr[0] || '00:00';
+      nextArrTime = availableArr[0] || '08:00';
       setArrivalTime(nextArrTime);
     }
 
     // Check min departure date
-    const minDep = getMinDepartureDate(newArrDate, nextArrTime);
+    const minDep = getMinDepartureDate(effectiveDate, nextArrTime);
     let nextDepDate = departureDate;
     if (!departureDate || departureDate < minDep) {
       nextDepDate = minDep;
       setDepartureDate(nextDepDate);
     }
 
-    const availableDep = getAvailableDepartureTimes(newArrDate, nextArrTime, nextDepDate);
+    const availableDep = getAvailableDepartureTimes(effectiveDate, nextArrTime, nextDepDate);
     if (!availableDep.includes(departureTime)) {
       setDepartureTime(availableDep[0] || '18:00');
     }
@@ -362,14 +376,19 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     setSelectedVesselId('');
     const today = getTodayDateString();
     const now = new Date();
-    // Default arrival: 2 hours ahead rounded to full hour (or next day if late)
-    let nextH = now.getHours() + 2;
+    const currentH = now.getHours();
     let initialArrDate = today;
-    if (nextH >= 24) {
-      nextH = nextH % 24;
+    let initialArrTime = '08:00';
+
+    if (currentH >= 23) {
+      // No remaining hours today, move arrival date to tomorrow morning
       initialArrDate = getFutureDateString(1, today);
+      initialArrTime = '08:00';
+    } else {
+      // Pick arrival hour strictly after current hour (e.g. at 11:xx, pick 13:00 or 12:00)
+      const targetH = Math.min(23, currentH + 2);
+      initialArrTime = `${targetH.toString().padStart(2, '0')}:00`;
     }
-    const initialArrTime = `${nextH.toString().padStart(2, '0')}:00`;
 
     // Default departure: 2 days after arrival at 18:00
     const initialDepDate = getFutureDateString(2, initialArrDate);
@@ -519,10 +538,17 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     const depDate = new Date(isoDeparture);
     const now = new Date();
 
-    // Prevent past arrival dates (allow current hour slot as present time)
-    const currentHourFloor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
-    if (arrDate.getTime() < currentHourFloor.getTime()) {
-      setRequestFormError('Requested arrival time cannot be in the past.');
+    // Prevent past or current elapsed hour arrival times (must be strictly after current hour)
+    const isToday = arrivalDate === getTodayDateString();
+    if (isToday) {
+      const arrHour = parseInt(arrivalTime.split(':')[0], 10);
+      if (arrHour <= now.getHours()) {
+        setRequestFormError('Requested arrival time must be after the current hour.');
+        return;
+      }
+    }
+    if (arrDate.getTime() <= now.getTime()) {
+      setRequestFormError('Requested arrival time must be in the future.');
       return;
     }
 
@@ -886,7 +912,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                   <input
                     type="date"
                     required
-                    min={getTodayDateString()}
+                    min={getMinArrivalDate()}
                     value={arrivalDate}
                     onChange={(e) => handleArrivalDateChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
@@ -904,7 +930,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                   </select>
                 </div>
               </div>
-              <p className="text-[9px] text-slate-400">Arrival must be present hour or a future time at full hour.</p>
+              <p className="text-[9px] text-slate-400">Arrival must be after the current hour at full hour.</p>
             </div>
 
             {/* REQUESTED DEPARTURE */}
