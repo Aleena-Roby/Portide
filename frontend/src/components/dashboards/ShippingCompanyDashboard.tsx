@@ -184,6 +184,105 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     return Math.round(diffMs / (1000 * 60 * 60));
   };
 
+  const getAvailableArrivalTimes = (selectedDate: string): string[] => {
+    const today = getTodayDateString();
+    if (selectedDate === today) {
+      const currentHour = new Date().getHours();
+      return HOURLY_TIME_OPTIONS.filter((time) => {
+        const hour = parseInt(time.split(':')[0], 10);
+        return hour >= currentHour;
+      });
+    }
+    return HOURLY_TIME_OPTIONS;
+  };
+
+  const getAvailableDepartureTimes = (arrDate: string, arrTime: string, depDate: string): string[] => {
+    if (!depDate) return HOURLY_TIME_OPTIONS;
+
+    // If departure is on the same date as arrival, departure must be at least 1 hour after arrival
+    if (arrDate && depDate === arrDate) {
+      const arrHour = arrTime ? parseInt(arrTime.split(':')[0], 10) : -1;
+      const minDepHour = arrHour + 1;
+      return HOURLY_TIME_OPTIONS.filter((time) => {
+        const hour = parseInt(time.split(':')[0], 10);
+        return hour >= minDepHour;
+      });
+    }
+
+    // If departure is today (and arrival was earlier today), departure also cannot be in the past
+    const today = getTodayDateString();
+    if (depDate === today) {
+      const currentHour = new Date().getHours();
+      return HOURLY_TIME_OPTIONS.filter((time) => {
+        const hour = parseInt(time.split(':')[0], 10);
+        return hour >= currentHour + 1;
+      });
+    }
+
+    return HOURLY_TIME_OPTIONS;
+  };
+
+  const getMinDepartureDate = (arrDate: string, arrTime: string): string => {
+    if (!arrDate) return getTodayDateString();
+    // If arrival is at 23:00, departure cannot be same day (needs at least 1 hr), so min departure date is tomorrow
+    if (arrTime === '23:00') {
+      return getFutureDateString(1, arrDate);
+    }
+    return arrDate;
+  };
+
+  const handleArrivalDateChange = (newArrDate: string) => {
+    setArrivalDate(newArrDate);
+    if (requestFormError) setRequestFormError('');
+
+    const availableArr = getAvailableArrivalTimes(newArrDate);
+    let nextArrTime = arrivalTime;
+    if (!availableArr.includes(arrivalTime)) {
+      nextArrTime = availableArr[0] || '00:00';
+      setArrivalTime(nextArrTime);
+    }
+
+    // Check min departure date
+    const minDep = getMinDepartureDate(newArrDate, nextArrTime);
+    let nextDepDate = departureDate;
+    if (!departureDate || departureDate < minDep) {
+      nextDepDate = minDep;
+      setDepartureDate(nextDepDate);
+    }
+
+    const availableDep = getAvailableDepartureTimes(newArrDate, nextArrTime, nextDepDate);
+    if (!availableDep.includes(departureTime)) {
+      setDepartureTime(availableDep[0] || '18:00');
+    }
+  };
+
+  const handleArrivalTimeChange = (newArrTime: string) => {
+    setArrivalTime(newArrTime);
+    if (requestFormError) setRequestFormError('');
+
+    const minDep = getMinDepartureDate(arrivalDate, newArrTime);
+    let nextDepDate = departureDate;
+    if (!departureDate || departureDate < minDep) {
+      nextDepDate = minDep;
+      setDepartureDate(nextDepDate);
+    }
+
+    const availableDep = getAvailableDepartureTimes(arrivalDate, newArrTime, nextDepDate);
+    if (!availableDep.includes(departureTime)) {
+      setDepartureTime(availableDep[0] || '18:00');
+    }
+  };
+
+  const handleDepartureDateChange = (newDepDate: string) => {
+    setDepartureDate(newDepDate);
+    if (requestFormError) setRequestFormError('');
+
+    const availableDep = getAvailableDepartureTimes(arrivalDate, arrivalTime, newDepDate);
+    if (!availableDep.includes(departureTime)) {
+      setDepartureTime(availableDep[0] || '18:00');
+    }
+  };
+
   const fetchDashboardData = async () => {
     setLoading(true);
     setError('');
@@ -420,8 +519,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
     const depDate = new Date(isoDeparture);
     const now = new Date();
 
-    // 5 minutes buffer for minor client-server clock drift
-    if (arrDate.getTime() < now.getTime() - 5 * 60 * 1000) {
+    // Prevent past arrival dates (allow current hour slot as present time)
+    const currentHourFloor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+    if (arrDate.getTime() < currentHourFloor.getTime()) {
       setRequestFormError('Requested arrival time cannot be in the past.');
       return;
     }
@@ -788,33 +888,23 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                     required
                     min={getTodayDateString()}
                     value={arrivalDate}
-                    onChange={(e) => {
-                      const newArrDate = e.target.value;
-                      setArrivalDate(newArrDate);
-                      if (departureDate && departureDate < newArrDate) {
-                        setDepartureDate(newArrDate);
-                      }
-                      if (requestFormError) setRequestFormError('');
-                    }}
+                    onChange={(e) => handleArrivalDateChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
                   />
                 </div>
                 <div className="col-span-2">
                   <select
                     value={arrivalTime}
-                    onChange={(e) => {
-                      setArrivalTime(e.target.value);
-                      if (requestFormError) setRequestFormError('');
-                    }}
+                    onChange={(e) => handleArrivalTimeChange(e.target.value)}
                     className="w-full px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
                   >
-                    {HOURLY_TIME_OPTIONS.map(time => (
+                    {getAvailableArrivalTimes(arrivalDate).map(time => (
                       <option key={`arr-${time}`} value={time}>{time}</option>
                     ))}
                   </select>
                 </div>
               </div>
-              <p className="text-[9px] text-slate-400">Arrival must be today or a future date at full hour.</p>
+              <p className="text-[9px] text-slate-400">Arrival must be present hour or a future time at full hour.</p>
             </div>
 
             {/* REQUESTED DEPARTURE */}
@@ -830,12 +920,9 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                   <input
                     type="date"
                     required
-                    min={arrivalDate || getTodayDateString()}
+                    min={getMinDepartureDate(arrivalDate, arrivalTime)}
                     value={departureDate}
-                    onChange={(e) => {
-                      setDepartureDate(e.target.value);
-                      if (requestFormError) setRequestFormError('');
-                    }}
+                    onChange={(e) => handleDepartureDateChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
                   />
                 </div>
@@ -848,7 +935,7 @@ export const ShippingCompanyDashboard: React.FC<ShippingCompanyDashboardProps> =
                     }}
                     className="w-full px-2.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs focus:outline-none focus:border-sky-500"
                   >
-                    {HOURLY_TIME_OPTIONS.map(time => (
+                    {getAvailableDepartureTimes(arrivalDate, arrivalTime, departureDate).map(time => (
                       <option key={`dep-${time}`} value={time}>{time}</option>
                     ))}
                   </select>

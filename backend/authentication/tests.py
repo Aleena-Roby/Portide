@@ -906,6 +906,60 @@ class ArrivalRequestAdvanceValidationTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.json()['status'], 'success')
 
+    def test_current_hour_arrival_accepted(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.localtime(timezone.now())
+        current_hour_arrival = now.replace(minute=0, second=0, microsecond=0)
+        current_hour_departure = current_hour_arrival + datetime.timedelta(days=1)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': current_hour_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': current_hour_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()['status'], 'success')
+
+    def test_earlier_hour_today_rejected(self):
+        from rest_framework import status
+        from django.utils import timezone
+        import datetime
+
+        now = timezone.localtime(timezone.now())
+        current_hour_arrival = now.replace(minute=0, second=0, microsecond=0)
+        # 1 hour before current hour
+        past_hour_arrival = current_hour_arrival - datetime.timedelta(hours=1)
+        past_hour_departure = past_hour_arrival + datetime.timedelta(days=1)
+
+        payload = {
+            'vessel_arrival_request_vessel_id': self.vessel.vessel_id,
+            'vessel_arrival_request_requested_arrival_at': past_hour_arrival.isoformat(),
+            'vessel_arrival_request_requested_departure_at': past_hour_departure.isoformat(),
+            'vessel_arrival_request_cargo_type': 'Containers',
+            'vessel_arrival_request_cargo_quantity': 500
+        }
+        headers = {
+            'HTTP_X_USER_EMAIL': self.login.login_email,
+            'HTTP_X_USER_ROLE': 'shipping_company',
+            'HTTP_X_USER_ID': str(self.login.login_id)
+        }
+
+        response = self.client.post('/api/arrival-requests/', payload, format='json', **headers)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Requested arrival time cannot be in the past.", str(response.json()))
+
     def test_tomorrow_arrival_accepted(self):
         from rest_framework import status
         from django.utils import timezone

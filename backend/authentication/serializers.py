@@ -972,9 +972,12 @@ class VesselArrivalRequestCreateSerializer(serializers.ModelSerializer):
         if not vessel_obj:
             raise serializers.ValidationError({"vessel_arrival_request_vessel_id": "Please select a vessel."})
 
-        # Prevent past arrival dates
+        # Prevent past arrival dates (allow current hour slot as present time, reject past hours)
         now = timezone.now()
-        if arrival and arrival < now - datetime.timedelta(minutes=5):
+        now_local = timezone.localtime(now)
+        current_hour_floor = now_local.replace(minute=0, second=0, microsecond=0)
+        arrival_local = timezone.localtime(arrival) if arrival else None
+        if arrival_local and arrival_local < current_hour_floor:
             raise serializers.ValidationError({
                 "vessel_arrival_request_requested_arrival_at": "Requested arrival time cannot be in the past."
             })
