@@ -5033,15 +5033,15 @@ class CustomsContainersListAPIView(APIView):
         cargo_id = request.query_params.get('cargo_id')
 
         # Eligible customs stages:
-        # 1) Physical lifecycle stages at customs: AWAITING_CUSTOMS, UNDER_INSPECTION, CUSTOMS_HOLD, CLEARED
-        # 2) Independent customs status stages: PENDING_REVIEW, UNDER_INSPECTION, CUSTOMS_HOLD, CLEARED, ADDITIONAL_INFORMATION_REQUIRED
-        #    for containers that have arrived or reached the terminal (ARRIVED, AT_TERMINAL)
+        # 1) Containers that have entered customs status lifecycle:
+        #    PENDING_REVIEW, UNDER_INSPECTION, CUSTOMS_HOLD, CLEARED, ADDITIONAL_INFORMATION_REQUIRED
+        # 2) Containers at physical customs stages:
+        #    AWAITING_CUSTOMS, UNDER_INSPECTION, CUSTOMS_HOLD, CLEARED
+        # 3) Containers with customs inspection records
         eligible_customs_q = (
+            models.Q(container_customs_status__in=['PENDING_REVIEW', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED']) |
             models.Q(container_status__in=['AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
-            models.Q(
-                container_customs_status__in=['PENDING_REVIEW', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED'],
-                container_status__in=['ARRIVED', 'AT_TERMINAL', 'AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']
-            )
+            models.Q(customs_inspections__isnull=False)
         )
         base_queryset = Container.objects.filter(
             eligible_customs_q
@@ -5058,12 +5058,18 @@ class CustomsContainersListAPIView(APIView):
         # Compute summary counts
         pending_count = base_queryset.filter(
             models.Q(container_status='AWAITING_CUSTOMS') |
-            models.Q(container_customs_status='PENDING_REVIEW', container_status__in=['ARRIVED', 'AT_TERMINAL', 'AWAITING_CUSTOMS'])
+            models.Q(container_customs_status='PENDING_REVIEW')
+        ).exclude(
+            models.Q(container_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
+            models.Q(container_customs_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED'])
         ).distinct().count()
 
         inspecting_count = base_queryset.filter(
             models.Q(container_status='UNDER_INSPECTION') |
             models.Q(container_customs_status='UNDER_INSPECTION')
+        ).exclude(
+            models.Q(container_status__in=['CLEARED', 'CUSTOMS_HOLD']) |
+            models.Q(container_customs_status__in=['CLEARED', 'CUSTOMS_HOLD'])
         ).distinct().count()
 
         cleared_count = base_queryset.filter(
@@ -5081,6 +5087,9 @@ class CustomsContainersListAPIView(APIView):
 
         info_req_count = base_queryset.filter(
             container_customs_status='ADDITIONAL_INFORMATION_REQUIRED'
+        ).exclude(
+            models.Q(container_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
+            models.Q(container_customs_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED'])
         ).distinct().count()
 
         summary = {
@@ -5104,11 +5113,17 @@ class CustomsContainersListAPIView(APIView):
                 queryset = queryset.filter(
                     models.Q(container_status='AWAITING_CUSTOMS') |
                     models.Q(container_customs_status='PENDING_REVIEW')
+                ).exclude(
+                    models.Q(container_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED']) |
+                    models.Q(container_customs_status__in=['UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED'])
                 )
             elif s_clean in ['UNDER_INSPECTION', 'INSPECTION', 'INSPECTING']:
                 queryset = queryset.filter(
                     models.Q(container_status='UNDER_INSPECTION') |
                     models.Q(container_customs_status='UNDER_INSPECTION')
+                ).exclude(
+                    models.Q(container_status__in=['CLEARED', 'CUSTOMS_HOLD']) |
+                    models.Q(container_customs_status__in=['CLEARED', 'CUSTOMS_HOLD'])
                 )
             elif s_clean in ['CLEARED']:
                 queryset = queryset.filter(
@@ -5183,13 +5198,11 @@ class CustomsContainerDetailAPIView(APIView):
         normalized_role = str(role).strip().lower() if role else ''
 
         # Ensure non-admin users cannot access containers that haven't reached customs
-        eligible_statuses = ['AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'RELEASED']
+        eligible_statuses = ['AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'RELEASED', 'LOADED']
         is_eligible = (
             container.container_status in eligible_statuses or
-            (
-                container.container_customs_status in ['PENDING_REVIEW', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED'] and
-                container.container_status in ['ARRIVED', 'AT_TERMINAL', 'AWAITING_CUSTOMS', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'RELEASED']
-            )
+            container.container_customs_status in ['PENDING_REVIEW', 'UNDER_INSPECTION', 'CUSTOMS_HOLD', 'CLEARED', 'ADDITIONAL_INFORMATION_REQUIRED'] or
+            container.customs_inspections.exists()
         )
         if normalized_role not in ['port_administrator', 'admin', 'port administrator']:
             if not is_eligible:

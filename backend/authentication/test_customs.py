@@ -1060,6 +1060,41 @@ class CustomsOfficerWorkflowTestCase(TestCase):
         export_container.refresh_from_db()
         self.assertEqual(export_container.container_customs_status, "CLEARED")
 
+    def test_cleared_container_visible_after_gate_release_or_loaded(self):
+        """
+        Verify that containers cleared by customs remain visible in /api/customs/containers/
+        and in the cleared filter, even after physical gate exit (RELEASED) or vessel loading (LOADED).
+        """
+        # Container 1: Cleared and subsequently released at gate
+        c_released = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="MSCU9991111",
+            container_type="20FT",
+            container_gross_weight=22.5,
+            container_status="RELEASED",
+            container_customs_status="CLEARED"
+        )
+        # Container 2: Cleared and loaded on export vessel
+        c_loaded = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="MSCU9992222",
+            container_type="40FT",
+            container_gross_weight=28.0,
+            container_status="LOADED",
+            container_customs_status="CLEARED"
+        )
 
+        res = self.client.get('/api/customs/containers/', **self.headers_customs)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(res.data['counts']['cleared'], 2)
 
+        container_numbers = [c['container_number'] for c in res.data['data']]
+        self.assertIn("MSCU9991111", container_numbers)
+        self.assertIn("MSCU9992222", container_numbers)
 
+        # Confirm filtering by CLEARED returns them
+        res_cleared = self.client.get('/api/customs/containers/?status=CLEARED', **self.headers_customs)
+        self.assertEqual(res_cleared.status_code, status.HTTP_200_OK)
+        cleared_numbers = [c['container_number'] for c in res_cleared.data['data']]
+        self.assertIn("MSCU9991111", cleared_numbers)
+        self.assertIn("MSCU9992222", cleared_numbers)

@@ -364,13 +364,19 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
         (c.cargo_context?.vessel_imo_number || '').includes(q) ||
         String(c.cargo_context?.cargo_id || '').includes(q);
 
+      const isUnderInspection = c.container_status === 'UNDER_INSPECTION' || c.container_customs_status === 'UNDER_INSPECTION';
+      const isOnHold = c.container_status === 'CUSTOMS_HOLD' || c.container_customs_status === 'CUSTOMS_HOLD';
+      const isCleared = (c.container_status === 'CLEARED' || c.container_customs_status === 'CLEARED') && !isUnderInspection && !isOnHold;
+      const isInfoReq = c.container_customs_status === 'ADDITIONAL_INFORMATION_REQUIRED' && !isUnderInspection && !isOnHold && !isCleared;
+      const isPending = (c.container_status === 'AWAITING_CUSTOMS' || c.container_customs_status === 'PENDING_REVIEW') && !isUnderInspection && !isOnHold && !isCleared && !isInfoReq;
+
       const matchStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'PENDING' && (c.container_status === 'AWAITING_CUSTOMS' || c.container_customs_status === 'PENDING_REVIEW')) ||
-        (statusFilter === 'INSPECTION' && (c.container_status === 'UNDER_INSPECTION' || c.container_customs_status === 'UNDER_INSPECTION')) ||
-        (statusFilter === 'CLEARED' && (c.container_status === 'CLEARED' || c.container_customs_status === 'CLEARED')) ||
-        (statusFilter === 'HOLD' && (c.container_status === 'CUSTOMS_HOLD' || c.container_customs_status === 'CUSTOMS_HOLD')) ||
-        (statusFilter === 'ADDITIONAL_INFO' && c.container_customs_status === 'ADDITIONAL_INFORMATION_REQUIRED');
+        (statusFilter === 'PENDING' && isPending) ||
+        (statusFilter === 'INSPECTION' && isUnderInspection) ||
+        (statusFilter === 'CLEARED' && isCleared) ||
+        (statusFilter === 'HOLD' && isOnHold) ||
+        (statusFilter === 'ADDITIONAL_INFO' && isInfoReq);
 
       return matchSearch && matchStatus;
     });
@@ -553,6 +559,13 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
             <span>{display || 'Released'}</span>
           </span>
         );
+      case 'LOADED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 inline-flex items-center gap-1">
+            <Ship className="w-3 h-3 text-blue-500" />
+            <span>{display || 'Loaded on Vessel'}</span>
+          </span>
+        );
       default:
         return (
           <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
@@ -562,16 +575,8 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
     }
   };
 
-  const getInspectionBadge = (inspection?: CustomsInspectionData | null) => {
-    if (!inspection) {
-      return (
-        <span className="text-[10px] font-semibold text-slate-400">
-          Not Started
-        </span>
-      );
-    }
-
-    if (inspection.customs_inspection_result === 'CLEARED') {
+  const getInspectionBadge = (inspection?: CustomsInspectionData | null, customsStatus?: string) => {
+    if (customsStatus === 'CLEARED' || inspection?.customs_inspection_result === 'CLEARED') {
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="w-3 h-3 text-emerald-500" />
@@ -580,11 +585,19 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
       );
     }
 
-    if (inspection.customs_inspection_result === 'HOLD') {
+    if (customsStatus === 'CUSTOMS_HOLD' || inspection?.customs_inspection_result === 'HOLD') {
       return (
         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
           <AlertOctagon className="w-3 h-3 text-rose-500" />
           <span>On Hold</span>
+        </span>
+      );
+    }
+
+    if (!inspection) {
+      return (
+        <span className="text-[10px] font-semibold text-slate-400">
+          Not Started
         </span>
       );
     }
@@ -1339,10 +1352,14 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
                       {/* Current Status */}
                       <td className="p-3.5 whitespace-nowrap">
                         {getStatusBadge(
-                          (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
+                          container.container_customs_status === 'CLEARED'
+                            ? 'CLEARED'
+                            : (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
                             ? 'AWAITING_CUSTOMS'
                             : container.container_status,
-                          (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
+                          container.container_customs_status === 'CLEARED'
+                            ? (container.container_status === 'RELEASED' ? 'Cleared (Gate Exit)' : container.container_status === 'LOADED' ? 'Cleared (Vessel Loaded)' : 'Cleared')
+                            : (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
                             ? 'Pending Review'
                             : container.container_status_display
                         )}
@@ -1350,7 +1367,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
 
                       {/* Inspection Status */}
                       <td className="p-3.5 whitespace-nowrap">
-                        {getInspectionBadge(inspection)}
+                        {getInspectionBadge(inspection, container.container_customs_status)}
                         {container.customs_documents && container.customs_documents.length > 0 ? (
                           <div className="mt-1">
                             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
