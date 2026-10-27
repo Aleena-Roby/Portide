@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 
 interface CustomsCargoManifestOversightProps {
-  onNavigateToNormalReview?: (containerNumber?: string) => void;
+  onNavigateToNormalReview?: (containerNumber?: string, autoInspect?: boolean) => void;
   onNavigateToPreArrival?: () => void;
 }
 
@@ -773,7 +773,7 @@ export const CustomsCargoManifestOversight: React.FC<CustomsCargoManifestOversig
                                   <button
                                     onClick={() => {
                                       setSelectedCargo(null);
-                                      onNavigateToNormalReview(cont.container_number);
+                                      onNavigateToNormalReview(cont.container_number, true);
                                     }}
                                     className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
                                   >

@@ -1010,5 +1010,56 @@ class CustomsOfficerWorkflowTestCase(TestCase):
         res_unauth = self.client.get('/api/customs/history/', **self.headers_shipping)
         self.assertEqual(res_unauth.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_export_container_customs_workflow(self):
+        """Export container at terminal with PENDING_REVIEW appears in customs list and can be inspected/cleared."""
+        export_container = Container.objects.create(
+            container_cargo_id=self.cargo,
+            container_number="MSCU9998881",
+            container_type="20FT",
+            container_gross_weight=Decimal("18.50"),
+            container_status="AT_TERMINAL",
+            container_customs_status="PENDING_REVIEW"
+        )
+
+        # 1. Container appears in customs container worklist
+        res_list = self.client.get('/api/customs/containers/', **self.headers_customs)
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        numbers = [c['container_number'] for c in res_list.data['data']]
+        self.assertIn("MSCU9998881", numbers)
+        self.assertGreaterEqual(res_list.data['counts']['pending_customs'], 1)
+
+        # 2. Detail view accessible
+        res_detail = self.client.get(f'/api/customs/containers/{export_container.container_id}/', **self.headers_customs)
+        self.assertEqual(res_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_detail.data['data']['container_number'], "MSCU9998881")
+
+        # 3. Start inspection
+        res_start = self.client.post(
+            f'/api/customs/containers/{export_container.container_id}/start-inspection/',
+            {"remarks": "Starting export consignment inspection"},
+            format='json',
+            **self.headers_customs
+        )
+        self.assertEqual(res_start.status_code, status.HTTP_200_OK)
+        export_container.refresh_from_db()
+        self.assertEqual(export_container.container_status, "UNDER_INSPECTION")
+        self.assertEqual(export_container.container_customs_status, "UNDER_INSPECTION")
+
+        # 4. Clear container
+        res_clear = self.client.post(
+            f'/api/customs/containers/{export_container.container_id}/submit-inspection/',
+            {
+                "inspection_result": "CLEARED",
+                "document_verification_status": "VERIFIED",
+                "remarks": "Export cargo declaration verified and sealed."
+            },
+            format='json',
+            **self.headers_customs
+        )
+        self.assertEqual(res_clear.status_code, status.HTTP_200_OK)
+        export_container.refresh_from_db()
+        self.assertEqual(export_container.container_customs_status, "CLEARED")
+
+
 
 

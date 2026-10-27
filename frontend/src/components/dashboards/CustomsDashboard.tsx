@@ -204,6 +204,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [pendingInspectContainerNumber, setPendingInspectContainerNumber] = useState<string | null>(null);
 
   // Modals state
   const [selectedContainer, setSelectedContainer] = useState<BackendContainer | null>(null);
@@ -325,6 +326,32 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
     fetchCustomsContainers();
   }, [fetchCustomsContainers]);
 
+  // Automatically trigger inspection or open modal if navigated from Cargo Manifest Oversight
+  useEffect(() => {
+    if (pendingInspectContainerNumber && containers.length > 0) {
+      const match = containers.find(
+        c => (c.container_number || '').trim().toUpperCase() === pendingInspectContainerNumber.trim().toUpperCase()
+      );
+      if (match) {
+        setPendingInspectContainerNumber(null);
+        if (match.container_status === 'UNDER_INSPECTION' || match.container_customs_status === 'UNDER_INSPECTION') {
+          handleOpenInspectionForm(match);
+        } else if (match.container_status === 'CUSTOMS_HOLD' || match.container_customs_status === 'CUSTOMS_HOLD') {
+          handleOpenInspectionForm(match);
+        } else if (
+          match.container_status === 'AWAITING_CUSTOMS' ||
+          match.container_customs_status === 'PENDING_REVIEW' ||
+          match.container_status === 'AT_TERMINAL' ||
+          match.container_status === 'ARRIVED'
+        ) {
+          handleStartInspection(match);
+        } else {
+          setSelectedContainer(match);
+        }
+      }
+    }
+  }, [pendingInspectContainerNumber, containers]);
+
   // Filtered containers
   const filteredContainers = useMemo(() => {
     return containers.filter(c => {
@@ -339,9 +366,9 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
 
       const matchStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'PENDING' && c.container_status === 'AWAITING_CUSTOMS') ||
-        (statusFilter === 'INSPECTION' && c.container_status === 'UNDER_INSPECTION') ||
-        (statusFilter === 'CLEARED' && c.container_status === 'CLEARED') ||
+        (statusFilter === 'PENDING' && (c.container_status === 'AWAITING_CUSTOMS' || c.container_customs_status === 'PENDING_REVIEW')) ||
+        (statusFilter === 'INSPECTION' && (c.container_status === 'UNDER_INSPECTION' || c.container_customs_status === 'UNDER_INSPECTION')) ||
+        (statusFilter === 'CLEARED' && (c.container_status === 'CLEARED' || c.container_customs_status === 'CLEARED')) ||
         (statusFilter === 'HOLD' && (c.container_status === 'CUSTOMS_HOLD' || c.container_customs_status === 'CUSTOMS_HOLD')) ||
         (statusFilter === 'ADDITIONAL_INFO' && c.container_customs_status === 'ADDITIONAL_INFORMATION_REQUIRED');
 
@@ -646,9 +673,16 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
       {/* VIEW 1: CARGO MANIFEST OVERSIGHT */}
       {currentTab === 'cargo-management' && (
         <CustomsCargoManifestOversight
-          onNavigateToNormalReview={(containerNum) => {
+          onNavigateToNormalReview={(containerNum, autoInspect) => {
             if (containerNum) {
               setSearchQuery(containerNum);
+              setStatusFilter('all');
+              if (autoInspect) {
+                setPendingInspectContainerNumber(containerNum);
+              }
+            } else {
+              setSearchQuery('');
+              setStatusFilter('all');
             }
             handleTabChange('normal-review');
           }}
@@ -1304,7 +1338,14 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
 
                       {/* Current Status */}
                       <td className="p-3.5 whitespace-nowrap">
-                        {getStatusBadge(container.container_status, container.container_status_display)}
+                        {getStatusBadge(
+                          (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
+                            ? 'AWAITING_CUSTOMS'
+                            : container.container_status,
+                          (container.container_status === 'AT_TERMINAL' || container.container_status === 'ARRIVED') && container.container_customs_status === 'PENDING_REVIEW'
+                            ? 'Pending Review'
+                            : container.container_status_display
+                        )}
                       </td>
 
                       {/* Inspection Status */}
@@ -1358,7 +1399,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
                           </button>
 
                           {/* Action button based on state */}
-                          {container.container_status === 'AWAITING_CUSTOMS' && (
+                          {(container.container_status === 'AWAITING_CUSTOMS' || (container.container_customs_status === 'PENDING_REVIEW' && container.container_status !== 'UNDER_INSPECTION' && container.container_status !== 'CLEARED' && container.container_status !== 'CUSTOMS_HOLD')) && (
                             <button
                               type="button"
                               disabled={isActionLoading}
@@ -1378,7 +1419,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
                             </button>
                           )}
 
-                          {container.container_status === 'UNDER_INSPECTION' && (
+                          {(container.container_status === 'UNDER_INSPECTION' || container.container_customs_status === 'UNDER_INSPECTION') && container.container_status !== 'CLEARED' && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1393,7 +1434,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
                             </button>
                           )}
 
-                          {container.container_status === 'CUSTOMS_HOLD' && (
+                          {(container.container_status === 'CUSTOMS_HOLD' || container.container_customs_status === 'CUSTOMS_HOLD') && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1408,7 +1449,7 @@ export const CustomsDashboard: React.FC<CustomsDashboardProps> = ({ activeTab = 
                             </button>
                           )}
 
-                          {container.container_status === 'CLEARED' && (
+                          {(container.container_status === 'CLEARED' || container.container_customs_status === 'CLEARED') && container.container_status !== 'CUSTOMS_HOLD' && container.container_status !== 'UNDER_INSPECTION' && (
                             <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold inline-flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                               <span>Cleared</span>
