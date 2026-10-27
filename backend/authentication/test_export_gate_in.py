@@ -761,3 +761,38 @@ class ExportGateInWorkflowTestCase(TestCase):
         self.assertIn("GATE-DIR-OUT", exit_codes)
         self.assertIn("GATE-DIR-BIDI", exit_codes)
         self.assertNotIn("GATE-DIR-IN", exit_codes)
+
+    # -------------------------------------------------------------------------
+    # TEST 22: INDIAN DRIVER PHONE NUMBER VALIDATION
+    # -------------------------------------------------------------------------
+    def test_22_indian_driver_phone_validation(self):
+        """
+        Verify that Export Gate In enforces valid 10-digit Indian phone numbers starting with 6-9
+        when driver_phone is supplied.
+        """
+        base_payload = {
+            "container_id": self.export_container.container_id,
+            "truck_number": "MH-04-AB-9999",
+            "driver_name": "Rajesh Sharma",
+            "driver_license": "DL-MH-2020-112233",
+            "gate_id": self.gate.gate_id
+        }
+
+        # 1. Reject invalid starting digit (e.g., 5)
+        invalid_payload = {**base_payload, "driver_phone": "5876543210"}
+        res = self.client.post("/api/gate/export-gate-in/", invalid_payload, format="json", **self._auth_gate())
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("driver_phone", res.data.get("errors", {}))
+
+        # 2. Reject short number (< 10 digits)
+        invalid_short = {**base_payload, "driver_phone": "987654"}
+        res = self.client.post("/api/gate/export-gate-in/", invalid_short, format="json", **self._auth_gate())
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("driver_phone", res.data.get("errors", {}))
+
+        # 3. Accept valid 10-digit Indian mobile number
+        valid_payload = {**base_payload, "driver_phone": "9876543210"}
+        res = self.client.post("/api/gate/export-gate-in/", valid_payload, format="json", **self._auth_gate())
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["status"], "success")
+

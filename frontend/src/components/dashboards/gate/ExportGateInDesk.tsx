@@ -21,8 +21,91 @@ import {
   Key,
   Calendar,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Phone
 } from 'lucide-react';
+
+interface IndianPhoneValidation {
+  isValid: boolean;
+  rawDigits: string;
+  formatted: string;
+  e164: string;
+  errorMessage: string;
+}
+
+const validateIndianPhone = (input: string): IndianPhoneValidation => {
+  const trimmed = (input || '').trim();
+  if (!trimmed) {
+    return {
+      isValid: false,
+      rawDigits: '',
+      formatted: '',
+      e164: '',
+      errorMessage: ''
+    };
+  }
+
+  // Remove spaces, hyphens, brackets
+  let digits = trimmed.replace(/[\s\-()]/g, '');
+
+  // Strip leading country code (+91, 91, or leading 0)
+  if (digits.startsWith('+91')) {
+    digits = digits.slice(3);
+  } else if (digits.startsWith('91') && digits.length === 12) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('0') && digits.length === 11) {
+    digits = digits.slice(1);
+  }
+
+  // Check if non-digits remain
+  if (!/^\d*$/.test(digits)) {
+    return {
+      isValid: false,
+      rawDigits: digits,
+      formatted: trimmed,
+      e164: '',
+      errorMessage: 'Phone number must contain only numbers.'
+    };
+  }
+
+  if (digits.length > 0 && !/^[6-9]/.test(digits)) {
+    return {
+      isValid: false,
+      rawDigits: digits,
+      formatted: trimmed,
+      e164: '',
+      errorMessage: 'Indian mobile numbers must start with 6, 7, 8, or 9.'
+    };
+  }
+
+  if (digits.length > 0 && digits.length < 10) {
+    return {
+      isValid: false,
+      rawDigits: digits,
+      formatted: trimmed,
+      e164: '',
+      errorMessage: `Enter 10-digit Indian mobile number (${digits.length}/10 digits entered).`
+    };
+  }
+
+  if (digits.length > 10) {
+    return {
+      isValid: false,
+      rawDigits: digits,
+      formatted: trimmed,
+      e164: '',
+      errorMessage: 'Indian mobile numbers must be exactly 10 digits.'
+    };
+  }
+
+  return {
+    isValid: true,
+    rawDigits: digits,
+    formatted: `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`,
+    e164: `+91${digits}`,
+    errorMessage: ''
+  };
+};
 
 interface ExportGateInDeskProps {
   onGateInSuccess?: () => void;
@@ -47,6 +130,8 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
   const [driverName, setDriverName] = useState<string>('');
   const [driverLicense, setDriverLicense] = useState<string>('');
   const [driverPhone, setDriverPhone] = useState<string>('');
+  const [driverPhoneTouched, setDriverPhoneTouched] = useState<boolean>(false);
+  const phoneValidation = validateIndianPhone(driverPhone);
   const [selectedGateId, setSelectedGateId] = useState<number | ''>('');
   const [sealNumber, setSealNumber] = useState<string>('');
   const [remarks, setRemarks] = useState<string>('');
@@ -179,14 +264,26 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
       return;
     }
 
+    // Validate driver contact phone if provided
+    if (driverPhone.trim()) {
+      const pVal = validateIndianPhone(driverPhone);
+      if (!pVal.isValid) {
+        setSubmitError(
+          pVal.errorMessage || 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 (e.g. +91 98765 43210).'
+        );
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
+      const pVal = validateIndianPhone(driverPhone);
       const payload: Record<string, any> = {
         truck_number: truckNumber.trim().toUpperCase(),
         truck_company: truckCompany.trim(),
         driver_name: driverName.trim(),
         driver_license: driverLicense.trim().toUpperCase(),
-        driver_phone: driverPhone.trim(),
+        driver_phone: pVal.isValid ? pVal.e164 : driverPhone.trim(),
         gate_id: Number(selectedGateId),
         seal_number: sealNumber.trim().toUpperCase(),
         remarks: remarks.trim()
@@ -229,6 +326,7 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
         setDriverName('');
         setDriverLicense('');
         setDriverPhone('');
+        setDriverPhoneTouched(false);
         setSealNumber('');
         setRemarks('');
 
@@ -467,16 +565,68 @@ export const ExportGateInDesk: React.FC<ExportGateInDeskProps> = ({ onGateInSucc
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                  Driver Contact Phone
-                </label>
-                <input
-                  type="text"
-                  value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
-                  placeholder="+91..."
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none font-mono"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                    Driver Contact Phone
+                  </label>
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                    India (+91)
+                  </span>
+                </div>
+                <div className="relative">
+                  <div className="absolute left-3 top-3 pointer-events-none flex items-center gap-1.5 text-slate-400">
+                    <span className="text-sm select-none" role="img" aria-label="India Flag">🇮🇳</span>
+                    <Phone className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="tel"
+                    value={driverPhone}
+                    onChange={(e) => {
+                      setDriverPhone(e.target.value);
+                      setDriverPhoneTouched(true);
+                      if (submitError) setSubmitError('');
+                    }}
+                    onBlur={() => {
+                      setDriverPhoneTouched(true);
+                      const check = validateIndianPhone(driverPhone);
+                      if (check.isValid) {
+                        setDriverPhone(check.formatted);
+                      }
+                    }}
+                    placeholder="+91 98765 43210"
+                    className={`w-full pl-16 pr-9 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:outline-none font-mono ${
+                      driverPhone.trim() && phoneValidation.isValid
+                        ? 'border-emerald-500/80 dark:border-emerald-500/80 focus:ring-emerald-500/30'
+                        : driverPhone.trim() && !phoneValidation.isValid && driverPhoneTouched
+                        ? 'border-rose-500/80 dark:border-rose-500/80 focus:ring-rose-500/30'
+                        : 'border-slate-200 dark:border-slate-700 focus:ring-teal-500'
+                    }`}
+                  />
+                  {driverPhone.trim() && (
+                    <div className="absolute right-3 top-3">
+                      {phoneValidation.isValid ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ) : driverPhoneTouched ? (
+                        <AlertTriangle className="w-4 h-4 text-rose-500" />
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+                {driverPhone.trim() && !phoneValidation.isValid && driverPhoneTouched ? (
+                  <p className="text-[10px] text-rose-500 dark:text-rose-400 font-medium mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    <span>{phoneValidation.errorMessage}</span>
+                  </p>
+                ) : driverPhone.trim() && phoneValidation.isValid ? (
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                    <span>Valid Indian mobile ({phoneValidation.formatted})</span>
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    10-digit Indian mobile number (e.g. +91 98765 43210)
+                  </p>
+                )}
               </div>
             </div>
 

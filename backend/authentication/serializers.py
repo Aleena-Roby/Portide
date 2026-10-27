@@ -2256,6 +2256,21 @@ class ExportGateInSubmitSerializer(serializers.Serializer):
             raise serializers.ValidationError("Driver identification / license reference is required.")
         return val
 
+    def validate_driver_phone(self, value):
+        val = str(value or '').strip()
+        if not val:
+            return ''
+        clean_digits = re.sub(r'[\s\-+()]', '', val)
+        if clean_digits.startswith('91') and len(clean_digits) == 12:
+            clean_digits = clean_digits[2:]
+        elif clean_digits.startswith('0') and len(clean_digits) == 11:
+            clean_digits = clean_digits[1:]
+        if not (len(clean_digits) == 10 and clean_digits[0] in '6789'):
+            raise serializers.ValidationError(
+                "Driver phone must be a valid 10-digit Indian phone number starting with 6, 7, 8, or 9 (e.g. +91 98765 43210)."
+            )
+        return f"+91{clean_digits}"
+
     def validate(self, data):
         container_id = data.get('container_id')
         container_number = (data.get('container_number') or '').strip().upper()
